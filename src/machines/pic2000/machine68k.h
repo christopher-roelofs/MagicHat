@@ -1,16 +1,15 @@
 /*
- * machine68k.h — Sony PIC-2000 board API (legacy mrc_m68k names retained).
+ * machine68k.h — shared PIC-2000, HIX-300, and Envoy 68k machine API.
  *
  * Separate from machine.h, which is the DataRover 840: a different CPU, a
  * different board and a different major version of the operating system.
  * What the two share is the bus, the snapshot discipline and the habit of
  * making every unknown access say so.
  *
- * The first target is the Sony Magic Link PIC-2000, because it is the only
- * Magic Cap 1.5 image we have -- the version between the 1.0 the other Sony
- * machines run and the 3.1.2j the DataRover runs -- and because its ROM base
- * is shared with the PIC-1000 and the HIX-300, so three machines benefit
- * from the same board work.
+ * PIC-2000 was the first target. The shared implementation now selects
+ * board-specific behavior for HIX-300 and Envoy ROMs as well; PIC-1000 is
+ * recognized but has no runnable board. The legacy directory and function
+ * names do not imply PIC-2000-only support.
  *
  * What is established about it, all measured from the image rather than
  * taken from documentation:

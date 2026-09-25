@@ -46,15 +46,15 @@ state. `.state` uses the imported ROM's filename stem inside its folder.
 Uninstalling the app removes its private files; this first version does not
 have an export UI. Updating with `adb install -r` preserves them.
 
-The controls strip and Android Back button open controls for power, saving
-retained memory, panel rotation, DataRover save states, and closing the emulator.
+The emulator's control rail offers power, saved-state, panel rotation, and
+close actions appropriate to the active device. Android Back closes the
+current emulator session cleanly.
 The strip reserves its own space above the guest panel so it does not obscure
 guest touch targets. Device rotation resizes the panel automatically.
 
-**Save state (DataRover)** writes `saved.state` beside that imported ROM.
-Its ROM-list menu then offers **Load saved state**. Full save states remain
-DataRover-only; the Android port does not introduce a new 68k snapshot format.
-Temporary sessions still permit explicitly requested full save states.
+Save state writes a whole-machine snapshot for DataRover and supported 68k
+devices. Each imported ROM keeps its own state; temporary sessions still
+permit explicitly requested saves.
 
 Switching apps or locking the display pauses emulation, releases held input,
 clears queued audio, and saves the whole machine on the emulator thread.
@@ -110,7 +110,9 @@ and [Android native page sizes](https://developer.android.com/guide/practices/pa
 
 ## Validation on the first tablet
 
-Tested on an SM-P610 running Android API 36, connected with wireless ADB:
+Tested on an SM-P610 running Android API 36, connected with wireless ADB.
+This session covered PIC-2000 and DataRover only; it was not a validation of
+the other supported 68k ROMs on this tablet:
 
 - Installed the APK and imported both ROMs through Android's file picker.
 - PIC-2000 reached calibration and the Hallway; interactive touch/drawing worked.

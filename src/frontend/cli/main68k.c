@@ -1,5 +1,5 @@
 /*
- * The Magic Cap 1.x machines, starting with the Sony PIC-2000.
+ * The Magic Cap 1.x machines: PIC-2000, HIX-300, and Envoy.
  *
  * Deliberately a separate translation unit from the DataRover's CLI rather
  * than a mode of it. The two share a bus and a method and nothing else: a
@@ -10,8 +10,7 @@
  * They are the same *program*, though. This used to be its own binary as
  * well, and that second entry point silently missed everything the launcher
  * grew -- devices, the chooser, switching -- because it never went through
- * it. One emulator, reached as `mcap --device pic2000` when a ROM cannot
- * identify itself.
+ * it. One emulator, reached through ROM detection or an explicit --device.
  */
 #include "machines/pic2000/machine68k.h"
 #include "frontend/sdl/gui68k.h"
@@ -30,13 +29,13 @@ static void usage(void)
     printf(
 "usage: mcap --rom <image> [options]   (68k machines)\n"
 "\n"
-"  --rom <path>          a Magic Cap 68k ROM (PIC-2000, PIC-1000, HIX-300,\n"
-"                        Envoy). PIC-2000 and experimental Envoy support.\n"
+"  --rom <path>          a Magic Cap 68k ROM (PIC-2000, HIX-300, Envoy;\n"
+"                        PIC-1000 recognized but not runnable).\n"
 "  --ram <mb>            DRAM size in MB (default 4; not yet measured)\n"
 "  --sram1 <path>        attach writable SRAM card in 68k slot 1 (creates\n"
 "                        a blank 2 MiB image if absent)\n"
 "  --sram2 <path>        attach writable SRAM card in 68k slot 2\n"
-"  --gui                 open the interactive PIC-2000 display (no limit\n"
+"  --gui                 open the interactive 68k display (no limit\n"
 "                        unless -n is also supplied)\n"
 "  --temporary           run without writing the device's state\n"
 "  --fresh               start from the ROM, ignoring any saved state\n"
@@ -50,7 +49,7 @@ static void usage(void)
 "  --power-at <n>         press power at slot n (hold 1000000 slots)\n"
 "  --headless            run without a window (fixed simulated battery readings)\n"
 "  --no-host-battery     disable host battery/adapter polling in the GUI\n"
-"  --wav <path>          capture PIC speaker output (headless)\n"
+"  --wav <path>          capture 68k speaker output (headless)\n"
 "  --dump-fb <path>      write the 480x320 guest framebuffer as a PGM\n"
 "  --install <path>      offer a package over the guest's PC Link\n"
 "                        headless: stop after transfer and 1s guest settling;\n"

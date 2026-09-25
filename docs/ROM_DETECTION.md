@@ -10,8 +10,8 @@ run a sibling executable or inspect the ROM filename, extension, or hash.
 | Rosemary SDK | MIPS | DataRover 840 |
 | Sony PIC-2000 | 68k | PIC-2000 |
 | Sony PIC-1000 | 68k | Identified, board unsupported |
-| Sony HIX-300 | 68k | HIX-300 (experimental, checksum recovery for original image) |
-| Motorola Envoy | 68k | Envoy (experimental) |
+| Sony HIX-300 | 68k | HIX-300 board (experimental; checksum recovery for original image) |
+| Motorola Envoy | 68k | Envoy board (experimental; mc31 has additional limitations) |
 
 Envoy recognition includes the mc31 image's `1,0.31,MOTO,1,` version and
 separate `Envoy` model string. Recognition does not imply keyboard support:
@@ -20,9 +20,10 @@ mc31 remains gated; 1.0/pt4 and HIX-300 are validated. See
 
 Supported machines open a GUI by default when SDL can initialize video.
 `--headless` disables it; `--gui` explicitly requests it. Board-specific
-options still belong to their respective parsers. For example, PIC does not
-implement DataRover saved states or networking options. Request PIC options
-with `mcap --device pic2000 --help`.
+options still belong to their respective parsers. For example, the 68k
+machines do not implement every DataRover networking option. Request 68k
+options with `mcap --device hix300 --help`, `--device envoy --help`, or
+`--device pic2000 --help`.
 
 ## Evidence used
 
@@ -58,14 +59,15 @@ and other reset layouts are not automatically normalized.
 
 ## Explicit selection and builds
 
-`--device auto` is the default. `--device datarover840`, `--device pic2000`, or `--device envoy`
-allows an unrecognized experimental ROM to use a supported board. A known
+`--device auto` is the default. `--device datarover840`, `--device pic2000`,
+`--device hix300`, or `--device envoy` allows an unrecognized experimental ROM
+to use a supported board. A known
 conflicting device is rejected, including attempts to run identified
 PIC-1000/HIX-300/Envoy images as PIC-2000 through the unified launcher.
 
-The separate `mcap` executable remains an explicit PIC-2000 board harness
-for existing low-level experiments, including synthetic ROM tests. It does
-not do automatic device selection and retains its headless default.
+There is one `mcap` executable. It selects the DataRover, PIC-2000, HIX-300,
+or Envoy board from the ROM, unless `--device` explicitly selects a compatible
+board. PIC-1000 is identified but has no runnable board yet.
 
 The PIC-2000, Envoy, and HIX-300 machines use the project-owned CPU32 core;
 their build does not require Moira.

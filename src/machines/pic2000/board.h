@@ -1,5 +1,5 @@
 /*
- * board.h — the PIC-2000 board struct, shared inside the machine only.
+ * board.h — shared 68k board state for PIC-2000, HIX-300, and Envoy.
  *
  * This is not part of the board's public interface: machine68k.h is. It
  * exists because saving and restoring the machine has to see every field,

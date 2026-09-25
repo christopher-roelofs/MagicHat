@@ -262,7 +262,7 @@ int main(int argc, char **argv)
     if (help)
         fprintf(stderr,"mcap selects the machine from ROM contents.\n"
                        "  --device auto|datarover840|pic2000|envoy|hix300  (default auto)\n"
-                       "Use --device pic2000 --help for 68k options.\n");
+                       "Use --device hix300 --help (or envoy/pic2000) for 68k options.\n");
     /*
      * Nothing to run and nothing to pick up: open the window anyway, dark,
      * with the device list on it.
