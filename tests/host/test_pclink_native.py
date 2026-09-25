@@ -3,10 +3,18 @@ import ctypes
 import pathlib
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def scratch_directory():
+    # Windows cannot delete a library this process still has loaded.
+    if sys.platform == 'win32':
+        return tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+    return tempfile.TemporaryDirectory()
 
 
 def checksum(data):
@@ -50,7 +58,7 @@ def hix_frame(pdu):
 
 class NativePPPTests(unittest.TestCase):
     def test_distribution_envelope(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with scratch_directory() as directory:
             directory = pathlib.Path(directory)
             harness = directory / 'loader.c'
             library = directory / 'loader.so'
@@ -106,7 +114,7 @@ int check_package(const char *path, const unsigned char *expected,
         self.check_receive_ack_and_send_window(False, direct_hix=True)
 
     def check_receive_ack_and_send_window(self, distribution, direct_hix=False):
-        with tempfile.TemporaryDirectory() as directory:
+        with scratch_directory() as directory:
             directory = pathlib.Path(directory)
             library = directory / 'peer.so'
             harness = directory / 'peer.c'

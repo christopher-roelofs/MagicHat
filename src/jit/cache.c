@@ -302,19 +302,23 @@ void mrc_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
     size_t offset = (size_t)(site - j->writable);
     /* Without a separate writable view the branch being redirected sits in
      * executable memory; open its page for the store and close it again. */
+#if HAVE_MMAP
     size_t first = offset & ~(j->page_size - 1);
     size_t span = j->page_size * 2 > ARENA_SIZE - first ? ARENA_SIZE - first
                                                         : j->page_size * 2;
     if (!j->dual && mprotect(j->arena + first, span, PROT_READ | PROT_WRITE))
         return;
+#endif
     mrc_jit_patch_link(site, j->arena + offset, target->chain);
+#if HAVE_MMAP
     if (!j->dual && mprotect(j->arena + first, span, PROT_READ | PROT_EXEC))
         return;
+#endif
     __builtin___clear_cache((char *)j->arena + offset, (char *)j->arena + offset + 8);
     j->links++;
 }
 
-#if !defined(__x86_64__) && !(defined(__aarch64__) && !defined(__AARCH64EB__))
+#if !(defined(__x86_64__) && !defined(_WIN32)) && !(defined(__aarch64__) && !defined(__AARCH64EB__))
 size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
                     const mrc_jit_block *b, unsigned *chain)
 {

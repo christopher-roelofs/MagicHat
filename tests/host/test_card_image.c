@@ -1,5 +1,6 @@
 #include "host/card_image.h"
 #include "devices/pccard/pccard.h"
+#include "util/fs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -7,7 +8,7 @@
 #define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); exit(1); } } while(0)
 int main(void)
 {
-    char path[]="/tmp/mrc-sram-XXXXXX";
+    char path[512]; snprintf(path,sizeof(path),"%s/mrc-sram-XXXXXX",mrc_temp_dir());
     int fd=mkstemp(path); CHECK(fd>=0); close(fd); CHECK(unlink(path)==0);
     mrc_card_image image,second;
     CHECK(mrc_card_image_open(&image,path,2u*1024*1024));

@@ -24,10 +24,11 @@ BASE_PIC = [*BASE, '--device', 'pic2000']
 
 class M68kCli(unittest.TestCase):
     def test_serial_a_is_explicit_and_b_is_not_misrouted(self):
-        result = self.run_guest('--serial', 'a', '-n', '1')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('experimental DUART A', result.stderr)
-        self.assertIn('PPP backend unimplemented', result.stderr)
+        if sys.platform != 'win32':  # channel A is a pty, which Windows lacks
+            result = self.run_guest('--serial', 'a', '-n', '1')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('experimental DUART A', result.stderr)
+            self.assertIn('PPP backend unimplemented', result.stderr)
         result = self.run_guest('--serial', 'b', '-n', '1')
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn('supports only experimental channel a', result.stderr)

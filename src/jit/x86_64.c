@@ -1,5 +1,6 @@
 #include "jit/jit.h"
-#if defined(__x86_64__)
+/* System V calling convention; the Windows x64 ABI is not implemented. */
+#if defined(__x86_64__) && !defined(_WIN32)
 #include <stddef.h>
 #include <string.h>
 /*

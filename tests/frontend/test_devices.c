@@ -14,6 +14,7 @@
 #include "frontend/sdl/picker.h"
 #include "host/devices.h"
 #include "host/state.h"
+#include "util/fs.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,16 +100,17 @@ static int row_labelled_like(const mrc_ui_row *rows, unsigned count,
 
 int main(void)
 {
-    char scratch[] = "/tmp/mrc-devices-XXXXXX";
-    if (!mkdtemp(scratch)) { perror("mkdtemp"); return 1; }
+    char scratch[512];
+    snprintf(scratch, sizeof(scratch), "%s/mrc-devices-XXXXXX", mrc_temp_dir());
+    if (!mrc_mkdtemp(scratch)) { perror("mkdtemp"); return 1; }
 
     char roms[512], nested[512], store[512];
     snprintf(roms, sizeof(roms), "%s/roms", scratch);
     snprintf(nested, sizeof(nested), "%s/roms/inner", scratch);
     snprintf(store, sizeof(store), "%s/devices", scratch);
-    mkdir(roms, 0700);
-    mkdir(nested, 0700);
-    setenv("MRC_DEVICES_DIR", store, 1);
+    mrc_mkdir(roms);
+    mrc_mkdir(nested);
+    mrc_setenv("MRC_DEVICES_DIR", store);
 
     char pic[512], notes[512], inner[512];
     snprintf(pic, sizeof(pic), "%s/PIC-2000.rom", roms);
@@ -259,7 +261,7 @@ int main(void)
     /* The picker opens where a person was last looking, and on a first run
      * that is home. Putting the firmware there is how this drives the real
      * default rather than a path handed in for the test. */
-    setenv("HOME", roms, 1);
+    mrc_setenv("HOME", roms);
 
     mrc_devices_panel_open(ui, NULL);
     CHECK(mrc_devices_panel_showing());

@@ -7,9 +7,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <termios.h>
+#endif
 #include <unistd.h>
 
+#ifdef _WIN32
+/*
+ * Windows has no pseudo-terminals. A named pipe or a com0com pair could
+ * stand in; until then only the in-process link is available here.
+ */
+bool mrc_serial_open_pty(mrc_serial *s)
+{
+    *s = (mrc_serial){ .fd = -1 };
+    fprintf(stderr, "serial: a pty port is not available on Windows\n");
+    return false;
+}
+#else
 bool mrc_serial_open_pty(mrc_serial *s)
 {
     memset(s, 0, sizeof(*s));
@@ -44,6 +58,7 @@ bool mrc_serial_open_pty(mrc_serial *s)
     fprintf(stderr, "serial: UART available at %s\n", s->path);
     return true;
 }
+#endif
 
 void mrc_serial_close(mrc_serial *s)
 {

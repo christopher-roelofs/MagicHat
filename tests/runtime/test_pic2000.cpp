@@ -15,6 +15,7 @@
 #include <unistd.h>
 static void check(bool ok,const char *why) { if(!ok) { std::fprintf(stderr,"FAIL: %s\n",why); std::exit(1); } }
 int main() {
+#ifndef _WIN32 // channel A is exercised through a pty, which Windows lacks
     {
         Mc68349Duart d;
         check(d.link.fd == -1 && d.link_a.fd == -1, "serial endpoints start disconnected");
@@ -71,6 +72,7 @@ int main() {
         close(peer);
         mrc_serial_close(&d.link_a);
     }
+#endif
     Mc68349Duart uart;
     uart.write(4, 1, 5);
     uart.write(0x15, 1, 0x20);
@@ -184,6 +186,7 @@ int main() {
     card_file.seekg(0x1234);
     unsigned char card_bytes[2] = {};
     card_file.read((char *)card_bytes, 2);
+    card_file.close(); // Windows will not remove the directory under an open file
     check(card_bytes[0] == 0xBE && card_bytes[1] == 0xEF,
           "68k SRAM writes persist to the image");
     board=mrc_m68k_new(path.string().c_str(),4,log);

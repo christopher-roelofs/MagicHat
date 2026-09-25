@@ -308,7 +308,11 @@ int main()
         auto *restored = mrc_m68k_new(rom.string().c_str(), 4, log);
         CHECK(source && restored);
         if (source && restored) {
+#ifdef _WIN32
+            source->duart.a.enabled = true; // no pty to open; the state is the same
+#else
             CHECK(mrc_m68k_open_serial_a(source));
+#endif
             auto &a = source->duart.a;
             a.rx_enabled = a.tx_enabled = a.tx_busy = true;
             a.rx[0] = 0x7e; a.rx[1] = 0x7d; a.rx[2] = 0xff;

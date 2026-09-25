@@ -1,6 +1,7 @@
 #include "host/devices.h"
 
 #include "rom/identify.h"
+#include "util/fs.h"
 
 #include <dirent.h>
 #include <stdarg.h>
@@ -34,7 +35,7 @@ const char *mrc_devices_last_error(void)
 
 static bool make_dir(const char *path)
 {
-    if (!mkdir(path, 0700) || errno == EEXIST) return true;
+    if (!mrc_mkdir(path) || errno == EEXIST) return true;
     return fail("cannot create %s: %s", path, strerror(errno));
 }
 
@@ -45,7 +46,12 @@ static bool make_dirs(const char *path)
     char work[4096];
     if (strlen(path) >= sizeof(work)) return false;
     snprintf(work, sizeof(work), "%s", path);
-    for (char *p = work + 1; *p; p++) {
+    char *start = work + 1;
+#ifdef _WIN32
+    /* "C:/..." -- the drive is there already and cannot be made. */
+    if (work[0] && work[1] == ':') start = work + 2 + (work[2] != 0);
+#endif
+    for (char *p = start; *p; p++) {
         if (*p != '/') continue;
         *p = 0;
         if (!make_dir(work)) return false;
@@ -62,8 +68,17 @@ const char *mrc_devices_root(void)
     const char *override = getenv("MRC_DEVICES_DIR");
     const char *data = getenv("XDG_DATA_HOME");
     const char *home = getenv("HOME");
+#ifdef _WIN32
+    /* Where Windows keeps per-user application data. HOME is set, or not,
+     * differently by every shell, and would move the devices around. */
+    const char *local = getenv("LOCALAPPDATA");
+#endif
     if (override && *override)
         snprintf(root_path, sizeof(root_path), "%s", override);
+#ifdef _WIN32
+    else if (local && *local)
+        snprintf(root_path, sizeof(root_path), "%s/magicrecomp/devices", local);
+#endif
     else if (data && *data)
         snprintf(root_path, sizeof(root_path), "%s/magicrecomp/devices", data);
     else if (home && *home)
@@ -75,6 +90,10 @@ const char *mrc_devices_root(void)
         root_path[0] = 0;
         return NULL;
     }
+#ifdef _WIN32
+    for (char *p = root_path; *p; p++)
+        if (*p == '\\') *p = '/';
+#endif
     if (!make_dirs(root_path)) { root_path[0] = 0; return NULL; }
     return root_path;
 }
@@ -160,7 +179,7 @@ static bool load(const char *id, mrc_device *out)
 
 bool mrc_device_by_id(const char *id, mrc_device *out)
 {
-    if (!id || !*id || strchr(id, '/')) return false;
+    if (!id || !*id || mrc_path_last_separator(id)) return false;
     return load(id, out);
 }
 
@@ -375,7 +394,7 @@ bool mrc_device_rename(const mrc_device *d, const char *name)
 bool mrc_device_delete(const mrc_device *d)
 {
     const char *root = mrc_devices_root();
-    if (!root || !d || !d->id[0] || strchr(d->id, '/')) return false;
+    if (!root || !d || !d->id[0] || mrc_path_last_separator(d->id)) return false;
     char dir[4096];
     if (snprintf(dir, sizeof(dir), "%s/%s", root, d->id) >= (int)sizeof(dir))
         return false;

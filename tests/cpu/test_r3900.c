@@ -851,7 +851,7 @@ int main(void)
   r3900_jit *probe = mrc_cpu_jit_create();
   bool native_available = probe != NULL;
   mrc_cpu_jit_free(probe);
-#if (defined(__aarch64__) && !defined(__AARCH64EB__)) || defined(__x86_64__)
+#if (defined(__aarch64__) && !defined(__AARCH64EB__)) || (defined(__x86_64__) && !defined(_WIN32))
   if (!native_available) { fprintf(stderr, "native JIT unavailable on test host\n"); return 1; }
 #endif
   for (unsigned mode = 0; mode < (native_available ? 4u : 3u); mode++) {

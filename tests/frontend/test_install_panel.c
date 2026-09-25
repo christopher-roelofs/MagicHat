@@ -14,6 +14,7 @@
 #include "frontend/sdl/install_panel.h"
 #include "frontend/sdl/picker.h"
 #include "host/pclink.h"
+#include "util/fs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,8 +38,9 @@ static void put(const char *path, const void *data, size_t n)
 }
 
 int main(void) {
-    char dir[] = "/tmp/mrc-install-XXXXXX";
-    if (!mkdtemp(dir)) return 1;
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/mrc-install-XXXXXX", mrc_temp_dir());
+    if (!mrc_mkdtemp(dir)) return 1;
     char pkg[256], notes[256], emc[256];
     snprintf(pkg, sizeof(pkg), "%s/Reversi.pkg", dir);
     snprintf(emc, sizeof(emc), "%s/WebBrowser40.mc2", dir);
@@ -57,7 +59,7 @@ int main(void) {
     SDL_Renderer *r = SDL_CreateRenderer(w,-1,SDL_RENDERER_SOFTWARE);
     mrc_ui *ui=NULL; mrc_ui_open(&ui,r,w);
     mrc_ui_set_buttons(ui, 1u<<MRC_UI_ICON_INSTALL);
-    setenv("HOME", dir, 1);
+    mrc_setenv("HOME", dir);
 
     /* A machine with no link says so rather than offering a dead picker. */
     mrc_runtime_ops bare = {0};

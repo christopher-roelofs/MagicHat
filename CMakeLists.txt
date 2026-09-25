@@ -7,6 +7,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(MRC_STATIC_DEPENDENCIES "Link SDL2, libslirp and compiler runtimes statically (OS libraries remain shared)" OFF)
 if(MRC_STATIC_DEPENDENCIES AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
     add_link_options(-static-libgcc $<$<LINK_LANGUAGE:CXX>:-static-libstdc++>)
+    if(MINGW)
+        # Everything else too (winpthread, glib, ...): a Windows user has none
+        # of the MinGW DLLs, and the system ones are import libraries anyway.
+        add_link_options(-static)
+    endif()
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -72,11 +77,37 @@ if(SLIRP_FOUND)
         if(NOT MRC_SLIRP_ARCHIVE)
             message(FATAL_ERROR "Static libslirp archive required; build libslirp with -Ddefault_library=static")
         endif()
-        pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
         target_include_directories(mrc_host PRIVATE ${SLIRP_INCLUDE_DIRS})
-        target_link_libraries(mrc_host PUBLIC ${MRC_SLIRP_ARCHIVE} PkgConfig::GLIB)
+        if(WIN32)
+            # No shared glib to lean on either: link libslirp's whole static
+            # closure (glib, intl, iconv, pcre2, iphlpapi, ...) as pkg-config
+            # --static lists it, and keep the headers from asking for a DLL.
+            target_compile_definitions(mrc_host PRIVATE LIBSLIRP_STATIC)
+            set(MRC_SLIRP_DEPS ${SLIRP_STATIC_LIBRARIES})
+            list(REMOVE_ITEM MRC_SLIRP_DEPS slirp)
+            # MSYS2's glib-2.0.pc omits what its static libintl needs, and
+            # libslirp 4.7's .pc names its own as paths, which CMake drops.
+            list(APPEND MRC_SLIRP_DEPS iconv ws2_32 iphlpapi)
+            target_link_directories(mrc_host PUBLIC ${SLIRP_STATIC_LIBRARY_DIRS})
+            target_link_libraries(mrc_host PUBLIC ${MRC_SLIRP_ARCHIVE} ${MRC_SLIRP_DEPS})
+        else()
+            pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
+            target_link_libraries(mrc_host PUBLIC ${MRC_SLIRP_ARCHIVE} PkgConfig::GLIB)
+        endif()
     else()
         target_link_libraries(mrc_host PUBLIC PkgConfig::SLIRP)
+    endif()
+    if(WIN32)
+        target_link_libraries(mrc_host PUBLIC ws2_32)
+        # Windows loads the DLL beside the program before any on PATH, so put
+        # the one configured here there; otherwise a patched build from
+        # scripts/build-slirp loses to the system copy at run time.
+        if(NOT MRC_STATIC_DEPENDENCIES)
+            file(GLOB MRC_SLIRP_DLL "${SLIRP_PREFIX}/bin/libslirp*.dll")
+            if(MRC_SLIRP_DLL)
+                file(COPY ${MRC_SLIRP_DLL} DESTINATION "${CMAKE_BINARY_DIR}")
+            endif()
+        endif()
     endif()
     message(STATUS "libslirp found: userspace NAT available (--net user)")
 else()
@@ -110,6 +141,11 @@ if(SDL2_FOUND)
         set(MRC_SDL_LIBRARY SDL2)
     endif()
     message(STATUS "SDL2 found: building the GUI (--gui)")
+    if(WIN32)
+        # Every program here has an ordinary main; SDL must not rename it to
+        # SDL_main and expect SDL2main to supply the real one.
+        add_compile_definitions(SDL_MAIN_HANDLED)
+    endif()
     add_library(mrc_sdl_display STATIC src/frontend/sdl/picker.c
         src/frontend/sdl/card_panel.c
         src/frontend/sdl/devices_panel.c
@@ -145,8 +181,18 @@ if(ANDROID)
 else()
     add_executable(mcap src/frontend/cli/launch.c src/frontend/cli/main.c)
 endif()
-target_link_libraries(mcap PRIVATE mrc_rom mrc_state)
-target_link_libraries(mcap PRIVATE mcapcore)
+set(MRC_LAUNCHERS mcap)
+if(WIN32)
+    # The same program as a Windows GUI application, as pythonw is to python:
+    # started from Explorer it opens no console window. mcap.exe remains the
+    # console program for the command line and the tests.
+    add_executable(mcapw WIN32 src/frontend/cli/launch.c src/frontend/cli/main.c)
+    list(APPEND MRC_LAUNCHERS mcapw)
+endif()
+foreach(t ${MRC_LAUNCHERS})
+    target_link_libraries(${t} PRIVATE mrc_rom mrc_state)
+    target_link_libraries(${t} PRIVATE mcapcore)
+endforeach()
 
 #
 # The Magic Cap 1.x machines use the project-owned CPU32 core. The old
@@ -190,8 +236,10 @@ if(MRC_BUILD_M68K_MACHINES)
     add_library(mrc_cli_pic2000 STATIC src/frontend/cli/main68k.c)
     target_link_libraries(mrc_cli_pic2000 PUBLIC mrc_sdl_pic2000 mrc_state mrc_host)
 
-    target_compile_definitions(mcap PRIVATE MRC_HAVE_PIC2000)
-    target_link_libraries(mcap PRIVATE mrc_cli_pic2000)
+    foreach(t ${MRC_LAUNCHERS})
+        target_compile_definitions(${t} PRIVATE MRC_HAVE_PIC2000)
+        target_link_libraries(${t} PRIVATE mrc_cli_pic2000)
+    endforeach()
     message(STATUS "68k machines available on the project-owned CPU32 core")
 else()
     message(STATUS "68k machines disabled")

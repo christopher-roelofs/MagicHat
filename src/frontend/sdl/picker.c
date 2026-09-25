@@ -1,4 +1,5 @@
 #include "frontend/sdl/picker.h"
+#include "util/fs.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -55,6 +56,15 @@ static bool is_dir(const char *path)
     return !stat(path, &st) && S_ISDIR(st.st_mode);
 }
 
+/* A child of the current directory. A root ("/", or "C:/" on Windows)
+ * already ends in its separator, so it is not doubled. */
+static bool child_path(const mrc_picker *p, const char *name, char *out, size_t size)
+{
+    size_t n = strlen(p->dir);
+    if (n && p->dir[n - 1] == '/') n--;
+    return snprintf(out, size, "%.*s/%s", (int)n, p->dir, name) < (int)size;
+}
+
 static bool wanted(const mrc_picker *p, const char *name)
 {
     if (!p->suffix_count) return true;
@@ -78,7 +88,7 @@ static void build_rows(mrc_picker *p)
 {
     p->row_count = 0;
     /* The way out, unless there is nowhere further out to go. */
-    if (strcmp(p->dir, "/")) {
+    if (!mrc_path_is_root(p->dir)) {
         snprintf(p->up_label, sizeof(p->up_label), "\xe2\x86\x91  %s", p->dir);
         p->rows[p->row_count++] = (mrc_ui_row){
             .kind = MRC_UI_ROW_ACTION, .label = p->up_label,
@@ -109,9 +119,7 @@ static void read_dir(mrc_picker *p)
         while ((e = readdir(d)) && p->count < ENTRIES_MAX) {
             if (e->d_name[0] == '.') continue;   /* including . and .. */
             char full[PATH_CAP];
-            if (snprintf(full, sizeof(full), "%s/%s",
-                         !strcmp(p->dir, "/") ? "" : p->dir,
-                         e->d_name) >= (int)sizeof(full))
+            if (!child_path(p, e->d_name, full, sizeof(full)))
                 continue;
             bool dir = is_dir(full);
             if (!dir && !wanted(p, e->d_name)) continue;
@@ -133,16 +141,20 @@ static void read_dir(mrc_picker *p)
 /* Somewhere readable to start, so the picker always opens on something. */
 static void settle(mrc_picker *p, const char *start)
 {
-    const char *candidates[4];
+    const char *candidates[5];
     unsigned n = 0;
     if (start && *start) candidates[n++] = start;
     const char *home = getenv("HOME");
     if (home && *home) candidates[n++] = home;
+#ifdef _WIN32
+    const char *profile = getenv("USERPROFILE");
+    if (profile && *profile) candidates[n++] = profile;
+#endif
     candidates[n++] = ".";
     candidates[n++] = "/";
     for (unsigned i = 0; i < n; i++) {
         char resolved[PATH_CAP];
-        if (!realpath(candidates[i], resolved)) continue;
+        if (!mrc_realpath(candidates[i], resolved, sizeof(resolved))) continue;
         if (!is_dir(resolved)) continue;
         snprintf(p->dir, sizeof(p->dir), "%s", resolved);
         return;
@@ -179,7 +191,7 @@ void mrc_picker_close(mrc_picker *p)
 static void go_to(mrc_picker *p, const char *path)
 {
     char resolved[PATH_CAP];
-    if (!realpath(path, resolved) || !is_dir(resolved)) return;
+    if (!mrc_realpath(path, resolved, sizeof(resolved)) || !is_dir(resolved)) return;
     snprintf(p->dir, sizeof(p->dir), "%s", resolved);
     read_dir(p);
 }
@@ -197,8 +209,7 @@ bool mrc_picker_row(mrc_picker *p, int id)
         return false;
     const entry *e = &p->entries[id - PICKER_ID_BASE];
     char full[PATH_CAP];
-    if (snprintf(full, sizeof(full), "%s/%s",
-                 !strcmp(p->dir, "/") ? "" : p->dir, e->name) >= (int)sizeof(full))
+    if (!child_path(p, e->name, full, sizeof(full)))
         return true;
     if (e->directory) { go_to(p, full); return true; }
     snprintf(p->taken, sizeof(p->taken), "%s", full);

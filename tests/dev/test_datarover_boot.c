@@ -1,4 +1,5 @@
 #include "machines/datarover840/machine.h"
+#include "util/fs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,7 +80,8 @@ static void card_irq_edges(machine *m)
  */
 static void card_slots(machine *m)
 {
-    char image[] = "/tmp/mrc-card-test-XXXXXX";
+    char image[512];
+    snprintf(image, sizeof(image), "%s/mrc-card-test-XXXXXX", mrc_temp_dir());
     int fd = mkstemp(image);
     CHECK(fd >= 0);
     close(fd);
@@ -94,7 +96,7 @@ static void card_slots(machine *m)
     CHECK(m->card_kind[0] == MRC_CARD_SRAM);
     /* Resolved, because the run that picks this device up again need not be
      * standing where the run that put the card in was. */
-    CHECK(m->card_path[0] && m->card_path[0][0] == '/');
+    CHECK(m->card_path[0] && (m->card_path[0][0] == '/' || m->card_path[0][1] == ':'));
     CHECK(m->card[0].kind != NULL);
 
     /* In, then out. Each is an edge, and they are different edges. */
@@ -109,7 +111,8 @@ static void card_slots(machine *m)
 
     /* What a state carries across: the name, and nothing of the card. */
     CHECK(mrc_machine_insert_sram(m, 1, image, 65536));
-    char statefile[] = "/tmp/mrc-card-state-XXXXXX";
+    char statefile[512];
+    snprintf(statefile, sizeof(statefile), "%s/mrc-card-state-XXXXXX", mrc_temp_dir());
     fd = mkstemp(statefile);
     CHECK(fd >= 0);
     close(fd);
@@ -142,7 +145,8 @@ int main(void)
         0x30420001, /* andi v0,1: zero means normal boot */
         0x03e00008, 0 /* jr ra; nop */
     };
-    char path[] = "/tmp/mrc-boot-test-XXXXXX";
+    char path[512];
+    snprintf(path, sizeof(path), "%s/mrc-boot-test-XXXXXX", mrc_temp_dir());
     int fd = mkstemp(path);
     CHECK(fd >= 0);
     FILE *f = fdopen(fd, "wb");

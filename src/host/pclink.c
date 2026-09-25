@@ -1,4 +1,5 @@
 #include "host/pclink.h"
+#include "util/fs.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -830,8 +831,7 @@ mrc_pclink *mrc_pclink_open(const char *package_path)
 
     /* The name the guest shows: the filename without its directory or its
      * extension, which is what WinPcLink offers too. */
-    const char *base = strrchr(package_path, '/');
-    base = base ? base + 1 : package_path;
+    const char *base = mrc_path_base(package_path);
     snprintf(l->name, sizeof(l->name), "%s", base);
     char *dot = strrchr(l->name, '.');
     if (dot && dot != l->name) *dot = 0;

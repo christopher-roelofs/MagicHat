@@ -1,5 +1,6 @@
 #include "host/state.h"
 #include "host/import.h"
+#include "util/fs.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +14,7 @@ bool mrc_state_path_for(const char *rom, char *out, size_t cap)
      * is not one, and neither is a leading dot: "roms/PIC-2000.rom" has an
      * extension and ".hidden" does not.
      */
-    const char *slash = strrchr(rom, '/'), *dot = strrchr(rom, '.');
+    const char *slash = mrc_path_last_separator(rom), *dot = strrchr(rom, '.');
     if (dot && (!slash || dot > slash + 1) && dot != rom) stem = (size_t)(dot - rom);
     if (stem + sizeof(".state") > cap) return false;
     memcpy(out, rom, stem);
