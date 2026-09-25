@@ -1,14 +1,29 @@
 #define _GNU_SOURCE
 /* Exercise the real libslirp backend against a loopback HTTP server. */
 #include "host/network.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+typedef SOCKET sock;
+#define SOCK_VALID(s) ((s) != INVALID_SOCKET)
+static void nonblocking(sock s) { u_long on = 1; ioctlsocket(s, FIONBIO, &on); }
+static void pause_ms(void) { Sleep(1); }
+#define sock_close closesocket
+#else
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+typedef int sock;
+#define SOCK_VALID(s) ((s) >= 0)
+static void nonblocking(sock s) { fcntl(s, F_SETFL, O_NONBLOCK); }
+static void pause_ms(void) { struct timespec pause={.tv_nsec=1000000}; nanosleep(&pause,NULL); }
+#define sock_close close
+#endif
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); exit(1); } } while (0)
 static const uint8_t mac[6] = {2,0,0,0x84,0,1};
 static unsigned received;
@@ -58,11 +73,11 @@ static void tcp(mrc_network *n, unsigned port, uint32_t seq, uint32_t ack, unsig
  * large-download confirmation dialog. Check every byte, not just a marker. */
 static void http_transfer(mrc_network *n, unsigned mss, unsigned window)
 {
-    int server = socket(AF_INET,SOCK_STREAM,0); CHECK(server>=0);
+    sock server = socket(AF_INET,SOCK_STREAM,0); CHECK(SOCK_VALID(server));
     struct sockaddr_in addr={.sin_family=AF_INET,.sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
     CHECK(bind(server,(struct sockaddr *)&addr,sizeof(addr))==0);
     socklen_t alen=sizeof(addr); CHECK(getsockname(server,(struct sockaddr *)&addr,&alen)==0);
-    CHECK(listen(server,1)==0); CHECK(fcntl(server,F_SETFL,O_NONBLOCK)==0);
+    CHECK(listen(server,1)==0); nonblocking(server);
     unsigned port=ntohs(addr.sin_port);
     queue_tcp=true; qhead=qtail=0;
     tcp(n,port,100,0,2,NULL,mss,window);
@@ -71,13 +86,13 @@ static void http_transfer(mrc_network *n, unsigned mss, unsigned window)
     int header=snprintf(response,sizeof(response),"HTTP/1.0 200 OK\r\nContent-Length: 8000\r\n\r\n");
     for (unsigned i=0;i<8000;i++) response[header+i]='A'+i%26;
     size_t length=header+8000, got=0;
-    int client=-1; uint32_t ack=0;
+    sock client=(sock)-1; uint32_t ack=0;
     bool requested=false, paused=false, reopened=false;
     size_t written=0;
     static uint64_t clock_ms;
     for(unsigned ms=1;ms<2000 && got<length;ms++) {
         mrc_network_poll(n,++clock_ms*1000000);
-        if(client<0) { client=accept(server,NULL,NULL); if(client>=0) fcntl(client,F_SETFL,O_NONBLOCK); }
+        if(!SOCK_VALID(client)) { client=accept(server,NULL,NULL); if(SOCK_VALID(client)) nonblocking(client); }
         while(qhead!=qtail) {
             uint8_t f[1600]; size_t flen=queue[qhead%64].len;
             memcpy(f,queue[qhead++%64].bytes,flen);
@@ -105,26 +120,29 @@ static void http_transfer(mrc_network *n, unsigned mss, unsigned window)
             reopened=true;
             tcp(n,port,101+sizeof(request)-1,ack,0x10,NULL,mss,window);
         }
-        if(client>=0 && !written) {
-            char buf[512]; ssize_t len=read(client,buf,sizeof(buf));
+        if(SOCK_VALID(client) && !written) {
+            char buf[512]; int len=recv(client,buf,sizeof(buf),0);
             if(len>0) {
-                CHECK(memmem(buf,len,"GET /",5));
-                ssize_t sent=write(client,response,length); CHECK(sent>0); written=sent;
+                CHECK(len>=5 && !memcmp(buf,"GET /",5));
+                int sent=send(client,response,length,0); CHECK(sent>0); written=sent;
             }
-        } else if(client>=0 && written<length) {
-            ssize_t sent=write(client,response+written,length-written);
+        } else if(SOCK_VALID(client) && written<length) {
+            int sent=send(client,response+written,length-written,0);
             if(sent>0) written+=sent;
         }
-        struct timespec pause={.tv_nsec=1000000}; nanosleep(&pause,NULL);
+        pause_ms();
     }
     CHECK(requested && reopened && written==length && got==length);
     tcp(n,port,101+sizeof(request)-1,ack,0x14,NULL,mss,window);
     queue_tcp=false;
-    if(client>=0) close(client);
-    close(server);
+    if(SOCK_VALID(client)) sock_close(client);
+    sock_close(server);
 }
 int main(void)
 {
+#ifdef _WIN32
+    WSADATA wsa; CHECK(WSAStartup(MAKEWORD(2,2),&wsa)==0);
+#endif
     mrc_network *n = mrc_network_open(receive, NULL, NULL); CHECK(n);
     uint8_t arp[60] = {0}; memset(arp,255,6); memcpy(arp+6,mac,6); be16(arp+12,0x806);
     be16(arp+14,1); be16(arp+16,0x800); arp[18]=6; arp[19]=4; be16(arp+20,1);

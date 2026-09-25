@@ -21,9 +21,12 @@ from pathlib import Path
 import select
 import struct
 import sys
-import termios
 import time
-import tty
+try:
+    import termios
+    import tty
+except ImportError:  # Windows: no pty to attach to, only the protocol
+    termios = tty = None
 import zlib
 
 MAGIC = b"ChMa"

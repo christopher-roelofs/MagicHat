@@ -29,6 +29,46 @@ ctest --test-dir build --output-on-failure
 ./build/mcap --rom /path/to/your/rom
 ```
 
+On Windows, build in the [MSYS2](https://www.msys2.org/) UCRT64 environment.
+From an "MSYS2 UCRT64" shell:
+
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,SDL2,libslirp,python}
+cmake -S . -B build -G Ninja
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/mcap.exe --rom /path/to/your/rom
+```
+
+That `mcap.exe` needs `C:\msys64\ucrt64\bin` on `PATH` for SDL2, GLib and
+the compiler runtime. To build one that runs on any Windows 10 or 11 machine
+with nothing else installed, link everything in statically. Use the patched
+libslirp (see below) and add `diffutils` to the packages above:
+
+```sh
+scripts/build-slirp
+PKG_CONFIG_PATH="$PWD/build/slirp-fixed/lib/pkgconfig" \
+    cmake -S . -B build-static -G Ninja -DMRC_STATIC_DEPENDENCIES=ON
+cmake --build build-static
+```
+
+`build-static/mcap.exe` is then the whole emulator in a single file. It
+imports only DLLs that are part of Windows. Each Windows build also makes
+`mcapw.exe`, the same program without a console window, for starting from
+Explorer or a shortcut. Use `mcap.exe` from a terminal, where its messages
+appear.
+
+The Windows build has a few differences from Linux:
+
+- The CPU JITs are not yet ported to the Windows x64 calling convention, so
+  both CPUs run on the interpreter.
+- `--serial a` needs a pseudo-terminal, which Windows lacks. The in-process
+  PC Link transfer still works.
+- Stock libslirp has a TCP MSS bug that the `network` test catches. Install
+  `git` and `mingw-w64-ucrt-x86_64-meson`, then run `scripts/build-slirp`
+  exactly as on Linux. CMake copies the patched `libslirp-0.dll` next to the
+  programs.
+
 ROMs, memory cards, saved states, and packages are user data. They are not
 included in this repository or required to compile it. Keep them outside
 the checkout or under the ignored `roms/`, `cards/`, and `states/` directories.

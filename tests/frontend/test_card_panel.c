@@ -1,4 +1,5 @@
 #include "frontend/sdl/card_panel.h"
+#include "util/fs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,9 +25,10 @@ static int find(mrc_ui *ui,const char *label) {
     return -1;
 }
 int main(void) {
-    char temp[]="/tmp/mrc-card-panel-XXXXXX",cwd[4096];
+    char temp[512],cwd[4096];
+    snprintf(temp,sizeof(temp),"%s/mrc-card-panel-XXXXXX",mrc_temp_dir());
     CHECK(getcwd(cwd,sizeof(cwd))!=NULL);
-    CHECK(mkdtemp(temp)!=NULL);CHECK(chdir(temp)==0);
+    CHECK(mrc_mkdtemp(temp)!=NULL);CHECK(chdir(temp)==0);
     SDL_setenv("SDL_VIDEODRIVER","dummy",1);CHECK(SDL_Init(SDL_INIT_VIDEO)==0);
     SDL_Window *w=SDL_CreateWindow("test",0,0,900,600,0);
     SDL_Renderer *r=SDL_CreateRenderer(w,-1,SDL_RENDERER_SOFTWARE);

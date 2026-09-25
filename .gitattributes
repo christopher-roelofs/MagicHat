@@ -1,0 +1,6 @@
+# Keep LF in files that break with CRLF, whatever core.autocrlf says on a
+# Windows checkout: patches stop applying and scripts stop running.
+*.patch     text eol=lf
+*.sh        text eol=lf
+scripts/*   text eol=lf
+android/gradlew text eol=lf

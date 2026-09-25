@@ -4,8 +4,26 @@
 #include <string.h>
 #ifdef MRC_HAVE_SLIRP
 #include <libslirp.h>
-#include <poll.h>
 #include <errno.h>
+#ifdef _WIN32
+/* libslirp hands out SOCKETs on Windows, which only WSAPoll can wait on.
+ * Before 4.9 they arrive squeezed into an int. */
+typedef WSAPOLLFD mrc_pollfd;
+#define mrc_poll WSAPoll
+#if SLIRP_CHECK_VERSION(4, 9, 0)
+typedef SOCKET mrc_socket;
+#define mrc_pollfds_fill slirp_pollfds_fill_socket
+#else
+typedef int mrc_socket;
+#define mrc_pollfds_fill slirp_pollfds_fill
+#endif
+#else
+#include <poll.h>
+typedef struct pollfd mrc_pollfd;
+typedef int mrc_socket;
+#define mrc_poll poll
+#define mrc_pollfds_fill slirp_pollfds_fill
+#endif
 typedef struct net_timer {
     struct net_timer *next;
     SlirpTimerCb cb;
@@ -18,7 +36,7 @@ struct mrc_network {
     void *opaque;
     uint64_t now, next_poll, tx, rx;
     net_timer *timers;
-    struct pollfd *fds;
+    mrc_pollfd *fds;
     unsigned nfds, capacity;
     bool poll_error;
     FILE *pcap;
@@ -135,20 +153,23 @@ bool mrc_network_send(void *opaque, const uint8_t *frame, size_t len)
     proxy_arp(n, frame, len);
     return true;
 }
-static int add_poll(int fd, int events, void *opaque)
+static int add_poll(mrc_socket fd, int events, void *opaque)
 {
     mrc_network *n = opaque;
     if (n->nfds == n->capacity) {
         unsigned cap = n->capacity ? n->capacity * 2 : 16;
-        struct pollfd *fds = realloc(n->fds, cap * sizeof(*fds));
+        mrc_pollfd *fds = realloc(n->fds, cap * sizeof(*fds));
         if (!fds) { n->poll_error = true; return -1; }
         n->fds = fds; n->capacity = cap;
     }
     short flags = 0;
     if (events & SLIRP_POLL_IN) flags |= POLLIN;
     if (events & SLIRP_POLL_OUT) flags |= POLLOUT;
+#ifndef _WIN32
+    /* WSAPoll rejects the whole call when POLLPRI is asked for. */
     if (events & SLIRP_POLL_PRI) flags |= POLLPRI;
-    n->fds[n->nfds] = (struct pollfd){ .fd = fd, .events = flags };
+#endif
+    n->fds[n->nfds] = (mrc_pollfd){ .fd = fd, .events = flags };
     return n->nfds++;
 }
 static int get_events(int idx, void *opaque)
@@ -179,8 +200,9 @@ void mrc_network_poll(mrc_network *n, uint64_t now_ns)
     }
     uint32_t timeout = 0;
     n->nfds = 0; n->poll_error = false;
-    slirp_pollfds_fill(n->slirp, &timeout, add_poll, n);
-    int result = poll(n->fds, n->nfds, 0); /* never block emulation or SDL */
+    mrc_pollfds_fill(n->slirp, &timeout, add_poll, n);
+    /* Never block emulation or SDL. WSAPoll fails on an empty set. */
+    int result = n->nfds ? mrc_poll(n->fds, n->nfds, 0) : 0;
     slirp_pollfds_poll(n->slirp, n->poll_error || result < 0, get_events, n);
 }
 #else

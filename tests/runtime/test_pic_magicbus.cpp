@@ -38,7 +38,7 @@ static void exercise(unsigned board) {
     { std::ofstream f(path,std::ios::binary); f.write((char*)rom.data(),rom.size()); }
     FILE *log=std::tmpfile(); check(log!=nullptr,"log");
     std::unique_ptr<m68k_machine,decltype(&mrc_m68k_free)> owner(
-        mrc_m68k_new(path.c_str(),4,log),mrc_m68k_free);
+        mrc_m68k_new(path.string().c_str(),4,log),mrc_m68k_free);
     auto *m=owner.get(); check(m!=nullptr,"construct fixture");
     auto &k=m->magicbus;
     check(m->envoy==(board==1 || board==3) && m->hix==(board==2),"board identification");
@@ -48,15 +48,15 @@ static void exercise(unsigned board) {
             check(m->hix_checksum_pending && m->stop_at==0x400e88,"mc31 guarded intercept armed");
             auto state=dir/"mc31.state";
             m->core.pc=0x400e88; m->core.a[3]=0x40000c; m->core.d[0]=0;
-            check(mrc_m68k_save_state(m,state.c_str()),"save pending mc31 checksum");
+            check(mrc_m68k_save_state(m,state.string().c_str()),"save pending mc31 checksum");
             m->hix_checksum_pending=false; mrc_m68k_set_stop_at(m,0);
-            check(mrc_m68k_load_state(m,state.c_str()) && m->hix_checksum_pending &&
+            check(mrc_m68k_load_state(m,state.string().c_str()) && m->hix_checksum_pending &&
                   m->stop_at==0x400e88,"restore mc31-specific stop address");
             mrc_m68k_run(m,1);
             check(!m->hix_checksum_pending && !m->stop_at && m->core.d[0]==1 &&
                   m->core.z,"mc31 executes normal successful comparison");
-            check(mrc_m68k_save_state(m,state.c_str()),"save completed mc31 checksum");
-            check(mrc_m68k_load_state(m,state.c_str()) && !m->hix_checksum_pending &&
+            check(mrc_m68k_save_state(m,state.string().c_str()),"save completed mc31 checksum");
+            check(mrc_m68k_load_state(m,state.string().c_str()) && !m->hix_checksum_pending &&
                   !m->stop_at,"completed checksum does not rearm on state load");
             m->dev21.power_off=true; mrc_m68k_power_button(m,true);
             check(m->hix_checksum_pending && m->stop_at==0x400e88,"power reset rearms mc31 checksum");
@@ -169,11 +169,11 @@ static void exercise(unsigned board) {
 
     const auto saved=dir/"keyboard.state";
     w(0x96,0xcc); // persist an in-flight command high byte
-    check(mrc_m68k_save_state(m,saved.c_str()),"save attached keyboard");
+    check(mrc_m68k_save_state(m,saved.string().c_str()),"save attached keyboard");
     std::array<uint8_t,PicMagicBus::state_size> expected{},actual{};
     k.encode(expected.data());
     k={};
-    check(mrc_m68k_load_state(m,saved.c_str()),"restore attached keyboard");
+    check(mrc_m68k_load_state(m,saved.string().c_str()),"restore attached keyboard");
     k.encode(actual.data()); check(expected==actual,"snapshot preserves peripheral and host lifecycle");
     w(0x94,0x24); check(k.pending_read==2,"resume command assembled across snapshot");
     unsigned queued=k.keys.count;
@@ -189,7 +189,7 @@ static void exercise(unsigned board) {
     std::array<uint8_t,PicMagicBus::state_size> unchanged{}; k.encode(unchanged.data());
     check(actual==unchanged,"invalid keyboard state leaves live device intact");
     std::filesystem::resize_file(saved,std::filesystem::file_size(saved)-1);
-    check(!mrc_m68k_load_state(m,saved.c_str()),"truncated keyboard trailer rejected");
+    check(!mrc_m68k_load_state(m,saved.string().c_str()),"truncated keyboard trailer rejected");
     k.encode(unchanged.data()); check(actual==unchanged,"short state load is atomic");
     check(mrc_m68k_keyboard_connect(m,false),"detach keyboard");
     check(pin()!=0,"disconnected input restored");

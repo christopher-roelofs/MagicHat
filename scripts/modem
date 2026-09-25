@@ -35,9 +35,12 @@ import argparse
 import os
 import select
 import sys
-import termios
 import time
-import tty
+try:
+    import termios
+    import tty
+except ImportError:  # Windows: no pty to attach to, only the protocol
+    termios = tty = None
 
 # Hayes result codes, by the numeric form ATV0 selects.
 VERBOSE = {0: 'OK', 1: 'CONNECT', 2: 'RING', 3: 'NO CARRIER', 4: 'ERROR',

@@ -60,7 +60,7 @@ struct m68k_machine {
     mrc_region *testimg_region = nullptr;
     mrc_pccard card[2] = {};
     mrc_pccard_port card_port[2][MRC_PCCARD_NWINDOW] = {};
-    mrc_card_image card_storage[2] = {{-1, nullptr, 0}, {-1, nullptr, 0}};
+    mrc_card_image card_storage[2] = {MRC_CARD_IMAGE_CLOSED, MRC_CARD_IMAGE_CLOSED};
     char *card_path[2] = {};
     bool card_present[2] = {};
     bool card_event[2] = {};

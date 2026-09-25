@@ -1,6 +1,7 @@
 #include "frontend/sdl/card_panel.h"
 #include "frontend/sdl/picker.h"
 #include "host/import.h"
+#include "util/fs.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -38,17 +39,17 @@ static const char *card_display_name(mrc_runtime *m, unsigned slot)
     const char *path = m && m->ops->card_name
                      ? m->ops->card_name(m->board, slot) : NULL;
     if (!path || !*path) return "inserted — eject";
-    const char *slash = strrchr(path, '/');
+    const char *slash = mrc_path_last_separator(path);
     return slash && slash[1] ? slash + 1 : path;
 }
 
 static bool ensure_card_directory(void)
 {
     struct stat st;
-    if (mkdir("cards", 0700) < 0 && access("cards", F_OK) < 0)
+    if (mrc_mkdir("cards") < 0 && access("cards", F_OK) < 0)
         return false;
     if (stat("cards", &st) < 0 || !S_ISDIR(st.st_mode)) return false;
-    if (!realpath("cards", card_directory)) return false;
+    if (!mrc_realpath("cards", card_directory, sizeof(card_directory))) return false;
     return true;
 }
 

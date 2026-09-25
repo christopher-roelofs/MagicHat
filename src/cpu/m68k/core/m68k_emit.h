@@ -26,7 +26,7 @@
  * big-endian AArch64 is not one of ours: the guest is big-endian and the
  * byte reversal in the generated loads and stores assumes it is not.
  */
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(_WIN32) /* System V ABI only */
 #define MRC_M68K_EMIT_X86 1
 #elif defined(__aarch64__) && !defined(__AARCH64EB__)
 #define MRC_M68K_EMIT_A64 1

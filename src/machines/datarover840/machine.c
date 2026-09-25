@@ -2,6 +2,7 @@
 
 #include <limits.h>
 #include "host/serial.h"
+#include "util/fs.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -635,7 +636,7 @@ static void remember_card(machine *m, unsigned slot, mrc_card_kind kind,
     m->card_kind[slot] = kind;
     if (!path) return;
     char resolved[PATH_MAX];
-    const char *keep = realpath(path, resolved) ? resolved : path;
+    const char *keep = mrc_realpath(path, resolved, sizeof(resolved)) ? resolved : path;
     m->card_path[slot] = strdup(keep);
 }
 

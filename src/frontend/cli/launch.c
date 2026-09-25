@@ -148,7 +148,16 @@ int main(int argc, char **argv)
             make_name = argv[i];
             continue;
         }
-        if (!strcmp(argv[i], "--rom") && i+1<argc) rom = argv[i+1];
+        if (!strcmp(argv[i], "--rom") && i+1<argc) {
+#ifdef _WIN32
+            /* One separator from here on, the one the device store uses,
+             * whichever one the shell handed over. The machines are passed
+             * these same strings, so rewrite them rather than a copy. */
+            for (char *p = argv[i+1]; *p; p++)
+                if (*p == '\\') *p = '/';
+#endif
+            rom = argv[i+1];
+        }
         if (!strcmp(argv[i], "--gui") || !strcmp(argv[i], "--headless")) gui_set = true;
         if (!strcmp(argv[i], "--headless")) headless = true;
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) help = true;

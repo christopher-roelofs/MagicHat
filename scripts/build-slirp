@@ -5,12 +5,12 @@ set -eu
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 if [ "$#" -ne 0 ]; then
     echo "Usage: scripts/build-slirp" >&2
-    echo "Requires git, meson, ninja, pkg-config and GLib development headers." >&2
+    echo "Requires git, meson, ninja, pkg-config, cmp and GLib development headers." >&2
     echo "MESON may name a specific Meson executable." >&2
     exit 2
 fi
 meson=${MESON:-meson}
-for tool in git "$meson" ninja pkg-config; do
+for tool in git "$meson" ninja pkg-config cmp; do
     command -v "$tool" >/dev/null || { echo "Missing build dependency: $tool" >&2; exit 1; }
 done
 pkg-config --exists glib-2.0 || { echo "Missing GLib development headers (libglib2.0-dev)." >&2; exit 1; }
@@ -35,10 +35,16 @@ else
         echo "Unexpected libslirp edits in $src; leaving them untouched." >&2; exit 1;
     }
 fi
+# Static as well as shared, for MRC_STATIC_DEPENDENCIES. Windows has no
+# system GLib to share, so there GLib is built into libslirp itself.
+options="-Ddefault_library=both -Dversion_suffix=-mrc-mss1"
+case "$(uname -s)" in
+    MINGW*) options="$options -Dprefer_static=true -Dc_args=-DGLIB_STATIC_COMPILATION" ;;
+esac
 if [ -f "$bld/meson-private/coredata.dat" ]; then
-    "$meson" setup --reconfigure "$bld" "$src" --prefix "$prefix" --libdir lib -Dversion_suffix=-mrc-mss1
+    "$meson" setup --reconfigure "$bld" "$src" --prefix "$prefix" --libdir lib $options
 else
-    "$meson" setup "$bld" "$src" --prefix "$prefix" --libdir lib -Dversion_suffix=-mrc-mss1
+    "$meson" setup "$bld" "$src" --prefix "$prefix" --libdir lib $options
 fi
 "$meson" compile -C "$bld"
 "$meson" install -C "$bld"
