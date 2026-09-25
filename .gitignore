@@ -27,6 +27,7 @@
 *.a
 *.pgm
 *.png
+!/docs/images/*.png
 compile_commands.json
 __pycache__/
 *.py[cod]

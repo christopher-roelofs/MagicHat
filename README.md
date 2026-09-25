@@ -5,6 +5,15 @@ Sony PIC-2000 (68k). It models the CPUs, boards, peripherals, PC Cards, host
 I/O, and SDL/Android frontends. Magic Cap application-development tools live
 in the separate [Hatter](https://github.com/christopher-roelofs/Hatter) repo.
 
+## Screenshots
+
+| PIC-2000 (68k) startup | Magic Cap 3 on MIPS, running TicTacToe |
+| --- | --- |
+| ![PIC-2000 Magic Cap touch-to-begin screen](docs/images/pic2000-touch-to-begin.png) | ![MIPS Magic Cap TicTacToe screen](docs/images/mips-tictactoe.png) |
+
+The [networking guide](docs/NETWORKING.md) shows the DataRover's connection
+setup and browser running through the emulated NE2000 card.
+
 ## Build and run
 
 On Linux, install a C/C++ compiler, CMake, SDL2 development files, and

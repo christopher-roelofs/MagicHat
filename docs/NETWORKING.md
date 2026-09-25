@@ -344,6 +344,8 @@ to `2` verifies the other slot. The CLI also supports one physical drag via
 combined with scripted taps in the same run. None of these inputs patches
 ROM, RAM, or saved guest state.
 
+![DataRover Internet Center showing a configured NE2000 LAN connection](images/datarover-ne2000-configured.png)
+
 ### Model and limits
 
 The NIC implements station PROM reads, 16 KiB packet RAM, remote DMA,
@@ -417,6 +419,8 @@ PCLink, the stock 4 MB guest now renders both a local HTTP page and
 ARP, the TCP handshake, HTTP GET/200 response, and both FIN acknowledgements.
 It passed in **both card slots** (10 frames transmitted, 8 received, zero
 receive-ring overruns per run).
+
+![DataRover Web Browser displaying Example Domain](images/datarover-browser-example.png)
 
 This test found a second interrupt bug after the pin mapping was corrected:
 NIC and Glacier outputs were sampled only once per 1024-instruction CPU
