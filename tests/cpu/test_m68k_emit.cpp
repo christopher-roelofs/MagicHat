@@ -197,7 +197,11 @@ int chaining(mrc_code_arena &arena, uint8_t **pages_a)
     if (!bytes) { printf("FAIL: the chaining fixture did not compile\n"); return 1; }
     mrc_code_arena_commit(&arena, out, bytes);
     /* Its own successor, which is what a loop is. */
+    if (!mrc_code_arena_unlock(&arena, out + points.link, 4)) {
+        printf("FAIL: the chaining fixture could not be patched\n"); return 1;
+    }
     m68k_patch_link(out + points.link, exec + points.link, exec + points.chain);
+    mrc_code_arena_relock(&arena, out + points.link, 4);
 
     int failures = 0;
     for (unsigned budget = 1; budget <= 9; budget++) {

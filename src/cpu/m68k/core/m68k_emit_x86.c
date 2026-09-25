@@ -8,7 +8,7 @@
 #include <stdlib.h>
 
 /*
- * x86-64 System V. Inside a block:
+ * x86-64, System V or Windows x64. Inside a block:
  *
  *   rbx   the m68k structure
  *   r12d  instructions retired so far, and the return value
@@ -18,6 +18,12 @@
  * Guest state is never held in a host register across an instruction, so
  * an interpreter call in the middle of a block sees the machine exactly as
  * it would have on its own.
+ *
+ * Windows x64 differs in three ways that matter here: the arguments come
+ * in rcx and rdx, rsi and rdi belong to the caller, and every call needs
+ * 32 bytes of shadow space below the return address. The prologue saves
+ * rsi and rdi with the rest and reserves the shadow space for the block's
+ * lifetime; blocks chained together share that frame.
  */
 enum { RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14 };
 
@@ -188,6 +194,20 @@ static void from_rsi(emitter *e, unsigned reg, unsigned offset)
 static void mov_imm64(emitter *e, unsigned reg, uint64_t v)
 {
     rex(e, true, 0, reg); byte(e, 0xB8 | (reg & 7)); u64(e, v);
+}
+
+/* m68k_execute(c, in), leaving its answer in al. */
+static void call_interpreter(emitter *e, const m68k_insn *in)
+{
+#ifdef _WIN32
+    byte(e, 0x48); byte(e, 0x89); byte(e, 0xD9);        /* mov rcx,rbx */
+    mov_imm64(e, RDX, (uint64_t)(uintptr_t)in);
+#else
+    byte(e, 0x48); byte(e, 0x89); byte(e, 0xDF);        /* mov rdi,rbx */
+    mov_imm64(e, RSI, (uint64_t)(uintptr_t)in);
+#endif
+    mov_imm64(e, RAX, (uint64_t)(uintptr_t)m68k_execute);
+    byte(e, 0xFF); byte(e, 0xD0);                       /* call rax */
 }
 
 /*
@@ -951,6 +971,21 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
                  (M68K_BLOCK_MAX * MRC_JIT_M68K_MAX_BYTES) / 2 + 8];
     unsigned nexits = 0;
 
+#ifdef _WIN32
+    static const uint8_t prologue[] = {
+        0x53,                   /* push rbx                          */
+        0x41, 0x54,             /* push r12                          */
+        0x41, 0x55,             /* push r13                          */
+        0x41, 0x56,             /* push r14                          */
+        0x55,                   /* push rbp                          */
+        0x56,                   /* push rsi                          */
+        0x57,                   /* push rdi: seven pushes realign    */
+        0x48, 0x83, 0xEC, 0x20, /* sub rsp, 32: the shadow space     */
+        0x48, 0x89, 0xCB,       /* mov rbx, rcx                      */
+        0x89, 0xD5,             /* mov ebp, edx: the budget          */
+        0x45, 0x31, 0xE4,       /* xor r12d, r12d                    */
+    };
+#else
     static const uint8_t prologue[] = {
         0x53,                   /* push rbx                          */
         0x41, 0x54,             /* push r12                          */
@@ -961,6 +996,7 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
         0x89, 0xF5,             /* mov ebp, esi: the budget          */
         0x45, 0x31, 0xE4,       /* xor r12d, r12d                    */
     };
+#endif
     bytes(&e, prologue, sizeof prologue);
     load64(&e, R13, offsetof(m68k, bus) + offsetof(m68k_bus, read_pages));
     load64(&e, R14, offsetof(m68k, bus) + offsetof(m68k_bus, write_pages));
@@ -1060,11 +1096,7 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
                 if (slow[x] + 4 <= cap) memcpy(out + slow[x], &rel, 4);
             }
             store_imm32(&e, PC, at);
-            byte(&e, 0x48); byte(&e, 0x89); byte(&e, 0xDF);
-            byte(&e, 0x48); byte(&e, 0xBE); u64(&e, (uint64_t)(uintptr_t)in);
-            byte(&e, 0x48); byte(&e, 0xB8);
-            u64(&e, (uint64_t)(uintptr_t)m68k_execute);
-            byte(&e, 0xFF); byte(&e, 0xD0);
+            call_interpreter(&e, in);
             byte(&e, 0x41); byte(&e, 0xFF); byte(&e, 0xC4);
             byte(&e, 0x84); byte(&e, 0xC0);                   /* test al,al */
             byte(&e, 0x0F); byte(&e, 0x84);
@@ -1111,12 +1143,7 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
              * instruction.
              */
             store_imm32(&e, PC, at);
-            byte(&e, 0x48); byte(&e, 0x89); byte(&e, 0xDF);   /* mov rdi,rbx */
-            byte(&e, 0x48); byte(&e, 0xBE);                   /* mov rsi,imm64 */
-            u64(&e, (uint64_t)(uintptr_t)in);
-            byte(&e, 0x48); byte(&e, 0xB8);                   /* mov rax,imm64 */
-            u64(&e, (uint64_t)(uintptr_t)m68k_execute);
-            byte(&e, 0xFF); byte(&e, 0xD0);                   /* call rax */
+            call_interpreter(&e, in);
             byte(&e, 0x41); byte(&e, 0xFF); byte(&e, 0xC4);   /* inc r12d */
             byte(&e, 0x84); byte(&e, 0xC0);                   /* test al,al */
             if (!last) {
@@ -1205,6 +1232,11 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     size_t end = e.at;
     static const uint8_t epilogue[] = {
         0x44, 0x89, 0xE0,       /* mov eax, r12d */
+#ifdef _WIN32
+        0x48, 0x83, 0xC4, 0x20, /* add rsp, 32   */
+        0x5F,                   /* pop rdi       */
+        0x5E,                   /* pop rsi       */
+#endif
         0x5D,                   /* pop rbp       */
         0x41, 0x5E,             /* pop r14       */
         0x41, 0x5D,             /* pop r13       */

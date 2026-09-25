@@ -1,21 +1,35 @@
 #include "jit/jit.h"
-/* System V calling convention; the Windows x64 ABI is not implemented. */
-#if defined(__x86_64__) && !defined(_WIN32)
+#if defined(__x86_64__)
 #include <stddef.h>
 #include <string.h>
 /*
- * x86-64 System V backend.
+ * x86-64 backend, System V or Windows x64.
  *
  * Register use inside a block:
  *   rbx  r3900 *c            r13  read page table    r15  mrc_bus *
  *   r12d branch destination  r14  write page table   ebp  remaining budget
- *   [rsp] r3900_jit *        esi, edi, r8d-r11d: guest register cache
+ *   [rsp + TABLES_AT] r3900_jit *
+ *   esi, edi, r8d-r11d: guest register cache
  *   eax, ecx, edx: scratch
  * The register cache works as on AArch64: the first six guest registers a
  * block touches stay in host registers, are written back at every exit and
  * before every helper call, and nothing is assumed cached after a helper.
  */
 enum { RAX, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15 };
+#ifdef _WIN32
+/*
+ * Windows x64 passes arguments in rcx, rdx, r8, r9 and then on the stack,
+ * above 32 bytes of shadow space every callee may write. rsi and rdi are
+ * the caller's, so the prologue saves them along with the rest, and the
+ * tables pointer lives above the shadow space and the fifth argument.
+ */
+enum { ARG0 = RCX, ARG1 = RDX, ARG2 = R8, ARG3 = R9 };
+#define ARG4_AT   32
+#define TABLES_AT 48
+#else
+enum { ARG0 = RDI, ARG1 = RSI, ARG2 = RDX, ARG3 = RCX, ARG4 = R8 };
+#define TABLES_AT 0
+#endif
 enum { CC_B = 2, CC_E = 4, CC_NE = 5, CC_L = 0xC, CC_GE = 0xD, CC_LE = 0xE, CC_G = 0xF };
 
 #ifndef CACHE_SLOTS
@@ -290,12 +304,16 @@ static void helper(emitter *e, const mrc_jit_block *b, unsigned k)
 {
     rc_writeback(e);
     rc_invalidate(e);
-    mov_rr64(e, RDI, RBX);
-    mov_imm(e, RSI, b->words[k]);
-    mov_imm(e, RDX, b->va + k * 4);
-    mov_imm(e, RCX, k);
+    mov_rr64(e, ARG0, RBX);
+    mov_imm(e, ARG1, b->words[k]);
+    mov_imm(e, ARG2, b->va + k * 4);
+    mov_imm(e, ARG3, k);
     if (b->delay && k == b->n - 1) {
-        mov_rr(e, R8, R12);
+#ifdef _WIN32
+        rex(e, true, R12, 0, RSP); byte(e, 0x89); mem(e, R12, RSP, ARG4_AT); /* mov [rsp+32],r12 */
+#else
+        mov_rr(e, ARG4, R12);
+#endif
         call_abs(e, (const void *)mrc_jit_exec_delay);
     } else call_abs(e, (const void *)mrc_jit_exec);
     byte(e, 0x85); modrm_reg(e, RAX, RAX);              /* test eax,eax */
@@ -509,15 +527,26 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     (void)exec;
     emitter e = {.out = out, .p = out, .end = out + cap, .n = b->n};
     rc_reset(&e.rc);
+#ifdef _WIN32
+    static const uint8_t prologue[] = {
+        0x53, 0x55, 0x57, 0x56, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57,
+        /* push rbx, rbp, rdi, rsi, r12-r15: the callee-saved registers */
+        0x52,                                                 /* push rdx: tables */
+        0x48, 0x83, 0xEC, 0x30,  /* sub rsp,48: shadow space, fifth argument, pad */
+        0x48, 0x89, 0xCB,                                     /* mov rbx,rcx */
+        0x44, 0x89, 0xC5,                                     /* mov ebp,r8d */
+    };
+#else
     static const uint8_t prologue[] = {
         0x53, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x56,
         /* push rbx, rbp, r12-r15, rsi: seven slots keep rsp 16-aligned */
         0x48, 0x89, 0xFB,                                     /* mov rbx,rdi */
         0x89, 0xD5,                                           /* mov ebp,edx */
     };
+#endif
     bytes(&e, prologue, sizeof(prologue));
-    load_mem64(&e, R13, RSI, (int32_t)offsetof(mrc_jit_tables, read));
-    load_mem64(&e, R14, RSI, (int32_t)offsetof(mrc_jit_tables, write));
+    load_mem64(&e, R13, ARG1, (int32_t)offsetof(mrc_jit_tables, read));
+    load_mem64(&e, R14, ARG1, (int32_t)offsetof(mrc_jit_tables, write));
     load_mem64(&e, R15, RBX, (int32_t)offsetof(r3900, bus));
     *chain = here(&e);
 
@@ -585,7 +614,7 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
             rex(&e, false, RCX, 0, RAX); byte(&e, 0x31); modrm_reg(&e, RCX, RAX); /* xor eax,ecx */
             alu_ri(&e, ALU_AND, RAX, MRC_JIT_SETS - 1);
             shift_imm(&e, SH_SHL, RAX, 7);           /* * 4 ways * 32 bytes */
-            load_mem64(&e, RCX, RSP, 0);
+            load_mem64(&e, RCX, RSP, TABLES_AT);
             load_mem64(&e, RCX, RCX, (int32_t)offsetof(mrc_jit_tables, slots));
             rex(&e, true, RAX, 0, RCX); byte(&e, 0x01); modrm_reg(&e, RAX, RCX); /* add rcx,rax */
             for (unsigned way = 0; way < MRC_JIT_WAYS; way++) {
@@ -615,15 +644,21 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     unsigned done_label = here(&e);
     mov_rr(&e, RAX, RBP);                       /* status DONE, remaining */
     unsigned ret_label = here(&e);
+#ifdef _WIN32
+    static const uint8_t epilogue[] = {
+        0x48, 0x83, 0xC4, 0x30,                               /* add rsp,48 */
+        0x59, 0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, 0x5E, 0x5F, 0x5D, 0x5B, 0xC3 };
+#else
     static const uint8_t epilogue[] = {
         0x59, 0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, 0x5D, 0x5B, 0xC3 };
+#endif
     bytes(&e, epilogue, sizeof(epilogue));
 
     /* Link stubs: record the site, then take the normal exit. */
     for (unsigned k = 0; k < e.nlinks; k++) {
         e.links[k].stub = here(&e);
         mov_imm64(&e, RAX, (uint64_t)(uintptr_t)(out + e.links[k].site));
-        load_mem64(&e, RCX, RSP, 0);
+        load_mem64(&e, RCX, RSP, TABLES_AT);
         rex(&e, true, RAX, 0, RCX); byte(&e, 0x89);
         mem(&e, RAX, RCX, (int32_t)offsetof(mrc_jit_tables, link));
         unsigned j; jmp32(&e, &j); patch(&e, j, done_label);
@@ -633,7 +668,7 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     unsigned stale_label = here(&e), stale_site, to_ret;
     jmp32(&e, &stale_site);
     mov_imm64(&e, RAX, (uint64_t)(uintptr_t)(out + stale_site));
-    load_mem64(&e, RCX, RSP, 0);
+    load_mem64(&e, RCX, RSP, TABLES_AT);
     rex(&e, true, RAX, 0, RCX); byte(&e, 0x89);
     mem(&e, RAX, RCX, (int32_t)offsetof(mrc_jit_tables, link));
     status_exit(&e, MRC_JIT_STALE, &to_ret);

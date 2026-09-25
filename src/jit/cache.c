@@ -7,6 +7,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #define HAVE_MMAP 1
+#elif defined(_WIN32)
+#include "jit/win_mman.h"
+#define HAVE_MMAP 1
 #else
 #define HAVE_MMAP 0
 #endif
@@ -318,7 +321,7 @@ void mrc_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
     j->links++;
 }
 
-#if !(defined(__x86_64__) && !defined(_WIN32)) && !(defined(__aarch64__) && !defined(__AARCH64EB__))
+#if !defined(__x86_64__) && !(defined(__aarch64__) && !defined(__AARCH64EB__))
 size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
                     const mrc_jit_block *b, unsigned *chain)
 {
