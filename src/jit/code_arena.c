@@ -8,6 +8,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #define HAVE_MMAP 1
+#elif defined(_WIN32)
+#include "jit/win_mman.h"
+#define HAVE_MMAP 1
 #else
 #define HAVE_MMAP 0
 #endif
@@ -119,6 +122,47 @@ void mrc_code_arena_commit(mrc_code_arena *arena, uint8_t *at, size_t bytes)
     __builtin___clear_cache((char *)arena->exec + offset,
                             (char *)arena->exec + offset + bytes);
     arena->used = offset + bytes;
+#else
+    (void)arena; (void)at; (void)bytes;
+#endif
+}
+
+#if HAVE_MMAP
+/* The whole pages covering `bytes` at `at`, as an offset and a length. */
+static size_t window(const mrc_code_arena *arena, const uint8_t *at,
+                     size_t bytes, size_t *length)
+{
+    size_t offset = (size_t)(at - arena->write);
+    size_t first = offset & ~(arena->page - 1);
+    size_t last = (offset + bytes + arena->page - 1) & ~(arena->page - 1);
+    if (last > arena->size) last = arena->size;
+    *length = last - first;
+    return first;
+}
+#endif
+
+bool mrc_code_arena_unlock(mrc_code_arena *arena, uint8_t *at, size_t bytes)
+{
+#if HAVE_MMAP
+    if (arena->dual) return true;
+    size_t length, first = window(arena, at, bytes, &length);
+    return !mprotect(arena->exec + first, length, PROT_READ | PROT_WRITE);
+#else
+    (void)arena; (void)at; (void)bytes;
+    return false;
+#endif
+}
+
+void mrc_code_arena_relock(mrc_code_arena *arena, uint8_t *at, size_t bytes)
+{
+#if HAVE_MMAP
+    size_t offset = (size_t)(at - arena->write);
+    if (!arena->dual) {
+        size_t length, first = window(arena, at, bytes, &length);
+        mprotect(arena->exec + first, length, PROT_READ | PROT_EXEC);
+    }
+    __builtin___clear_cache((char *)arena->exec + offset,
+                            (char *)arena->exec + offset + bytes);
 #else
     (void)arena; (void)at; (void)bytes;
 #endif

@@ -46,6 +46,16 @@ uint8_t *mrc_code_arena_reserve(mrc_code_arena *arena, size_t most,
 /* Commit `bytes` of the last reservation, making it runnable. */
 void mrc_code_arena_commit(mrc_code_arena *arena, uint8_t *at, size_t bytes);
 
+/*
+ * Rewrite `bytes` of committed code at `at`, a writable-view address, as a
+ * link patch does: unlock, write, relock. With one mapping the bytes are
+ * executable and not writable once committed, so unlock opens their pages
+ * and relock closes them; the dual mapping's writable view always is, and
+ * both do nothing there. False from unlock means the patch must not be made.
+ */
+bool mrc_code_arena_unlock(mrc_code_arena *arena, uint8_t *at, size_t bytes);
+void mrc_code_arena_relock(mrc_code_arena *arena, uint8_t *at, size_t bytes);
+
 /* Forget everything. The caller must have dropped every pointer into it. */
 void mrc_code_arena_reset(mrc_code_arena *arena);
 

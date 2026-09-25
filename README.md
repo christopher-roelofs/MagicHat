@@ -60,8 +60,6 @@ appear.
 
 The Windows build has a few differences from Linux:
 
-- The CPU JITs are not yet ported to the Windows x64 calling convention, so
-  both CPUs run on the interpreter.
 - `--serial a` needs a pseudo-terminal, which Windows lacks. The in-process
   PC Link transfer still works.
 - Stock libslirp has a TCP MSS bug that the `network` test catches. Install

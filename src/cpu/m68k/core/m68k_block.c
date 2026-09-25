@@ -526,8 +526,10 @@ uint64_t m68k_run_blocks(m68k *c, uint64_t budget, m68k_blocks *blocks)
                 linking = !(v && !strcmp(v, "0"));
             }
             if (linking && chosen->code && chosen->self_guarded &&
-                from->link && !c->stop_pc) {
+                from->link && !c->stop_pc &&
+                mrc_code_arena_unlock(&blocks->arena, from->link, 4)) {
                 m68k_patch_link(from->link, from->link_exec, chosen->chain);
+                mrc_code_arena_relock(&blocks->arena, from->link, 4);
                 if (from->linked) blocks->stats.relinked++;
                 else blocks->stats.chained++;
                 from->linked = chosen->va;
