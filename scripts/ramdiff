@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Compare two DRAM dumps and report where they differ.
+
+Used to find where the OS keeps a value that a hardware input controls: run
+the machine to the same point twice with the input set differently, dump RAM
+each time, and diff. This is how the touch pressure threshold at RAM[0xEB84]
+was found, and it is much cheaper than bisecting a value with two-minute
+probes.
+
+The OS's driver globals live around 0x0000C000..0x0000F000, so that range is
+reported separately and in full; the rest is summarised, because a running
+system differs everywhere in its heap and stack.
+
+What this CANNOT find is a threshold. A threshold is a constant: it is the
+same in both runs, so it does not appear in a diff at all. The diff finds
+where the *reading* is kept — which is still the useful half, because once
+you know that you can watch it, or sweep the input and see the value track.
+To find the constant it is compared against, look near the reading, or read
+the code that uses it, or sweep the input and find the boundary.
+"""
+import sys
+import struct
+
+GLOBALS_LO = 0x0000C000
+GLOBALS_HI = 0x00010000
+
+
+def runs(offsets):
+    """Group sorted offsets into contiguous runs."""
+    out, start, prev = [], None, None
+    for o in offsets:
+        if start is None:
+            start = prev = o
+        elif o == prev + 1:
+            prev = o
+        else:
+            out.append((start, prev))
+            start = prev = o
+    if start is not None:
+        out.append((start, prev))
+    return out
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit("usage: ramdiff <a.bin> <b.bin> [--all]")
+    a = open(sys.argv[1], 'rb').read()
+    b = open(sys.argv[2], 'rb').read()
+    show_all = '--all' in sys.argv
+    n = min(len(a), len(b))
+
+    diff = [i for i in range(n) if a[i] != b[i]]
+    print(f"{len(diff)} bytes differ out of {n}")
+
+    inglob = [o for o in diff if GLOBALS_LO <= o < GLOBALS_HI]
+    print(f"\ndriver globals {GLOBALS_LO:#x}..{GLOBALS_HI:#x}: "
+          f"{len(inglob)} bytes differ")
+    for lo, hi in runs(inglob):
+        av = a[lo:hi + 1].hex()
+        bv = b[lo:hi + 1].hex()
+        # A 2- or 4-byte run is most likely one value; show it as a number.
+        note = ""
+        if hi - lo == 1:
+            note = (f"   {struct.unpack('>H', a[lo:lo+2])[0]} -> "
+                    f"{struct.unpack('>H', b[lo:lo+2])[0]}")
+        elif hi - lo == 3:
+            note = (f"   {struct.unpack('>I', a[lo:lo+4])[0]} -> "
+                    f"{struct.unpack('>I', b[lo:lo+4])[0]}")
+        print(f"  {lo:08X}..{hi:08X}  {av} -> {bv}{note}")
+
+    if show_all:
+        outside = [o for o in diff if not (GLOBALS_LO <= o < GLOBALS_HI)]
+        print(f"\nelsewhere: {len(outside)} bytes in "
+              f"{len(runs(outside))} runs")
+        for lo, hi in runs(outside)[:200]:
+            print(f"  {lo:08X}..{hi:08X}  {hi - lo + 1} bytes")
+
+
+main()

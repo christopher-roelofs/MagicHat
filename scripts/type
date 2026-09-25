@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Turn text into taps on Magic Cap's on-screen keyboard.
+
+The DataRover emulator currently uses the on-screen keyboard for guest text
+entry. This helper turns strings into tap sequences for that keyboard.
+The real device also supported external keyboards; see docs/KEYBOARD.md.
+
+The coordinates below were measured from a rendered keyboard rather than
+guessed: the key faces are light and the gaps between them dark, so scanning
+a row for runs of light pixels finds the keys and their centres. Every key
+came out 42 pixels wide on a 43 pixel pitch, which is the sort of agreement
+that says the measurement is real.
+
+    scripts/type "hello"                 taps for --taps-px
+    scripts/type --at 60000000 "hello"   starting at an instruction
+    scripts/type --show                  print the key map
+
+The letter map is verified. Typing HELLO into the Datebook's day view -- the
+ROM says "you can make a new appointment quickly just by typing on the
+keyboard", and it is one tap from the Desk -- put HELLO on screen, in order,
+from these coordinates. That is a much cheaper way to reach a focused field
+than the six-step "Add your card" wizard.
+
+The digits are still missing, and asking for one is an error rather than a
+guess. What is known about the layout control, measured from a focused field:
+
+- It reads "abc|123" as a segmented switch: the word abc spans x 77..95, a
+  striped thumb 100..131, and 123 spans 137..155.
+- Tapping it anywhere -- the thumb, or the 123 label itself -- turns it into
+  a "< abc >" scroller rather than selecting 123.
+- One press of the scroller's right arrow reaches the *extended* keyboard:
+  accented letters and ligatures with superscripts and fractions
+  (Ae C D Th O A ss, 1/4 1/2 3/4, superscript 1 2 3). A second press does not
+  advance further, and the left arrow does not go back, so the scroller
+  appears to hold two keyboards and saturate at each end.
+- On that page the left button reads "symbols" rather than "caps", but
+  tapping it changed nothing visible.
+- "expand" returns the control to its segmented form without adding digits.
+
+Note also that the key faces always draw capitals: tapping "caps" changes no
+glyph on screen, because it selects what is produced rather than what is
+drawn ("the key to switch the keyboard to typing capital letters"). So the
+face cannot be used to tell which case a key will yield.
+
+The likeliest resolution is that digits are not on this keyboard at all but
+arrive with the field: the ROM has a separate on-screen *keypad* for
+passwords ("Tap out a password on the keypad"), so a field expecting a phone
+number or an address may summon its own. That is worth checking at the first
+such field rather than assuming this keyboard must be made to produce them.
+
+The previous claim here that the ROM had no external keyboard driver was
+incorrect: the stock ROM contains MagicBusATKeyboard. Its controller path
+is being implemented separately; this helper remains an on-screen tap tool.
+"""
+import argparse
+import sys
+
+# Row centres, and the key centres along them. Measured, not assumed.
+ROWS = {
+    'row1': (201, [25, 68, 111, 154, 197, 240, 283, 326, 369, 412]),
+    'row2': (237, [33, 76, 119, 162, 205, 248, 291, 334, 377]),
+    'row3': (271, [46, 89, 132, 175, 218, 261, 304, 347, 390, 433]),
+}
+
+# The digit layout, read out of the ROM at 0x83F890D8. It is stored as
+# UTF-16BE alongside the two letter layouts, in the same 10/9/10 shape, so it
+# lands on exactly the key positions measured above:
+#
+#   0x83F88F70  qwertyuiopasdfghjklzxcvbnm,.'
+#   0x83F88FB8  QWERTYUIOPASDFGHJKLZXCVBNM;:?
+#   0x83F890D8  1234567890!@#$%~&()_-*+=:",./
+#
+# It has the '.' and ':' an address needs and the '@' mail needs. What is not
+# known is how the UI selects it: the layouts are Telescript objects (their
+# records are full of 8001xxxx references) and nothing in the ROM builds
+# their addresses with a lui/ori pair, so the selector cannot be read out
+# statically. Neither tapping every part of the abc|123 control nor the
+# scroller arrows nor caps nor symbols nor expand nor holding the option key
+# across any of them reached it, by hand or scripted.
+DIGITS = {
+    **{c: ('row1', i) for i, c in enumerate('1234567890')},
+    **{c: ('row2', i) for i, c in enumerate('!@#$%~&()')},
+    **{c: ('row3', i) for i, c in enumerate('_-*+=:",./')},
+}
+
+LETTERS = {
+    **{c: ('row1', i) for i, c in enumerate('QWERTYUIOP')},
+    **{c: ('row2', i) for i, c in enumerate('ASDFGHJKL')},
+    **{c: ('row3', i) for i, c in enumerate('ZXCVBNM;:?')},
+}
+
+# Everything that is not a letter key, measured the same way.
+SPECIAL = {
+    'backspace': (453, 201),
+    'return':    (435, 237),
+    'caps':      (36, 303),
+    'layout':    (116, 303),    # "abc|123"; becomes a "< abc >" scroller
+    'layout_prev': (84, 303),
+    'layout_next': (148, 303),
+    'space':     (235, 303),
+    'expand':    (339, 303),
+    'left':      (388, 303),
+    'right':     (417, 303),
+    'close':     (455, 303),
+}
+
+# The Phone's keypad, which is where digits actually live.
+#
+# Not a keyboard layout at all: a separate 3x4 telephone pad, reached by
+# tapping the phone on the Desk, then "location", then "keypad" in the right
+# sidebar. Measured the same way as the keyboard -- bright key ovals against
+# a mid-grey ground -- and the grid came out exactly regular, columns at
+# 35/95/157 and rows at 59/120/181/242.
+#
+# It has a dial button, so a number can be dialled from a script without
+# going anywhere near the Internet setup.
+KEYPAD = {
+    '1': (35, 59),  '2': (95, 59),  '3': (157, 59),
+    '4': (35, 120), '5': (95, 120), '6': (157, 120),
+    '7': (35, 181), '8': (95, 181), '9': (157, 181),
+    '*': (35, 242), '0': (95, 242), '#': (157, 242),
+}
+KEYPAD_ROUTE = [(60, 175), (175, 165), (446, 55)]   # phone, location, keypad
+KEYPAD_DIAL = (240, 88)
+
+# The toolbar button that opens the keyboard in the first place.
+KEYBOARD_BUTTON = (365, 298)
+
+# A tap has to be held long enough for the OS to sample it, and the next one
+# cannot follow immediately. These are the values the touch tests already use.
+HOLD = 20_000_000
+GAP = 40_000_000
+
+
+def key_xy(ch):
+    up = ch.upper()
+    if up in LETTERS:
+        row, i = LETTERS[up]
+        y, xs = ROWS[row]
+        return xs[i], y
+    if ch == ' ':
+        return SPECIAL['space']
+    return None
+
+
+def digit_xy(ch):
+    """Where a character sits on the digit layout, once it can be reached."""
+    if ch in DIGITS:
+        row, i = DIGITS[ch]
+        y, xs = ROWS[row]
+        return xs[i], y
+    return None
+
+
+def taps(text, start, gap=GAP, open_keyboard=True):
+    """Return [(x, y, at), ...]. Unmappable characters raise."""
+    out = []
+    at = start
+    if open_keyboard:
+        out.append((*KEYBOARD_BUTTON, at))
+        at += gap
+    for ch in text:
+        xy = key_xy(ch)
+        if xy is None:
+            raise ValueError(
+                f'no key for {ch!r}: it is on the digit layout '
+                f'{"at " + str(digit_xy(ch)) if digit_xy(ch) else ""}, which '
+                f'nothing has yet been able to select -- see the docstring')
+        out.append((*xy, at))
+        at += gap
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('text', nargs='?', default='')
+    ap.add_argument('--at', type=int, default=60_000_000,
+                    help='instruction count for the first tap')
+    ap.add_argument('--gap', type=int, default=GAP,
+                    help='instructions between taps')
+    ap.add_argument('--no-open', action='store_true',
+                    help='the keyboard is already open')
+    ap.add_argument('--show', action='store_true', help='print the key map')
+    args = ap.parse_args()
+
+    if args.show:
+        for name, (row, i) in sorted(LETTERS.items()):
+            y, xs = ROWS[row]
+            print(f'  {name}  ({xs[i]}, {y})')
+        for name, (x, y) in SPECIAL.items():
+            print(f'  {name:12s} ({x}, {y})')
+        print(f'  {"keyboard":12s} {KEYBOARD_BUTTON}')
+        return 0
+
+    if not args.text:
+        ap.error('give some text, or --show')
+    try:
+        seq = taps(args.text, args.at, args.gap, not args.no_open)
+    except ValueError as exc:
+        print(f'type: {exc}', file=sys.stderr)
+        return 1
+    print(';'.join(f'{x},{y},{at}' for x, y, at in seq))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

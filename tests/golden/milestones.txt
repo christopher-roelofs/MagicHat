@@ -1,0 +1,6 @@
+monitor.exceptions 0
+monitor.tlb 1
+bootscreen.fb 4df699aeeee7c4cf
+bootscreen.exceptions 14145
+calibrate.fb b61c62eb4400e9ee
+desk.fb bc6d1f2f3802340f

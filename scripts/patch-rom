@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Apply an explicit byte patch to a separate ROM file, before emulation."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+
+def apply(source, manifest, destination):
+    original = source.read_bytes()
+    spec = json.loads(manifest.read_text())
+    digest = hashlib.sha256(original).hexdigest()
+    if digest != spec['source_sha256']:
+        raise ValueError(f'source SHA-256 mismatch: got {digest}')
+    result = bytearray(original)
+    occupied = set()
+    for patch in spec['patches']:
+        offset = int(patch['offset'], 0)
+        before, after = bytes.fromhex(patch['before']), bytes.fromhex(patch['after'])
+        if not before or len(before) != len(after):
+            raise ValueError('patches must replace a nonempty, equal-length byte range')
+        if offset < 0 or offset + len(before) > len(original):
+            raise ValueError(f'patch outside ROM at {offset:#x}')
+        positions = set(range(offset, offset + len(before)))
+        if occupied & positions:
+            raise ValueError(f'overlapping patch at {offset:#x}')
+        occupied |= positions
+        if original[offset:offset + len(before)] != before:
+            raise ValueError(f'original bytes do not match at {offset:#x}')
+        result[offset:offset + len(after)] = after
+    # Exclusive creation also prevents overwriting the input through a symlink
+    # or hard link. Validate every patch before creating any output.
+    with destination.open('xb') as output:
+        output.write(result)
+    print(f"{spec['name']}: {destination}")
+    print(f'SHA-256: {hashlib.sha256(result).hexdigest()}')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('patch', type=Path)
+    parser.add_argument('source', type=Path)
+    parser.add_argument('output', type=Path, help='new file; must not exist')
+    args = parser.parse_args()
+    try:
+        apply(args.source, args.patch, args.output)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.exit(1, f'patch-rom: {error}\n')
+
+
+if __name__ == '__main__':
+    main()

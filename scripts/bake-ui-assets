@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""Bake the emulator's own user interface assets into C.
+
+The frontend draws the guest's framebuffer and, until now, nothing else: no
+font, no glyph, no icon anywhere in src/frontend. A toolbar needs all three,
+and the options are to carry a font rasteriser at run time, to depend on
+SDL_ttf, or to turn the glyphs into bytes once and compile them in. The last
+is the smallest: no new library, nothing to find at start-up, and the same
+pixels on a desktop and on a tablet.
+
+So this runs once, by hand, and its output is committed. It is here for
+reproducibility and for whoever wants a different size or another icon, not
+as a build step -- a build that needed a font installed would fail on every
+machine that has not got this exact one.
+
+    scripts/bake-ui-assets [--check]
+
+--check regenerates into memory and compares, which is how a stale committed
+file gets noticed.
+
+Sources, both already permissive and both recorded in assets/licenses:
+
+  DejaVu Sans Mono, under the Bitstream Vera licence, for text. A monospace
+  face keeps the baked form to one cell size and makes laying out a column
+  of labels arithmetic rather than measurement.
+
+  Font Awesome 4.7, under SIL OFL 1.1, for the icons. Version 4 was drawn
+  for small sizes and survives rasterising at sixteen pixels, which the
+  later, larger-gridded sets do not.
+"""
+import argparse
+import re
+import sys
+from pathlib import Path
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError:
+    sys.exit("bake-ui-assets needs Pillow: pip install pillow")
+
+MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+AWESOME = "/usr/share/fonts/truetype/font-awesome/fontawesome-webfont.ttf"
+AWESOME_CSS = "/usr/share/fonts-font-awesome/css/font-awesome.css"
+
+# Several sizes, not one scaled: a toolbar on a tablet is drawn at twice the
+# desktop's density, and doubling a small bitmap looks like a doubled small
+# bitmap. Everything picks its size from the renderer's own scale.
+#
+# The range runs further up than seems necessary because a rail on a tall
+# tablet is over a hundred pixels wide, and a sixty-four pixel icon sitting
+# in the middle of it looks lost rather than deliberate.
+TEXT_SIZES = [16, 26, 40]
+ICON_SIZES = [32, 48, 64, 96, 128]
+
+FIRST_GLYPH = 32
+FONT_COLUMNS = 16
+# Latin-1 filenames and the punctuation used by menus. Unknown Unicode is
+# drawn as a visible replacement, never silently omitted.
+GLYPHS = list(range(32, 127)) + list(range(160, 256)) + [
+    0x2013, 0x2014, 0x2018, 0x2019, 0x201c, 0x201d, 0x2026,
+    0x203a, 0x2191, 0x2193, 0xfffd,
+]
+
+# What each rail button shows. The name on the left is ours and appears in
+# the generated header; the one on the right is Font Awesome's.
+ICONS = [
+    ("roms",    "microchip"),   # a list of ROMs: the thing itself
+    ("power",   "power-off"),
+    ("rotate",  "repeat"),
+    ("display", "adjust"),      # half-filled disc: the look of the screen
+    ("storage", "floppy-o"),
+    ("install", "download"),    # a package going into the guest
+    ("option",  "arrow-up"),    # the shift/option key real devices have
+    ("settings","cog"),         # the things you reach for rarely, power off
+    ("play",    "play"),        # start this device, next to it in a list
+    ("trash",   "trash-o"),     # delete this device, next to it in a list
+    ("eject",   "eject"),
+    ("stop",    "stop"),        # save/unload the running device
+]
+
+
+def awesome_codepoints():
+    css = Path(AWESOME_CSS).read_text()
+    found = {}
+    for m in re.finditer(r'\.fa-([a-z0-9-]+):before\s*\{\s*content:\s*"\\([0-9a-f]+)"',
+                         css):
+        found.setdefault(m.group(1), int(m.group(2), 16))
+    return found
+
+
+def bake_font(size):
+    font = ImageFont.truetype(MONO, size)
+    ascent, descent = font.getmetrics()
+    advance = int(round(font.getlength("M")))
+    cell_w = advance + 1
+    cell_h = ascent + descent
+    atlas = Image.new("L", (cell_w * FONT_COLUMNS,
+                            cell_h * ((len(GLYPHS) + FONT_COLUMNS - 1) // FONT_COLUMNS)), 0)
+    for index, code in enumerate(GLYPHS):
+        image = Image.new("L", (cell_w, cell_h), 0)
+        ImageDraw.Draw(image).text((0, 0), chr(code), font=font, fill=255)
+        atlas.paste(image, ((index % FONT_COLUMNS) * cell_w,
+                           (index // FONT_COLUMNS) * cell_h))
+    return {
+        "size": size, "advance": advance, "cell_w": cell_w, "cell_h": cell_h,
+        "ascent": ascent, "alpha": atlas.tobytes(),
+    }
+
+
+def bake_icon(codepoint, size):
+    font = ImageFont.truetype(AWESOME, size)
+    image = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(image)
+    glyph = chr(codepoint)
+    box = draw.textbbox((0, 0), glyph, font=font)
+    # Centred in its own box, so a rail of different icons looks even.
+    x = (size - (box[2] - box[0])) // 2 - box[0]
+    y = (size - (box[3] - box[1])) // 2 - box[1]
+    draw.text((x, y), glyph, font=font, fill=255)
+    return image.tobytes()
+
+
+def as_c_array(name, data):
+    out = ["static const unsigned char %s[%d] = {" % (name, len(data))]
+    for at in range(0, len(data), 24):
+        out.append("    " + "".join("%d," % b for b in data[at:at + 24]))
+    out.append("};")
+    return "\n".join(out)
+
+
+def generate():
+    codes = awesome_codepoints()
+    missing = [fa for _, fa in ICONS if fa not in codes]
+    if missing:
+        sys.exit("Font Awesome has no %s" % ", ".join(missing))
+
+    fonts = [bake_font(size) for size in TEXT_SIZES]
+    icons = {name: {size: bake_icon(codes[fa], size) for size in ICON_SIZES}
+             for name, fa in ICONS}
+
+    head = ['/*',
+            ' * ui_assets.h -- generated by scripts/bake-ui-assets. Do not edit.',
+            ' *',
+            ' * Text: DejaVu Sans Mono, Bitstream Vera licence.',
+            ' * Icons: Font Awesome 4.7, SIL OFL 1.1.',
+            ' * Both licences are in assets/licenses.',
+            ' */',
+            '#ifndef MRC_UI_ASSETS_H',
+            '#define MRC_UI_ASSETS_H',
+            '',
+            '#include <stddef.h>',
+            '',
+            '/* One monospace face at one pixel size: every glyph occupies the',
+            ' * same cell, so a run of text is laid out by multiplying. */',
+            'typedef struct {',
+            '    unsigned size, advance, cell_w, cell_h, ascent;',
+            '    unsigned first, count;',
+            '    const unsigned char *alpha;   /* count * cell_w * cell_h */',
+            '} mrc_ui_font_data;',
+            '',
+            'typedef struct {',
+            '    unsigned size;',
+            '    const unsigned char *alpha;   /* size * size */',
+            '} mrc_ui_icon_size;',
+            '',
+            'typedef struct {',
+            '    const char *name;',
+            '    mrc_ui_icon_size sizes[%d];' % len(ICON_SIZES),
+            '} mrc_ui_icon_data;',
+            '',
+            'enum {']
+    for index, (name, _) in enumerate(ICONS):
+        head.append('    MRC_UI_ICON_%s = %d,' % (name.upper(), index))
+    head += ['    MRC_UI_ICON_COUNT = %d' % len(ICONS),
+             '};',
+             '',
+             'extern const mrc_ui_font_data mrc_ui_fonts[%d];' % len(TEXT_SIZES),
+             'extern const mrc_ui_icon_data mrc_ui_icons[MRC_UI_ICON_COUNT];',
+             'extern const unsigned mrc_ui_glyphs[%d];' % len(GLYPHS),
+             '#define MRC_UI_FONT_COUNT %d' % len(TEXT_SIZES),
+             '#define MRC_UI_FONT_COLUMNS %d' % FONT_COLUMNS,
+             '#define MRC_UI_ICON_SIZES %d' % len(ICON_SIZES),
+             '',
+             '#endif /* MRC_UI_ASSETS_H */',
+             '']
+
+    body = ['/*',
+            ' * ui_assets.c -- generated by scripts/bake-ui-assets. Do not edit.',
+            ' *',
+            ' * Text: DejaVu Sans Mono, Bitstream Vera licence.',
+            ' * Icons: Font Awesome 4.7, SIL OFL 1.1.',
+            ' */',
+            '#include "frontend/sdl/ui_assets.h"',
+            '']
+    for font in fonts:
+        body.append(as_c_array("font_%d" % font["size"], font["alpha"]))
+        body.append("")
+    for name, _ in ICONS:
+        for size in ICON_SIZES:
+            body.append(as_c_array("icon_%s_%d" % (name, size), icons[name][size]))
+            body.append("")
+
+    body.append('const unsigned mrc_ui_glyphs[%d] = { %s };' %
+                (len(GLYPHS), ', '.join(str(c) for c in GLYPHS)))
+    body.append('const mrc_ui_font_data mrc_ui_fonts[%d] = {' % len(TEXT_SIZES))
+    for font in fonts:
+        body.append('    { %d, %d, %d, %d, %d, %d, %d, font_%d },' % (
+            font["size"], font["advance"], font["cell_w"], font["cell_h"],
+            font["ascent"], FIRST_GLYPH, len(GLYPHS),
+            font["size"]))
+    body.append('};')
+    body.append('')
+    body.append('const mrc_ui_icon_data mrc_ui_icons[MRC_UI_ICON_COUNT] = {')
+    for name, _ in ICONS:
+        entries = ", ".join("{ %d, icon_%s_%d }" % (size, name, size)
+                            for size in ICON_SIZES)
+        body.append('    { "%s", { %s } },' % (name, entries))
+    body.append('};')
+    body.append('')
+    return "\n".join(head), "\n".join(body)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--check", action="store_true",
+                    help="compare against the committed files instead of writing")
+    args = ap.parse_args()
+
+    root = Path(__file__).resolve().parent.parent
+    header_path = root / "src/frontend/sdl/ui_assets.h"
+    body_path = root / "src/frontend/sdl/ui_assets.c"
+    header, body = generate()
+
+    if args.check:
+        for path, text in ((header_path, header), (body_path, body)):
+            if not path.exists() or path.read_text() != text:
+                sys.exit("%s is out of date; run scripts/bake-ui-assets" % path)
+        print("ui assets are current")
+        return
+    header_path.write_text(header)
+    body_path.write_text(body)
+    print("wrote %s (%d bytes) and %s (%d bytes)" %
+          (header_path.name, len(header), body_path.name, len(body)))
+
+
+if __name__ == "__main__":
+    main()

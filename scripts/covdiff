@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Compare two --coverage bitmaps.
+
+Prints the physical addresses executed in the second run but not the first,
+grouped into contiguous runs. Used to find what a given input reached:
+capture a baseline with no input and a second run with it, then diff.
+"""
+import sys
+
+def load(path):
+    return open(path, 'rb').read()
+
+def bits(buf):
+    for i, b in enumerate(buf):
+        if b:
+            for j in range(8):
+                if b & (1 << j):
+                    yield (i * 8 + j) * 4
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit("usage: covdiff <baseline> <with-input> [max-runs]")
+    a, b = load(sys.argv[1]), load(sys.argv[2])
+    limit = int(sys.argv[3]) if len(sys.argv) > 3 else 60
+
+    only = []
+    for i in range(min(len(a), len(b))):
+        d = b[i] & ~a[i]
+        if d:
+            for j in range(8):
+                if d & (1 << j):
+                    only.append((i * 8 + j) * 4)
+
+    print(f"{len(only)} instructions executed only in {sys.argv[2]}")
+    runs, start, prev = [], None, None
+    for addr in only:
+        if start is None:
+            start = prev = addr
+        elif addr == prev + 4:
+            prev = addr
+        else:
+            runs.append((start, prev))
+            start = prev = addr
+    if start is not None:
+        runs.append((start, prev))
+
+    print(f"{len(runs)} contiguous runs; largest {limit}:")
+    for lo, hi in sorted(runs, key=lambda r: r[1] - r[0], reverse=True)[:limit]:
+        # ROM lives at physical 0x03C00000 and 0x13C00000; show the kseg0
+        # address the disassembly uses.
+        tag = ""
+        if 0x03C00000 <= lo < 0x04600000:
+            tag = f"  rom {lo - 0x03C00000 + 0x83C00000:08X}"
+        elif 0x13C00000 <= lo < 0x14600000:
+            tag = f"  rom {lo - 0x13C00000 + 0x83C00000:08X}"
+        print(f"  {lo:08X}-{hi:08X}  {(hi - lo) // 4 + 1:6d} insns{tag}")
+
+main()

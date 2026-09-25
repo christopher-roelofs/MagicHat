@@ -1,0 +1,32 @@
+# Build products and downloaded Android dependencies
+/build/
+/out/
+/build-*/
+/android/.gradle/
+/android/deps/
+/android/app/.cxx/
+/android/app/build/
+/android/build/
+
+# User-provided firmware, cards, packages, and saved machines
+/roms/
+/states/
+/cards/
+/packages/
+*.state
+*.bram
+*.bram.lock
+*.bram.tmp.*
+*.image
+*.rom
+*.pkg
+*.cap
+
+# Local compiler and diagnostic outputs
+*.o
+*.a
+*.pgm
+*.png
+compile_commands.json
+__pycache__/
+*.py[cod]

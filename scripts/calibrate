@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""
+Calibrate the touch panel the way a person would: find the target, tap its
+centre, repeat.
+
+The screen says "Touch the target's center to align the touch-sensitive
+screen" and draws a bullseye in a corner. What the emulator used to do was tap
+raw ADC (500,500) -- roughly the middle of the panel -- no matter where the
+target was. The OS duly recorded "the user touched the top-left target" against
+a reading from the centre of the screen, and every snapshot taken afterwards
+inherited a calibration skewed by that much. Clicks in the window then landed
+up and to the left of where they were aimed.
+
+So this locates each target from the framebuffer, taps that point with
+--tap-px (which converts through the panel's own raw-count model), and moves
+on when the screen changes. What the OS learns then matches what the emulator
+actually sends.
+"""
+import argparse, os, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MCAP = os.environ.get("MCAP", os.path.join(ROOT, "build", "mcap"))
+ROM = os.path.join(ROOT, "roms", "MagicCap-USA.image")
+W, H = 480, 320
+
+
+def read_pgm(path):
+    with open(path, "rb") as f:
+        d = f.read()
+    p = d.split(b"\n", 3)
+    return p[3][:W * H]
+
+
+def on_calibration_screen(px):
+    """Is this still the alignment screen?
+
+    It is nearly blank -- one bullseye and one line of caption, about 2.7k
+    dark pixels, against 17k for the Desk. Without this the script kept
+    "finding targets" in ordinary UI once calibration had finished, and
+    tapped its way through six screens of whatever came next.
+    """
+    return sum(1 for v in px if v < 96) < 6000
+
+
+def find_target(px):
+    """Centre of the bullseye.
+
+    A ring pattern defeats a "count dark neighbours" test, because half the
+    samples land on the light rings between them. What does separate the
+    target from the caption is ink density over an area the size of the
+    target: the bullseye fills a 40x40 box, a line of text does not.
+    """
+    BOX, STEP = 40, 4
+    best, bx, by = 0, None, None
+    for y in range(0, H - BOX, STEP):
+        for x in range(0, W - BOX, STEP):
+            ink = 0
+            for yy in range(y, y + BOX, 2):
+                row = yy * W
+                for xx in range(x, x + BOX, 2):
+                    if px[row + xx] < 96:
+                        ink += 1
+            if ink > best:
+                best, bx, by = ink, x, y
+    if best < (BOX // 2) ** 2 * 0.25:
+        return None, None
+    # Centroid of the ink inside the winning box: the middle of the rings.
+    sx = sy = n = 0
+    for yy in range(by, by + BOX):
+        for xx in range(bx, bx + BOX):
+            if px[yy * W + xx] < 96:
+                sx += xx; sy += yy; n += 1
+    return (sx // n, sy // n) if n else (None, None)
+
+
+def run(state_in, state_out, fb, taps, insns):
+    cmd = [MCAP, "--rom", ROM, "--load-state", state_in,
+           "-n", str(insns), "--dump-fb", fb, "--save-state", state_out]
+    if taps:
+        cmd += ["--taps-px", taps, "--tap-hold", "20000000"]
+    subprocess.run(cmd, cwd=ROOT, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--from", dest="src", default="states/bootscreen.state")
+    ap.add_argument("--out", default="states/calibrate.state")
+    ap.add_argument("--work", default="/tmp/mrc-cal")
+    ap.add_argument("--max-targets", type=int, default=8)
+    ap.add_argument("--settle", type=int, default=120_000_000)
+    a = ap.parse_args()
+    os.makedirs(a.work, exist_ok=True)
+
+    cur = os.path.join(ROOT, a.src)
+    fb = os.path.join(a.work, "fb.pgm")
+    nxt = os.path.join(a.work, "s.state")
+
+    # The alignment screen only appears after the boot prompt is dismissed.
+    run(cur, nxt, fb, None, a.settle)
+    cur = nxt
+    if not on_calibration_screen(read_pgm(fb)):
+        step = os.path.join(a.work, "wake.state")
+        run(cur, step, fb, "240,160,20000000", a.settle)
+        cur = step
+
+    for i in range(a.max_targets):
+        px = read_pgm(fb)
+        if not on_calibration_screen(px):
+            print(f"calibration screen gone after {i} tap(s): done")
+            break
+        x, y = find_target(px)
+        if x is None:
+            print(f"no target on screen after {i} tap(s): calibration done")
+            break
+        print(f"  target {i + 1} at ({x},{y}) -- tapping its centre")
+        step = os.path.join(a.work, f"s{i}.state")
+        run(cur, step, fb, f"{x},{y},20000000", a.settle)
+        cur = step
+    else:
+        print("still showing a target after the last tap; stopping")
+
+    dst = os.path.join(ROOT, a.out)
+    os.replace(cur, dst)
+    print(f"calibrated state -> {a.out}")
+
+
+if __name__ == "__main__":
+    main()

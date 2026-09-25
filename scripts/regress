@@ -1,0 +1,158 @@
+#!/bin/sh
+#
+# Walk the machine from cold ROM to the Magic Cap Desk and check every
+# milestone against a recorded fingerprint.
+#
+#   scripts/regress            full walk from cold ROM (~2.5 minutes)
+#   scripts/regress --quick    check only the banked states/desk.state
+#   scripts/regress --update   re-record the fingerprints
+#
+# Why this exists: the boot takes two and a half minutes and passes through
+# four device-dependent stages. A change to any device model can break a later
+# stage while every earlier one still looks fine, and without this the first
+# sign of that is a screen that silently stops matching — which is exactly the
+# failure mode that cost days during the touch work.
+#
+set -e
+cd "$(dirname "$0")/.."
+
+ROM=roms/MagicCap-USA.image
+GOLDEN=tests/golden/milestones.txt
+MCAP=${MCAP:-./build/mcap}
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+MODE=full
+[ "$1" = "--quick" ] && MODE=quick
+[ "$1" = "--update" ] && MODE=update
+
+if [ ! -f "$ROM" ]; then
+    echo "SKIP: $ROM not present (ROMs are not in the repository)"
+    exit 0
+fi
+if [ ! -x "$MCAP" ]; then
+    echo "FAIL: $MCAP not built"
+    exit 1
+fi
+
+fails=0
+recorded=""
+
+# check <name> <value>
+check() {
+    name=$1
+    got=$2
+    if [ "$MODE" = update ]; then
+        recorded="$recorded$name $got
+"
+        echo "  record  $name = $got"
+        return
+    fi
+    want=$(awk -v n="$name" '$1 == n { print $2 }' "$GOLDEN" 2>/dev/null)
+    if [ -z "$want" ]; then
+        echo "  FAIL    $name has no recorded value (run --update)"
+        fails=$((fails + 1))
+    elif [ "$got" = "$want" ]; then
+        echo "  ok      $name"
+    else
+        echo "  FAIL    $name"
+        echo "            expected $want"
+        echo "            got      $got"
+        fails=$((fails + 1))
+    fi
+}
+
+fbhash() {
+    sha256sum "$1" | cut -c1-16
+}
+
+if [ "$MODE" != quick ]; then
+    echo "monitor prompt"
+    $MCAP --temporary --fresh --rom $ROM --headless --monitor -n 820000000 \
+        --save-state "$WORK/monitor.state" >"$WORK/mon.out" 2>"$WORK/mon.err"
+    # The monitor measures the hardware and prints what it found, so these
+    # lines check the DRAM sizing, the cache sizes and PRId all at once.
+    for want in 'Memory: 4194304' 'Icache: 4096' 'Dcache: 1024' \
+                'Toshiba Core - id: 0x2200' 'Platform: Apollo'; do
+        if grep -q "$want" "$WORK/mon.out"; then
+            echo "  ok      monitor reports \"$want\""
+        else
+            echo "  FAIL    monitor did not report \"$want\""
+            fails=$((fails + 1))
+        fi
+    done
+    check monitor.exceptions "$(sed -n 's/^cpu: \([0-9]*\) exceptions.*/\1/p' "$WORK/mon.err")"
+    check monitor.tlb "$(grep -c 'TLB was NOT used' "$WORK/mon.err")"
+
+    echo "boot screen"
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/monitor.state" --input 'go -c\n' \
+        -n 1500000000 --save-state "$WORK/boot.state" \
+        --dump-fb "$WORK/boot.pgm" >/dev/null 2>"$WORK/boot.err"
+    check bootscreen.fb "$(fbhash "$WORK/boot.pgm")"
+    check bootscreen.exceptions "$(sed -n 's/^cpu: \([0-9]*\) exceptions.*/\1/p' "$WORK/boot.err")"
+    # Interrupts must actually be delivered; when the ICU drove the wrong CPU
+    # line this was zero and the OS simply never woke up.
+    irq=$(sed -n 's/.*enabled \[[^]]*\], \([0-9]*\) taken/\1/p' "$WORK/boot.err")
+    if [ "${irq:-0}" -gt 1000 ]; then
+        echo "  ok      $irq interrupts delivered"
+    else
+        echo "  FAIL    only ${irq:-0} interrupts delivered"
+        fails=$((fails + 1))
+    fi
+
+    echo "automatic cold boot (no state, input, or reset override)"
+    $MCAP --temporary --fresh --rom $ROM --headless -n 2000000000 \
+        --dump-fb "$WORK/auto.pgm" >"$WORK/auto.out" 2>"$WORK/auto.err"
+    if [ -s "$WORK/auto.pgm" ] && cmp -s "$WORK/auto.pgm" "$WORK/boot.pgm"; then
+        echo "  ok      automatic boot reaches the same startup screen"
+    else
+        echo "  FAIL    automatic boot differs from the verified monitor-start screen"
+        fails=$((fails + 1))
+    fi
+
+    echo "touchscreen calibration"
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/boot.state" \
+        --tap 500 500 5000000 --tap-hold 20000000 -n 400000000 \
+        --save-state "$WORK/cal.state" --dump-fb "$WORK/cal.pgm" \
+        >/dev/null 2>"$WORK/cal.err"
+    check calibrate.fb "$(fbhash "$WORK/cal.pgm")"
+
+    echo "desk"
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/cal.state" \
+        --taps "120,120,20000000;800,740,140000000;460,430,260000000" \
+        --tap-hold 45000000 -n 450000000 --dump-fb "$WORK/desk.pgm" \
+        >/dev/null 2>"$WORK/desk.err"
+    check desk.fb "$(fbhash "$WORK/desk.pgm")"
+else
+    if [ ! -f states/desk.state ]; then
+        echo "SKIP: states/desk.state not present (run scripts/mkstates)"
+        exit 0
+    fi
+    echo "desk (from banked state)"
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/desk.state -n 1000 \
+        --dump-fb "$WORK/desk.pgm" >/dev/null 2>&1
+    check desk.fb "$(fbhash "$WORK/desk.pgm")"
+fi
+
+if [ "$MODE" = update ]; then
+    printf '%s' "$recorded" > "$GOLDEN"
+    echo "recorded $(wc -l < "$GOLDEN") fingerprints in $GOLDEN"
+    exit 0
+fi
+
+if [ $fails -gt 0 ]; then
+    echo "$fails check(s) failed"
+    exit 1
+fi
+echo "all milestones match"
+
+# The milestones only ever compare four framebuffers, which says the machine
+# still boots but nothing about whether the OS still works once it has drawn
+# a screen. scripts/ostest covers that, so run it here too unless asked not to.
+if [ "$SKIP_OSTEST" != 1 ] && [ -x scripts/ostest ]; then
+    echo
+    if scripts/ostest; then :; else
+        echo "functional tests failed"
+        exit 1
+    fi
+fi

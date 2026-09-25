@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <application android:label="Magic Cap" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:enableOnBackInvokedCallback="true" android:allowBackup="false" android:supportsRtl="true">
+        <!--
+            The emulator is the app. There used to be a screen in front of it
+            that imported ROMs and listed them; the emulator has its own list
+            of devices now, and importing happens from inside it through the
+            system picker, so the extra screen was one more place to start
+            from and one more thing to keep in step.
+        -->
+        <activity android:name=".EmulatorActivity" android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|navigation|density|layoutDirection|locale"
+            android:screenOrientation="fullSensor" android:hardwareAccelerated="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,7 @@
+.gradle/
+.cxx/
+app/.cxx/
+app/build/
+build/
+deps/
+local.properties

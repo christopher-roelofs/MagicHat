@@ -1,0 +1,52 @@
+#!/bin/sh
+# Build the tested libslirp with its asynchronous SYN-options fix locally.
+# Does not install system files, edit the guest, or alter the main CMake cache.
+set -eu
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ "$#" -ne 0 ]; then
+    echo "Usage: scripts/build-slirp" >&2
+    echo "Requires git, meson, ninja, pkg-config and GLib development headers." >&2
+    echo "MESON may name a specific Meson executable." >&2
+    exit 2
+fi
+meson=${MESON:-meson}
+for tool in git "$meson" ninja pkg-config; do
+    command -v "$tool" >/dev/null || { echo "Missing build dependency: $tool" >&2; exit 1; }
+done
+pkg-config --exists glib-2.0 || { echo "Missing GLib development headers (libglib2.0-dev)." >&2; exit 1; }
+src="$repo/build/slirp-source"
+bld="$repo/build/slirp-fixed-build"
+prefix="$repo/build/slirp-fixed"
+patch="$repo/patches/libslirp-4.7.0-syn-mss.patch"
+commit=3ad1710a96678fe79066b1469cead4058713a1d9
+if [ ! -d "$src" ]; then
+    mkdir -p "$repo/build"
+    git clone --depth 1 --branch v4.7.0 https://qemu.googlesource.com/libslirp "$src"
+fi
+[ "$(git -C "$src" rev-parse HEAD)" = "$commit" ] || {
+    echo "Unexpected libslirp revision in $src; leaving it untouched." >&2; exit 1;
+}
+if git -C "$src" diff --quiet HEAD; then
+    git -C "$src" apply --check "$patch"
+    git -C "$src" apply "$patch"
+else
+    # Accept exactly our existing patch on reruns; preserve unrelated edits.
+    git -C "$src" diff --no-ext-diff --binary HEAD | cmp - "$patch" || {
+        echo "Unexpected libslirp edits in $src; leaving them untouched." >&2; exit 1;
+    }
+fi
+if [ -f "$bld/meson-private/coredata.dat" ]; then
+    "$meson" setup --reconfigure "$bld" "$src" --prefix "$prefix" --libdir lib -Dversion_suffix=-mrc-mss1
+else
+    "$meson" setup "$bld" "$src" --prefix "$prefix" --libdir lib -Dversion_suffix=-mrc-mss1
+fi
+"$meson" compile -C "$bld"
+"$meson" install -C "$bld"
+cat <<EOF
+Built libslirp with the SYN-options fix in $prefix.
+From the repository root, configure the emulator with:
+  PKG_CONFIG_PATH="\$PWD/build/slirp-fixed/lib/pkgconfig" cmake -S . -B build -U 'SLIRP_*' -U '__pkg_config_checked_SLIRP' -U 'pkgcfg_lib_SLIRP_*'
+  cmake --build build -j
+  ctest --test-dir build --output-on-failure
+The cache removals make CMake discover this library instead of an older one.
+EOF

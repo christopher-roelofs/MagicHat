@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'org.magicrecomp.app'
+    compileSdk 35
+    ndkVersion '27.2.12479018'
+    defaultConfig {
+        applicationId 'org.magicrecomp.app'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1-test'
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild { cmake {
+            arguments '-DANDROID_STL=c++_static', '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+            targets 'mcap', 'SDL2'
+        } }
+    }
+    externalNativeBuild { cmake { path '../CMakeLists.txt'; version '3.22.1' } }
+    sourceSets.main.java.srcDir '../deps/SDL2-2.32.10/android-project/app/src/main/java'
+    buildTypes {
+        debug { debuggable true }
+        release { minifyEnabled false }
+    }
+}

@@ -1,0 +1,3 @@
+audio.desk_sample_count 14336
+keyboard.hello 19b57d7110429afd
+monitor.checksum 4_718c380b

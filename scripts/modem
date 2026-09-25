@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""A Hayes/PPP protocol probe connected to a host serial port or PTY.
+
+This is not a working DataRover Internet device. Its documented modem paths
+are the internal fax modem, a Magic Bus accessory, or a modem PC Card.
+Attaching this probe to UART A does not supply any of those interfaces.
+See docs/NETWORKING.md for the corrected NE2000 plan.
+
+It speaks plain Hayes. These come straight out of the ROM's string table:
+
+    ATE0V1W2  ATE0V1&d2W2  ATE0V0X4  AT\\N0  ATI0  ATL<n>  ATD  ATDT
+
+and it expects the word responses OK, CONNECT, BUSY, ERROR, NO CARRIER,
+NO ANSWER and RING.
+
+So this answers as a modem would, and once it has said CONNECT the bytes
+after that are PPP -- which the ROM also has, with its own configuration UI
+("Enter your PPP dialup account name:"). Actual guest connectivity still
+requires a model of one of the supported hardware interfaces.
+
+Usage:  mcap --serial a           # prints a pty path
+        scripts/modem <pty>       # answer as a modem on it
+
+68k: --serial a is an opt-in MC68349 channel-A probe. PIC-2000 exchanges
+Hayes initialization commands on it; modem power/carrier and an IP backend
+remain unimplemented. Voice ATD...; is refused.
+
+Right now this is deliberately an *observer* that can hold a conversation: it
+answers the init strings and says CONNECT when dialled, then reports what
+arrives rather than pretending to be a peer. What arrives should be PPP LCP
+Configure-Request frames, and seeing them is the thing that proves the
+channel before any of PPP is written.
+"""
+import argparse
+import os
+import select
+import sys
+import termios
+import time
+import tty
+
+# Hayes result codes, by the numeric form ATV0 selects.
+VERBOSE = {0: 'OK', 1: 'CONNECT', 2: 'RING', 3: 'NO CARRIER', 4: 'ERROR',
+           6: 'NO DIALTONE', 7: 'BUSY', 8: 'NO ANSWER'}
+
+PPP_FLAG = 0x7E
+
+
+class Modem:
+    def __init__(self, path, quiet=False):
+        self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        try:
+            tty.setraw(self.fd, termios.TCSANOW)
+        except BaseException:
+            os.close(self.fd)
+            raise
+        self.quiet = quiet
+        self.line = bytearray()
+        self.data_mode = False
+        self.echo = True          # ATE0 turns it off; the ROM always does
+        self.verbose = True       # ATV0 selects numeric result codes
+        self.rx = bytearray()     # data-mode bytes, framed on 0x7E
+        self.frames = 0
+        self.saw_anything = False
+
+    def close(self):
+        os.close(self.fd)
+
+    # -- wire ------------------------------------------------------------
+    def write(self, data):
+        while data:
+            _, wr, _ = select.select([], [self.fd], [], 1.0)
+            if not wr:
+                return
+            n = os.write(self.fd, data)
+            data = data[n:]
+
+    def reply(self, code):
+        """Result codes are framed CR LF <text> CR LF, or CR LF <digit> CR."""
+        if self.verbose:
+            self.write(b'\r\n' + VERBOSE[code].encode() + b'\r\n')
+        else:
+            self.write(b'\r\n' + str(code).encode() + b'\r')
+        if not self.quiet:
+            print(f'  -> {VERBOSE[code]}', flush=True)
+
+    # -- command mode ----------------------------------------------------
+    def command(self, line):
+        text = line.decode('ascii', 'replace').strip()
+        if not self.quiet:
+            print(f'  <- {text}', flush=True)
+
+        up = text.upper()
+        if not up.startswith('AT'):
+            return                      # not addressed to a modem; stay quiet
+        body = up[2:]
+
+        # The ROM's init strings bundle several settings in one line. Honour
+        # the two that change how we must talk back, and accept the rest.
+        i = 0
+        while i < len(body):
+            c = body[i]
+            if c in ('&', '\\', '%'):
+                # Extended commands are a prefix plus a command letter.
+                # In particular &D2 is DTR policy, not ATD (dial), and %E0
+                # must not change the command echo setting.
+                i += 2
+                while i < len(body) and body[i].isdigit():
+                    i += 1
+            elif c == 'E':
+                self.echo = body[i + 1:i + 2] != '0'
+                i += 2
+            elif c == 'V':
+                self.verbose = body[i + 1:i + 2] != '0'
+                i += 2
+            elif c in 'D':
+                number = body[i + 1:].lstrip('T P , W @'.replace(' ', ''))
+                # The Phone application's ATD...; is a voice dial, not a
+                # request to enter a data connection. This probe has no
+                # voice line; refuse it instead of claiming a PPP carrier.
+                if ';' in number:
+                    self.reply(4)
+                    return
+                if not self.quiet:
+                    print(f'  dialling {number or "(no number)"}', flush=True)
+                # A real modem takes a moment, and software that watches for
+                # a too-quick answer is not unheard of.
+                time.sleep(0.3)
+                self.reply(1)           # CONNECT
+                self.data_mode = True
+                print('modem: carrier up; anything after this is data',
+                      flush=True)
+                return
+            else:
+                i += 1
+
+        self.reply(0)                   # OK
+
+    # -- data mode -------------------------------------------------------
+    def data(self, chunk):
+        self.rx += chunk
+        # PPP frames are delimited by 0x7E. Report each one; that is the
+        # evidence that the guest is speaking PPP rather than anything else.
+        while True:
+            try:
+                a = self.rx.index(PPP_FLAG)
+                b = self.rx.index(PPP_FLAG, a + 1)
+            except ValueError:
+                return
+            frame = bytes(self.rx[a + 1:b])
+            del self.rx[:b]
+            if not frame:
+                continue
+            self.frames += 1
+            if not self.quiet:
+                print(f'  PPP frame {self.frames}: {len(frame)} bytes  '
+                      f'{frame[:16].hex()}', flush=True)
+
+    def pump(self):
+        rd, _, _ = select.select([self.fd], [], [], 0.2)
+        if not rd:
+            return
+        try:
+            chunk = os.read(self.fd, 4096)
+        except BlockingIOError:
+            return
+        if not chunk:
+            raise EOFError('serial peer disconnected')
+
+        if not self.saw_anything:
+            self.saw_anything = True
+            print(f'modem: first byte from the guest after '
+                  f'{time.monotonic() - self.t0:.1f}s', flush=True)
+
+        if self.data_mode:
+            self.data(chunk)
+            return
+
+        if self.echo:
+            self.write(chunk)
+        for b in chunk:
+            if b in (13, 10):
+                if self.line:
+                    self.command(bytes(self.line))
+                    self.line.clear()
+            else:
+                self.line.append(b)
+                if len(self.line) > 255:
+                    self.line.clear()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('port', help='pty printed by mcap --serial')
+    ap.add_argument('--quiet', action='store_true')
+    ap.add_argument('--seconds', type=float, default=0,
+                    help='give up after this long with nothing heard')
+    args = ap.parse_args()
+
+    m = Modem(args.port, args.quiet)
+    m.t0 = time.monotonic()
+    print(f'modem: listening on {args.port}', flush=True)
+    try:
+        while True:
+            m.pump()
+            if args.seconds and not m.saw_anything and \
+               time.monotonic() - m.t0 > args.seconds:
+                print('modem: nothing heard; the guest never dialled',
+                      flush=True)
+                return 1
+    except KeyboardInterrupt:
+        return 130
+    except (OSError, EOFError) as exc:
+        print(f'modem: {exc}', file=sys.stderr)
+        return 1
+    finally:
+        m.close()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

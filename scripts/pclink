@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""PC end of Magic Cap's serial package link.
+
+UART transport: a single guest-originated ChMa greeting, then blocks of
+1..256 bytes, each prefixed by a big-endian uint16 length and followed by
+CRC-32 (initial all ones, no final complement). The block data is a stream
+with data bytes 0x0e/0x0f/0x10 quoted by 0x10; unescaped 0x0e/0x0f are
+end/abort controls. Commands are tag + uint32 length + payload.
+
+Sources: WinPcLink.exe 0x401050/0x401120 (escaping), 0x401eb0 (CRC),
+0x4020f0/0x4022c0 (blocks), 0x40139c..0x401404 (two Cntd replies),
+0x401810 (command framing), 0x401600 (SPkg),
+0x402b30..0x402d46 (package bytes + four-byte zero trailer).
+Guest ROM 0x83e810f0 reads the eight-byte command header; 0x83e82788 builds
+the guest-to-host MPkg record.
+"""
+import argparse
+from collections import deque
+import os
+from pathlib import Path
+import select
+import struct
+import sys
+import termios
+import time
+import tty
+import zlib
+
+MAGIC = b"ChMa"
+BLOCK_MAX = 256
+PAYLOAD_MAX = 1028
+INCOMING_INFO_SIZE = 520
+
+
+class ProtocolError(Exception):
+    pass
+
+
+def crc(data):
+    return zlib.crc32(data) ^ 0xffffffff
+
+
+def encode(data):
+    """Quote stream bytes, then split into independently checked blocks."""
+    quoted = bytearray()
+    for b in data:
+        if b in (14, 15, 16):
+            quoted.append(16)
+        quoted.append(b)
+    wire = bytearray()
+    for i in range(0, len(quoted), BLOCK_MAX):
+        block = quoted[i:i + BLOCK_MAX]
+        wire += struct.pack('>H', len(block)) + block + struct.pack('>I', crc(block))
+    return bytes(wire)
+
+
+def frame(tag, payload=b''):
+    if len(tag) != 4:
+        raise ValueError('command tag must be four bytes')
+    return encode(tag + struct.pack('>I', len(payload)) + payload)
+
+
+class Decoder:
+    def __init__(self, greeting=True):
+        self.wire = bytearray()
+        self.stream = bytearray()
+        self.controls = deque()
+        self.greeting = greeting
+        self.escaped = False
+
+    def feed(self, data):
+        self.wire += data
+        if self.greeting:
+            i = self.wire.find(MAGIC)
+            if i < 0:
+                self.wire[:] = self.wire[-3:]
+                return
+            del self.wire[:i + 4]
+            self.greeting = False
+        while len(self.wire) >= 2:
+            n = struct.unpack_from('>H', self.wire)[0]
+            if not 1 <= n <= BLOCK_MAX:
+                raise ProtocolError(f'invalid transport block length {n}')
+            if len(self.wire) < n + 6:
+                return
+            block = self.wire[2:2 + n]
+            expected = struct.unpack_from('>I', self.wire, n + 2)[0]
+            if crc(block) != expected:
+                raise ProtocolError(f'CRC mismatch: received {expected:08x}, calculated {crc(block):08x}')
+            del self.wire[:n + 6]
+            for b in block:
+                if self.escaped:
+                    if b not in (14, 15, 16):
+                        raise ProtocolError(f'invalid escaped byte {b:02x}')
+                    self.stream.append(b)
+                    self.escaped = False
+                elif b == 16:
+                    self.escaped = True
+                elif b in (14, 15):
+                    self.controls.append((len(self.stream), b))
+                else:
+                    self.stream.append(b)
+
+    def _consume(self, n):
+        del self.stream[:n]
+        self.controls = deque((offset - n, value)
+                              for offset, value in self.controls)
+
+    def take_to_control(self):
+        """Return available stream data and a following raw control byte."""
+        if not self.controls:
+            data = bytes(self.stream)
+            self._consume(len(data))
+            return data, None
+        n, control = self.controls.popleft()
+        data = bytes(self.stream[:n])
+        self._consume(n)
+        return data, control
+
+    def next_frame(self):
+        if self.controls and self.controls[0][0] < 8:
+            raise ProtocolError(f'unexpected stream control {self.controls[0][1]:02x}')
+        if len(self.stream) < 8:
+            return None
+        tag = bytes(self.stream[:4])
+        n = struct.unpack_from('>I', self.stream, 4)[0]
+        if n > PAYLOAD_MAX:
+            raise ProtocolError(f'{tag!r} declares an oversized payload: {n}')
+        if len(self.stream) < n + 8:
+            return None
+        if self.controls and self.controls[0][0] < n + 8:
+            raise ProtocolError(f'stream control inside {tag!r} command')
+        payload = bytes(self.stream[8:8 + n])
+        self._consume(8 + n)
+        return tag, payload
+
+
+def package_offer(path):
+    data = path.read_bytes()
+    if not data or len(data) > 0xffffffff:
+        raise ValueError('package size is outside the protocol range')
+    name = path.stem.encode('utf-16-be')
+    if len(name) > 996:
+        raise ValueError('package name is too long')
+    # Fixed 1028-byte metadata record constructed by WinPcLink 0x401600.
+    info = struct.pack('>8I', len(data), len(data), 0, 0, 0, 0x80000000, 0, len(name) // 2)
+    return (info + name).ljust(PAYLOAD_MAX, b'\0'), data
+
+
+def incoming_package_info(payload):
+    """Decode the fixed record built by guest ROM 0x83e82788."""
+    if len(payload) != INCOMING_INFO_SIZE:
+        raise ProtocolError(f'incoming package has {len(payload)} metadata bytes; expected {INCOMING_INFO_SIZE}')
+    reserved, name_chars = struct.unpack_from('>2I', payload)
+    if reserved:
+        raise ProtocolError(f'incoming package reserved field is {reserved:#x}')
+    if name_chars > 256:
+        raise ProtocolError(f'incoming package name has {name_chars} characters')
+    chars = payload[8:8 + name_chars * 2]
+    try:
+        name = chars.decode('utf-16-be')
+    except UnicodeDecodeError as exc:
+        raise ProtocolError('incoming package name is not valid UTF-16BE') from exc
+    return name
+
+
+def safe_package_name(name):
+    name = ''.join('_' if c in '/\\' or ord(c) < 32 else c for c in name)
+    name = name.strip(' .') or 'PcLink'
+    if not name.lower().endswith(('.package', '.pkg')):
+        name += '.package'
+    return name
+
+
+class IncomingPackage:
+    def __init__(self, directory, payload):
+        name = incoming_package_info(payload)
+        directory.mkdir(parents=True, exist_ok=True)
+        candidate = directory / safe_package_name(name)
+        stem, suffix = candidate.stem, candidate.suffix
+        number = 2
+        while candidate.exists() or candidate.with_suffix(candidate.suffix + '.part').exists():
+            candidate = directory / f'{stem} ({number}){suffix}'
+            number += 1
+        self.path = candidate
+        self.partial = candidate.with_suffix(candidate.suffix + '.part')
+        self.file = self.partial.open('xb')
+        self.received = 0
+
+    def write(self, data):
+        self.file.write(data)
+        self.received += len(data)
+
+    def finish(self, control):
+        if control != 14:
+            raise ProtocolError(f'{self.path.name} ended with stream control {control:02x}')
+        if not self.received:
+            raise ProtocolError(f'{self.path.name} contains no package data')
+        self.file.close()
+        self.file = None
+        self.partial.replace(self.path)
+        return self.path
+
+    def abort(self):
+        if self.file is not None:
+            self.file.close()
+            self.file = None
+        try:
+            self.partial.unlink()
+        except FileNotFoundError:
+            pass
+
+
+class Link:
+    def __init__(self, path, quiet=False):
+        self.quiet = quiet
+        self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        try:
+            tty.setraw(self.fd, termios.TCSANOW)
+        except BaseException:
+            os.close(self.fd)
+            raise
+        self.decoder = Decoder()
+        self.pending = bytearray()
+        self.written = 0
+        self.report_every = 0
+        self.next_report = 0
+
+    def close(self):
+        os.close(self.fd)
+
+    def send(self, tag, payload=b''):
+        self.pending += frame(tag, payload)
+        if not self.quiet and tag not in (b'Ping', b'Pong'):
+            print(f'  -> {tag.decode("ascii", "backslashreplace")} ({len(payload)} bytes)', flush=True)
+
+    def confirm_connection(self):
+        # WinPcLink 0x40139c..0x401404 sends Cntd twice. The guest waits
+        # twice on its connection event (ROM 0x83e82074..0x83e82090).
+        # One reply starts command processing but leaves the second wait
+        # to time out after 20 seconds, closing UART during large transfers.
+        self.send(b'Cntd')
+        self.send(b'Cntd')
+
+    def goodbye(self, timeout=5.0):
+        """Abort outstanding work, say GBye, and let the guest process it.
+
+        WinPcLink's shutdown routines at 0x401770 and 0x402820 send Abrt
+        immediately before GBye, then close the transport. GBye alone makes
+        the guest report that data was lost. The guest does not reply with a
+        GBye, so the wait simply gives its asynchronous handler time to run.
+        """
+        self.send(b'Abrt')
+        self.send(b'GBye')
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            try:
+                self.pump()
+            except (OSError, EOFError):
+                return False
+            while (f := self.decoder.next_frame()) is not None:
+                if f[0] == b'GBye':
+                    return True
+        return False
+
+    def pump(self, timeout=.05):
+        rd, wr, _ = select.select([self.fd], [self.fd] if self.pending else [], [], timeout)
+        if wr:
+            try:
+                n = os.write(self.fd, self.pending[:4096])
+                del self.pending[:n]
+                self.written += n
+                if self.report_every and self.written >= self.next_report:
+                    self.next_report = self.written + self.report_every
+                    print(f'pclink: {self.written} bytes on the wire, '
+                          f'{len(self.pending)} still queued', flush=True)
+            except BlockingIOError:
+                pass
+        if rd:
+            try:
+                data = os.read(self.fd, 4096)
+            except BlockingIOError:
+                return
+            if not data:
+                raise EOFError('serial peer disconnected')
+            self.decoder.feed(data)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('port', help='PTY printed by mcap --serial a')
+    ap.add_argument('--send', type=Path, help='package to send after connection')
+    ap.add_argument('--receive', type=Path, default=Path('.'), metavar='DIR',
+                    help='save packages sent by the guest in DIR (default: current directory)')
+    ap.add_argument('--quiet', action='store_true', help='hide command logging')
+    ap.add_argument('--hangup', action='store_true',
+                    help='say GBye and exit once a sent package is acknowledged')
+    args = ap.parse_args()
+    link = None
+    connected = False
+    incoming = None
+    try:
+        offered = package_offer(args.send) if args.send else None
+        link = Link(args.port, args.quiet)
+        print(f'pclink: listening on {args.port}; tap the computer in the Storeroom', flush=True)
+        connected = False
+        next_ping = 0
+        awaiting_transfer = False
+        while True:
+            link.pump()
+            while True:
+                if incoming is not None:
+                    data, control = link.decoder.take_to_control()
+                    incoming.write(data)
+                    if control is None:
+                        break
+                    saved = incoming.finish(control)
+                    print(f'pclink: received {saved.name} ({saved.stat().st_size} bytes)', flush=True)
+                    incoming = None
+                    continue
+                f = link.decoder.next_frame()
+                if f is None:
+                    break
+                tag, payload = f
+                if not args.quiet and tag not in (b'Ping', b'Pong'):
+                    print(f'  <- {tag.decode("ascii", "backslashreplace")} ({len(payload)} bytes)', flush=True)
+                if tag == b'Cnct':
+                    link.confirm_connection()
+                    connected = True
+                    next_ping = time.monotonic() + 1
+                    if offered:
+                        info, data = offered
+                        link.send(b'SPkg', info)
+                        link.pending += encode(data + bytes(4))
+                        print(f'pclink: queued {args.send.name} ({len(data)} bytes); guest installation is not yet confirmed', flush=True)
+                        offered = None
+                        awaiting_transfer = True
+                        link.report_every = 8192
+                        link.next_report = link.written + 8192
+                elif tag == b'Ping':
+                    link.send(b'Pong')
+                elif tag == b'Pong' and awaiting_transfer:
+                    print('pclink: guest resumed command processing after the transfer; check its Storeroom for the package', flush=True)
+                    awaiting_transfer = False
+                    if args.hangup:
+                        return 0
+                elif tag == b'GBye':
+                    connected = False
+                    return 0
+                elif tag == b'Abrt':
+                    if not args.quiet:
+                        print('pclink: guest aborted the current operation', flush=True)
+                    connected = False
+                    return 0
+                elif tag in (b'MPkg', b'SPkg'):
+                    incoming = IncomingPackage(args.receive, payload)
+                    print(f'pclink: receiving {incoming.path.name}', flush=True)
+                elif tag in (b'APkg', b'Free', b'Flsh', b'Baud'):
+                    # WinPcLink recognizes these notifications, consumes their
+                    # payloads, and deliberately takes no application action.
+                    if not args.quiet:
+                        print(f'pclink: accepted {tag.decode()} notification', flush=True)
+            if connected and not link.pending and time.monotonic() >= next_ping:
+                link.send(b'Ping')
+                next_ping = time.monotonic() + 1
+    except KeyboardInterrupt:
+        return 130
+    except (OSError, EOFError, ValueError, ProtocolError) as exc:
+        print(f'pclink: {exc}', file=sys.stderr)
+        return 1
+    finally:
+        if incoming is not None:
+            incoming.abort()
+        if link is not None:
+            if connected:
+                link.goodbye()
+            link.close()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

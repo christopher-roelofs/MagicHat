@@ -1,0 +1,75 @@
+#define _DEFAULT_SOURCE
+#define _XOPEN_SOURCE 600
+#include "host/serial.h"
+#include "host/pclink.h"
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <termios.h>
+#include <unistd.h>
+
+bool mrc_serial_open_pty(mrc_serial *s)
+{
+    memset(s, 0, sizeof(*s));
+    s->fd = posix_openpt(O_RDWR | O_NOCTTY);
+    if (s->fd < 0 || grantpt(s->fd) || unlockpt(s->fd)) {
+        fprintf(stderr, "serial: cannot open a pty\n");
+        if (s->fd >= 0) close(s->fd);
+        s->fd = -1;
+        return false;
+    }
+
+    const char *name = ptsname(s->fd);
+    if (!name) {
+        close(s->fd);
+        s->fd = -1;
+        return false;
+    }
+    snprintf(s->path, sizeof(s->path), "%s", name);
+
+    /*
+     * Raw: no echo, no line discipline, no CR/LF translation. This carries a
+     * binary protocol, and a terminal helpfully rewriting bytes would corrupt
+     * it in ways that look like a flaky cable.
+     */
+    struct termios t;
+    if (tcgetattr(s->fd, &t) == 0) {
+        cfmakeraw(&t);
+        tcsetattr(s->fd, TCSANOW, &t);
+    }
+    fcntl(s->fd, F_SETFL, O_NONBLOCK);
+
+    fprintf(stderr, "serial: UART available at %s\n", s->path);
+    return true;
+}
+
+void mrc_serial_close(mrc_serial *s)
+{
+    if (s->fd >= 0)
+        close(s->fd);
+    s->fd = -1;
+}
+
+void mrc_serial_attach(mrc_serial *s, mrc_pclink *peer)
+{
+    *s = (mrc_serial){ .fd = -1, .peer = peer };
+}
+
+bool mrc_serial_read(mrc_serial *s, uint8_t *byte)
+{
+    if (s->peer) return mrc_pclink_to_guest(s->peer, byte);
+    if (s->fd < 0)
+        return false;
+    return read(s->fd, byte, 1) == 1;
+}
+
+void mrc_serial_write(mrc_serial *s, uint8_t byte)
+{
+    if (s->peer) { mrc_pclink_from_guest(s->peer, byte); return; }
+    if (s->fd < 0)
+        return;
+    ssize_t n = write(s->fd, &byte, 1);
+    (void)n;    /* nothing sensible to do if the other end has gone away */
+}

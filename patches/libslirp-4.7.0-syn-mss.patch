@@ -1,0 +1,18 @@
+diff --git a/src/tcp_input.c b/src/tcp_input.c
+index ecca972..28376a1 100644
+--- a/src/tcp_input.c
++++ b/src/tcp_input.c
+@@ -230,6 +230,13 @@ void tcp_input(struct mbuf *m, int iphlen, struct socket *inso,
+         m = so->so_m;
+         so->so_m = NULL;
+         ti = so->so_ti;
++        /* The initial input validated the TCP header and retained its mbuf
++         * while connect() was pending. Restore the SYN options as well as
++         * the header: cont_input must negotiate the peer's MSS on this path
++         * just as it does for an immediately successful connect(). */
++        optlen = (ti->ti_off << 2) - sizeof(struct tcphdr);
++        if (optlen > 0)
++            optp = (char *)ti + sizeof(struct tcpiphdr);
+         tiwin = ti->ti_win;
+         tiflags = ti->ti_flags;
+ 

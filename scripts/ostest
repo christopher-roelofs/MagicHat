@@ -1,0 +1,450 @@
+#!/bin/sh
+#
+# Functional tests: exercise the operating system, not just the boot path.
+#
+#   scripts/ostest             run everything
+#   scripts/ostest --update    re-record the fingerprints
+#   scripts/ostest <pattern>   run only tests whose name matches
+#
+# scripts/regress proves the machine still walks from cold ROM to the Desk.
+# That is a strong check and a narrow one: it only ever looks at four
+# framebuffers, so anything the OS does *after* it has drawn a screen is
+# invisible to it. Every bug that cost real time in this project was of that
+# second kind -- touch dispatched but nothing rendered, sound played but the
+# codec interrupt was dropped, the machine alive but ignoring input.
+#
+# So these tests drive the OS through its own interfaces (the monitor's
+# command language, the touch panel, the sound DMA) and assert on what comes
+# back. They run from the banked states, so the whole suite is about a minute
+# rather than the two and a half that a cold walk costs.
+#
+# Each case can also record coverage (--coverage), which turns the suite into
+# a map of which ROM code implements which behaviour.
+set -e
+cd "$(dirname "$0")/.."
+
+ROM=roms/MagicCap-USA.image
+GOLDEN=tests/golden/ostest.txt
+MCAP=${MCAP:-./build/mcap}
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+MODE=run
+FILTER=
+COVDIR=
+while [ $# -gt 0 ]; do
+    case $1 in
+        --update)   MODE=update ;;
+        --coverage) COVDIR=${2:-tests/coverage}; shift ;;
+        *)          FILTER=$1 ;;
+    esac
+    shift
+done
+
+[ -f "$ROM" ] || { echo "SKIP: $ROM not present"; exit 0; }
+[ -x "$MCAP" ] || { echo "FAIL: $MCAP not built"; exit 1; }
+[ -n "$COVDIR" ] && mkdir -p "$COVDIR"
+
+fails=0
+ran=0
+recorded=""
+
+want_test() {
+    [ -z "$FILTER" ] && return 0
+    case $1 in *"$FILTER"*) return 0 ;; *) return 1 ;; esac
+}
+
+# fingerprint <name> <value> -- compare against, or record, a golden value
+fingerprint() {
+    ran=$((ran + 1))
+    if [ "$MODE" = update ]; then
+        recorded="$recorded$1 $2
+"
+        echo "  record  $1 = $2"
+        return
+    fi
+    want=$(awk -v n="$1" '$1 == n { print $2 }' "$GOLDEN" 2>/dev/null)
+    if [ -z "$want" ]; then
+        echo "  FAIL    $1 has no recorded value (run --update)"
+        fails=$((fails + 1))
+    elif [ "$2" = "$want" ]; then
+        echo "  ok      $1"
+    else
+        echo "  FAIL    $1"
+        echo "            expected $want"
+        echo "            got      $2"
+        fails=$((fails + 1))
+    fi
+}
+
+# claim <name> <ok?> <detail> -- assert a boolean the golden file cannot drift on
+claim() {
+    ran=$((ran + 1))
+    [ "$MODE" = update ] && { echo "  (skip)  $1"; return; }
+    if [ "$2" = yes ]; then
+        echo "  ok      $1"
+    else
+        echo "  FAIL    $1: $3"
+        fails=$((fails + 1))
+    fi
+}
+
+cov_args() {
+    [ -n "$COVDIR" ] && printf -- '--coverage %s/%s.bin' "$COVDIR" "$1"
+}
+
+fbhash() { sha256sum "$1" | cut -c1-16; }
+
+# ---------------------------------------------------------------------------
+# The monitor's command language.
+#
+# These run the ROM's own debug monitor, which reaches the CPU identification,
+# the memory map and the codec over the SIB. They are the cheapest way to ask
+# the firmware whether a device model still looks right from the inside.
+# ---------------------------------------------------------------------------
+
+mon() {   # mon <name> <command>
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/monitor.state --input "$2\n" \
+        -n 40000000 $(cov_args "$1") >"$WORK/$1.out" 2>"$WORK/$1.err" || true
+}
+
+if want_test monitor; then
+    echo "monitor command language"
+
+    mon monitor.core 'core'
+    grep -q 'Toshiba Core - id: 0x2200' "$WORK/monitor.core.out" \
+        && r=yes || r=no
+    claim monitor.core "$r" "core did not report the TMPR3902U's PRId"
+
+    # A word dump of the reset vector. Proves the ROM is mapped, big-endian,
+    # and readable through the OS's own accessor rather than only ours.
+    mon monitor.dump 'd -w 83c00000 83c00010'
+    grep -q 'MONITOR' "$WORK/monitor.dump.out" && r=yes || r=no
+    claim monitor.dump "$r" "word dump of the reset vector lost its banner"
+
+    # Checksums over a fixed ROM span: a value the firmware computes itself,
+    # so it covers the whole read path and not just one word.
+    mon monitor.checksum 'cs 83c00000 100'
+    fingerprint monitor.checksum \
+        "$(grep -c 'Checksum for byte' "$WORK/monitor.checksum.out")_$(md5sum < "$WORK/monitor.checksum.out" | cut -c1-8)"
+
+    # Betty is the UCB1100 on the SIB. Dumping its registers exercises the
+    # codec transaction path that touch and sound both depend on.
+    mon monitor.betty 'dbr'
+    grep -q 'Betty reg' "$WORK/monitor.betty.out" && r=yes || r=no
+    claim monitor.betty "$r" "dbr produced no codec registers"
+fi
+
+# ---------------------------------------------------------------------------
+# Touch.
+#
+# The assertion is always "the screen changed", never a fixed hash: what the
+# Desk draws in response is the OS's business, but that it responds at all is
+# ours. A fixed hash here would have to be re-recorded on every unrelated
+# change and would stop meaning anything.
+# ---------------------------------------------------------------------------
+
+desk_run() {   # desk_run <name> <extra args...>
+    name=$1; shift
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 150000000 \
+        --dump-fb "$WORK/$name.pgm" $(cov_args "$name") "$@" \
+        >"$WORK/$name.out" 2>"$WORK/$name.err" || true
+}
+
+if want_test touch; then
+    echo "touch"
+    desk_run touch.idle
+    desk_run touch.tap --tap-px 240 160 20000000 --tap-hold 20000000
+    [ "$(fbhash "$WORK/touch.idle.pgm")" != "$(fbhash "$WORK/touch.tap.pgm")" ] \
+        && r=yes || r=no
+    claim touch.tap_redraws "$r" "a tap on the Desk changed nothing on screen"
+
+    # The bug this suite exists for. With sound enabled the OS power-cycles
+    # the SIB, and the codec interrupt used to be discarded while the bus was
+    # down -- so touch worked for a few seconds after boot and then died.
+    desk_run touch.audio_idle --audio-wav "$WORK/ai.wav"
+    desk_run touch.audio_tap --audio-wav "$WORK/at.wav" \
+        --tap-px 240 160 100000000 --tap-hold 20000000
+    [ "$(fbhash "$WORK/touch.audio_idle.pgm")" != "$(fbhash "$WORK/touch.audio_tap.pgm")" ] \
+        && r=yes || r=no
+    claim touch.tap_redraws_late_with_audio "$r" \
+        "a late tap with sound enabled changed nothing (codec IRQ dropped?)"
+
+    # The former GPIO8/hash assertions did not test the ROM's Option-key
+    # query. IO3 press/release and scheduling are covered by datarover_boot;
+    # the guest card-reformat procedure in docs/STORAGE.md exercises Option
+    # through the stock ROM, including its direct hardware query.
+
+fi
+
+# ---------------------------------------------------------------------------
+# The on-screen keyboard.
+#
+# This suite exercises the onscreen keyboard; external MBUS keyboard tests
+# are separate. scripts/type turns a string into a tap sequence from a
+# measured key map. This checks the map still lands on the right keys, which
+# a change to the panel geometry or the touch calibration would break
+# silently -- the taps would still happen, just on the wrong letters.
+#
+# The Datebook's day view is the cheap way to a focused field: the ROM says
+# "in the day view, you can make a new appointment quickly just by typing on
+# the keyboard", and it is one tap from the Desk.
+
+if want_test keyboard; then
+    echo "on-screen keyboard"
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+        -n 700000000 --tap-hold 20000000 \
+        --taps-px "435,160,60000000;$(scripts/type --at 150000000 HELLO)" \
+        --dump-fb "$WORK/kbd.typed.pgm" $(cov_args kbd.typed) \
+        >/dev/null 2>&1 || true
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+        -n 700000000 --tap-hold 20000000 \
+        --taps-px "435,160,60000000;365,298,150000000" \
+        --dump-fb "$WORK/kbd.blank.pgm" >/dev/null 2>&1 || true
+
+    [ "$(fbhash "$WORK/kbd.typed.pgm")" != "$(fbhash "$WORK/kbd.blank.pgm")" ] \
+        && r=yes || r=no
+    claim keyboard.typing_reaches_the_field "$r" \
+        "typing on the on-screen keyboard changed nothing on screen"
+
+    fingerprint keyboard.hello "$(fbhash "$WORK/kbd.typed.pgm")"
+fi
+
+# ---------------------------------------------------------------------------
+# The battery gauge.
+#
+# Magic Cap draws a gauge in its title bar and it tracks AD2, which makes it
+# the only continuous instrument we have for anything analogue. It had no
+# coverage at all, and the reason to add it is that the same question keeps
+# coming back: whether a battery reading is getting through.
+#
+# The trap is the sampling period. The OS reads the battery about every eight
+# seconds of emulated time and repaints only then, so a short run shows the
+# value the snapshot was banked with no matter what AD2 is set to -- which
+# reads exactly like the setting being ignored. 600M instructions is about
+# 16 seconds, which is where a changed reading has reliably settled; 500M is
+# not enough. Do not shorten these without re-measuring that.
+
+if want_test battery; then
+    echo "battery gauge"
+    bat_run() {   # bat_run <name> <ad2>
+        $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+            -n 600000000 --aux-adc 0,0,$2,900 --dump-fb "$WORK/$1.pgm" \
+            $(cov_args "$1") >/dev/null 2>&1 || true
+    }
+    bat_run bat.empty 600
+    bat_run bat.part  700
+    bat_run bat.full  900
+
+    [ "$(fbhash "$WORK/bat.empty.pgm")" != "$(fbhash "$WORK/bat.full.pgm")" ] \
+        && r=yes || r=no
+    claim battery.gauge_tracks_ad2 "$r" \
+        "a flat battery and a full one drew the same screen (AD2 ignored?)"
+
+    [ "$(fbhash "$WORK/bat.part.pgm")" != "$(fbhash "$WORK/bat.empty.pgm")" ] \
+        && [ "$(fbhash "$WORK/bat.part.pgm")" != "$(fbhash "$WORK/bat.full.pgm")" ] \
+        && r=yes || r=no
+    claim battery.gauge_is_graded "$r" \
+        "a half-charged battery matched an end of the range, so the gauge is\
+ a threshold rather than a scale"
+
+    # The default has to be a healthy battery, or every headless run starts
+    # with Magic Cap complaining about power.
+    bat_run bat.default_check 900
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+        -n 600000000 --dump-fb "$WORK/bat.default.pgm" >/dev/null 2>&1 || true
+    [ "$(fbhash "$WORK/bat.default.pgm")" = "$(fbhash "$WORK/bat.full.pgm")" ] \
+        && r=yes || r=no
+    claim battery.default_is_healthy "$r" \
+        "with no --aux-adc the gauge did not match a full battery"
+fi
+
+# ---------------------------------------------------------------------------
+# Sound.
+#
+# Sample counts rather than audio hashes: the count tells us the DMA ring is
+# being walked at the rate we think it is, and comparing a tap against an idle
+# run tells us the OS still reacts to input by making noise.
+# ---------------------------------------------------------------------------
+
+if want_test audio; then
+    echo "sound"
+    idle=$(sed -n 's/^audio: \([0-9]*\) samples.*/\1/p' "$WORK/touch.audio_idle.err" 2>/dev/null)
+    tap=$(sed -n 's/^audio: \([0-9]*\) samples.*/\1/p' "$WORK/touch.audio_tap.err" 2>/dev/null)
+    [ -n "$idle" ] && [ "$idle" -gt 1000 ] && r=yes || r=no
+    claim audio.desk_plays_something "$r" "loading the Desk produced no samples ($idle)"
+
+    [ -n "$tap" ] && [ -n "$idle" ] && [ "$tap" -gt "$idle" ] && r=yes || r=no
+    claim audio.tap_makes_sound "$r" "a tap produced no extra audio (idle=$idle tap=$tap)"
+    fingerprint audio.desk_sample_count "$idle"
+
+    # The rate is programmed in SIBCTRL, not fixed, and getting it wrong is
+    # inaudible to every other check here: the ring is walked at whatever rate
+    # we claim, so the sample count barely moves. It was hardcoded at 22050
+    # while the machine asked for 11025, and everything played an octave high
+    # through a whole suite of passing tests. This reads the rate back out of
+    # the file we just wrote.
+    rate=$(python3 - "$WORK/ai.wav" <<'PYEOF'
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+i = d.find(b'fmt ')
+print(struct.unpack_from('<I', d, i + 12)[0] if i >= 0 else 0)
+PYEOF
+)
+    [ "${rate:-0}" -gt 22000 ] && [ "${rate:-0}" -lt 22300 ] && r=yes || r=no
+    claim audio.rate_matches_sibctrl "$r" \
+        "captured at ${rate:-0} Hz; SIBCTRL asks for SNDFSDIV 25, which yields ~11077 codec / ~22154 reconstructed Hz"
+fi
+
+# ---------------------------------------------------------------------------
+# Machine invariants.
+#
+# Cheap, broad, and independent of what the OS happens to draw. An unmodelled
+# register or a stray access shows up here long before it changes a
+# framebuffer, and these are the checks most likely to catch a device change
+# that "looks fine" on screen.
+# ---------------------------------------------------------------------------
+
+if want_test invariant; then
+    echo "machine invariants (idle at the Desk)"
+    e=$WORK/touch.idle.err
+
+    grep -q 'tx39: 0 undecoded reads, 0 undecoded writes' "$e" && r=yes || r=no
+    claim invariant.no_undecoded_mmio "$r" \
+        "$(grep '^tx39:' "$e") -- software touched a register we do not model"
+
+    grep -q '0 floating reads' "$e" && r=yes || r=no
+    claim invariant.no_floating_reads "$r" "$(grep '^bus:' "$e")"
+
+    grep -q '0 faults' "$e" && r=yes || r=no
+    claim invariant.no_bus_faults "$r" "$(grep '^bus:' "$e")"
+
+    grep -q '0 flash writes' "$e" && r=yes || r=no
+    claim invariant.no_flash_writes "$r" "the OS wrote to ROM"
+
+    irq=$(sed -n 's/.*enabled \[[^]]*\], \([0-9]*\) taken/\1/p' "$e")
+    [ -n "$irq" ] && [ "$irq" -gt 1000 ] && r=yes || r=no
+    claim invariant.interrupts_delivered "$r" "only ${irq:-0} interrupts taken"
+
+    exc=$(sed -n 's/^cpu: \([0-9]*\) exceptions.*/\1/p' "$e")
+    [ -n "$exc" ] && [ "$exc" -lt 100000 ] && r=yes || r=no
+    claim invariant.no_exception_storm "$r" "${exc:-?} exceptions while idle"
+
+    grep -q 'TLB was NOT used' "$e" && r=yes || r=no
+    claim invariant.no_tlb "$r" "this part has no TLB but one was used"
+fi
+
+# ---------------------------------------------------------------------------
+# The GUI's own input path.
+#
+# Separate from the tests above on purpose. Scripted --tap-px and an SDL mouse
+# click go through different code, and treating one as evidence for the other
+# is exactly how a GUI input bug survived a passing test run.
+# ---------------------------------------------------------------------------
+
+if want_test gui; then
+    echo "GUI input path"
+    gui_tap() {   # gui_tap <name> <at_frame> [extra args]
+        n=$1; at=$2; shift 2
+        SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy MRC_GUI_AUTOTAP=240,160,4,$at \
+            $MCAP --temporary --fresh --rom $ROM --load-state states/cleandesk.state --gui \
+            --no-host-battery --dump-fb "$WORK/$n.pgm" $(cov_args "$n") "$@" \
+            >"$WORK/$n.out" 2>"$WORK/$n.err" || true
+        SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+            $MCAP --temporary --fresh --rom $ROM --load-state states/cleandesk.state --gui \
+            --no-host-battery -n $(( (at + 274) * 614400 )) \
+            --dump-fb "$WORK/$n.base.pgm" \
+            >/dev/null 2>&1 || true
+    }
+
+    gui_tap gui.early 30
+    [ "$(fbhash "$WORK/gui.early.pgm")" != "$(fbhash "$WORK/gui.early.base.pgm")" ] \
+        && r=yes || r=no
+    claim gui.click_redraws "$r" "a window click changed nothing on screen"
+
+    gui_tap gui.late_audio 600 --audio
+    [ "$(fbhash "$WORK/gui.late_audio.pgm")" != "$(fbhash "$WORK/gui.late_audio.base.pgm")" ] \
+        && r=yes || r=no
+    claim gui.click_redraws_late_with_audio "$r" \
+        "a window click after 10s of sound-enabled idle did nothing"
+fi
+
+# ---------------------------------------------------------------------------
+# Snapshots.
+#
+# A snapshot is written by dumping the machine structs whole, so every host
+# pointer inside them lands in the file too. Restoring one means keeping an
+# address that belonged to whichever process saved it.
+# ---------------------------------------------------------------------------
+
+if want_test snapshot; then
+    echo "snapshots"
+
+    # Save with --coverage, then load without it. The coverage pointer used to
+    # survive the round trip, and every such load died in the coverage write.
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 20000000 \
+        --coverage "$WORK/snap.cov" --save-state "$WORK/snap.state" \
+        >/dev/null 2>&1 || true
+    if [ -f "$WORK/snap.state" ]; then
+        if $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/snap.state" -n 20000000 \
+                --dump-fb "$WORK/snap.pgm" >/dev/null 2>&1 &&
+           [ -f "$WORK/snap.pgm" ]; then r=yes; else r=no; fi
+        claim snapshot.reload_after_coverage "$r" \
+            "loading a state saved with --coverage failed (stale host pointer?)"
+    else
+        claim snapshot.reload_after_coverage no "could not save a state to test"
+    fi
+
+    # The same shape with the audio sink, which is a function pointer.
+    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 20000000 \
+        --audio-wav "$WORK/snap.wav" --save-state "$WORK/snapa.state" \
+        >/dev/null 2>&1 || true
+    if [ -f "$WORK/snapa.state" ]; then
+        if $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/snapa.state" -n 20000000 \
+                --dump-fb "$WORK/snapa.pgm" >/dev/null 2>&1 &&
+           [ -f "$WORK/snapa.pgm" ]; then r=yes; else r=no; fi
+        claim snapshot.reload_after_audio "$r" \
+            "loading a state saved with an audio sink failed"
+    else
+        claim snapshot.reload_after_audio no "could not save a state to test"
+    fi
+fi
+
+if want_test tolerance && [ -x scripts/test_tolerance ]; then
+    echo "uicrawl screen matching"
+    if scripts/test_tolerance | sed 's/^/  /'; then :; else fails=$((fails + 1)); fi
+    ran=$((ran + 6))
+fi
+
+if [ "$MODE" = update ]; then
+    mkdir -p "$(dirname "$GOLDEN")"
+    #
+    # Merge rather than overwrite. Writing only what this run recorded throws
+    # away every fingerprint the run did not reach, which with a filter is
+    # nearly all of them: "ostest --update keyboard" once reduced this file to
+    # a single line and the next full run reported the losses as failures.
+    # New values win; everything else is carried across untouched.
+    #
+    if [ -f "$GOLDEN" ]; then
+        printf '%s' "$recorded" | awk '
+            NR == FNR { new[$1] = $0; next }
+            { if (!($1 in new)) print }
+        ' - "$GOLDEN" > "$GOLDEN.keep"
+    else
+        : > "$GOLDEN.keep"
+    fi
+    { printf '%s' "$recorded"; cat "$GOLDEN.keep"; } | sort > "$GOLDEN.new"
+    rm -f "$GOLDEN.keep"
+    mv "$GOLDEN.new" "$GOLDEN"
+    echo "recorded $(printf '%s' "$recorded" | grep -c . ) fingerprints;" \
+         "$GOLDEN now holds $(wc -l < "$GOLDEN")"
+    exit 0
+fi
+
+echo
+if [ "$fails" -eq 0 ]; then
+    echo "$ran checks passed"
+else
+    echo "$fails of $ran checks failed"
+    exit 1
+fi

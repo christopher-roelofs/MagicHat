@@ -1,0 +1,24 @@
+{
+  "name": "DataRover USA 3.1.2j: 32 MiB DRAM",
+  "source_sha256": "94785cb334f14eac00ed200af014c35972b4f25694103bc6a49b3afa280a6f1b",
+  "patches": [
+    {
+      "offset": "0x0002a0",
+      "before": "3c020040",
+      "after": "3c020200",
+      "description": "Monitor DRAM size"
+    },
+    {
+      "offset": "0x0002ac",
+      "before": "3c020040",
+      "after": "3c020200",
+      "description": "Monitor companion size global"
+    },
+    {
+      "offset": "0x01ec9c",
+      "before": "3c040040",
+      "after": "3c040200",
+      "description": "Magic Cap board-5 DRAM size"
+    }
+  ]
+}
