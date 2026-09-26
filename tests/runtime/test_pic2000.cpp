@@ -70,7 +70,7 @@ int main() {
         d.write(0, 2, 0); d.tick();
         check(read(peer, &byte, 1) == 1 && byte == 'S', "A resumes after module stop");
         close(peer);
-        mrc_serial_close(&d.link_a);
+        mh_serial_close(&d.link_a);
     }
 #endif
     Mc68349Duart uart;
@@ -86,7 +86,7 @@ int main() {
     check(uart.read(0x1b, 1) == 0x7e, "receive FIFO supplies the byte");
     check(!uart.irq(), "draining receive FIFO clears interrupt");
     auto dir=std::filesystem::temp_directory_path()/
-        ("mrc-runtime-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("mh-runtime-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     check(std::filesystem::create_directory(dir),"create test directory");
     auto path=dir/"idle.rom";
     std::vector<unsigned char> rom(PIC2000_ROM_SIZE);
@@ -153,35 +153,35 @@ int main() {
     serial.adapter_attached=false;
     pic2000_probe_write(&serial,0xD1,1,0x44);
     check(pic2000_probe_read(&serial,0xD0,2)==4,"adapter absence preserves unrelated physical bits");
-    m68k_machine *board=mrc_m68k_new(path.string().c_str(),4,log);
+    m68k_machine *board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"construct PIC-2000");
     auto card_path = dir / "pic-card.img";
-    check(mrc_m68k_insert_sram(board, 0, card_path.string().c_str(), 65536),
+    check(mh_m68k_insert_sram(board, 0, card_path.string().c_str(), 65536),
           "attach 68k SRAM card");
     check(pic2000_dev21_read(board,0xEE,2)==0x3140,
           "slot-1 SRAM asserts presence, ready, and healthy battery");
     pic2000_dev21_write(board,0xEE,2,0);
     check(pic2000_dev21_read(board,0xEE,2)==0x3140,
           "physical SRAM status inputs survive guest writes");
-    check(mrc_pccard_read(&board->card_port[0][MRC_PCCARD_WINDOW_A], 0, 1) == 1,
+    check(mh_pccard_read(&board->card_port[0][MH_PCCARD_WINDOW_A], 0, 1) == 1,
           "68k SRAM attribute window exposes CIS");
-    mrc_pccard_write(&board->card_port[0][MRC_PCCARD_WINDOW_B], 0x1234, 2,
+    mh_pccard_write(&board->card_port[0][MH_PCCARD_WINDOW_B], 0x1234, 2,
                      0xBEEF);
-    check(mrc_pccard_read(&board->card_port[0][MRC_PCCARD_WINDOW_B], 0x1234, 2)
+    check(mh_pccard_read(&board->card_port[0][MH_PCCARD_WINDOW_B], 0x1234, 2)
               == 0xBEEF,
           "68k SRAM common window is writable");
-    check(mrc_m68k_eject_card(board, 0), "eject 68k SRAM card");
+    check(mh_m68k_eject_card(board, 0), "eject 68k SRAM card");
     check(pic2000_dev21_read(board,0xEE,2)==0,
           "ejected 68k SRAM releases detect and ready inputs");
     check(board->card_event[0] && (board->dev21.reg[0xBA / 2] & 0x1000),
           "card removal raises the slot-1 status event latch");
     pic2000_dev21_write(board,0xC2,2,0x3000);
-    mrc_m68k_run(board,1);
+    mh_m68k_run(board,1);
     check(board->dev21_irq_now==6,
           "enabled card removal status reaches the IPL6 line");
     pic2000_dev21_write(board,0xBA,2,0x1000);
     check(!board->card_event[0], "guest acknowledges the card status event");
-    mrc_m68k_free(board);
+    mh_m68k_free(board);
     std::ifstream card_file(card_path, std::ios::binary);
     card_file.seekg(0x1234);
     unsigned char card_bytes[2] = {};
@@ -189,7 +189,7 @@ int main() {
     card_file.close(); // Windows will not remove the directory under an open file
     check(card_bytes[0] == 0xBE && card_bytes[1] == 0xEF,
           "68k SRAM writes persist to the image");
-    board=mrc_m68k_new(path.string().c_str(),4,log);
+    board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"reconstruct PIC-2000 after card test");
     check(pic2000_dev21_read(board,0xEE,2)==0,"empty PIC card slots stay absent");
     board->net_probe_enabled=true;
@@ -205,29 +205,29 @@ int main() {
     board->net_probe_enabled=false;
     check(pic2000_dev21_read(board,0xEE,2)==0,
           "detached card input releases without changing the latch");
-    check(mrc_m68k_host_battery(board,50),"PIC maps valid host charge");
-    check(!mrc_m68k_host_battery(board,-1) && !mrc_m68k_host_battery(board,101),
+    check(mh_m68k_host_battery(board,50),"PIC maps valid host charge");
+    check(!mh_m68k_host_battery(board,-1) && !mh_m68k_host_battery(board,101),
           "unknown or invalid host charge does not change sensor");
-    mrc_m68k_set_adc_chan(board,2,777);
-    check(!mrc_m68k_host_battery(board,100),"explicit ADC override takes precedence");
-    auto view=mrc_pic2000_runtime(board);
+    mh_m68k_set_adc_chan(board,2,777);
+    check(!mh_m68k_host_battery(board,100),"explicit ADC override takes precedence");
+    auto view=mh_pic2000_runtime(board);
     check(view.ops->audio_sink && view.ops->audio_rate &&
           view.ops->audio_rate(view.board)==44100, "PIC speaker output available");
     check(view.ops->save_state!=nullptr, "state save reaches the board");
     check(view.ops->run_slots(view.board,1000)==1000,"idle consumes execution budget");
     check(!view.ops->stopped(view.board),"LPSTOP is not terminal halt");
     check(view.ops->slots(view.board)==1000,"legacy slot accounting preserved");
-    check(view.ops->elapsed_ns(view.board)==mrc_time_ns(1000,PIC2000_CPU_HZ),
+    check(view.ops->elapsed_ns(view.board)==mh_time_ns(1000,PIC2000_CPU_HZ),
           "elapsed time advances while idle");
-    mrc_m68k_set_cpi(board,2);
+    mh_m68k_set_cpi(board,2);
     // CPI is a whole-run diagnostic setting, not an emulated clock change.
-    check(view.ops->elapsed_ns(view.board)==mrc_time_ns(2000,PIC2000_CPU_HZ),
+    check(view.ops->elapsed_ns(view.board)==mh_time_ns(2000,PIC2000_CPU_HZ),
           "elapsed time respects configured CPI");
     check(!view.ops->pen(view.board,true,480,320),"board rejects out-of-panel input");
     std::vector<uint8_t> frame(480*320); unsigned w=0,h=0;
     check(view.ops->frame(view.board,frame.data(),&w,&h) && w==480 && h==320,
           "display available through runtime");
-    mrc_m68k_free(board);
+    mh_m68k_free(board);
 
     // Tiny firmware checks the physical power edge through the CPU's IRQ6
     // vector, including acknowledgement and repeated host key-down events.
@@ -248,10 +248,10 @@ int main() {
                 0x33fc,8,0x2100,0x00b8, // acknowledge
                 0x52b8,0x1000,0x4e73}); // addq.l #1,$1000; RTE
     save_rom();
-    board=mrc_m68k_new(path.string().c_str(),4,log);
+    board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"construct interrupt fixture");
-    view=mrc_pic2000_runtime(board);
-    mrc_m68k_region regions[2]; mrc_m68k_retained_regions(board,regions);
+    view=mh_pic2000_runtime(board);
+    mh_m68k_region regions[2]; mh_m68k_retained_regions(board,regions);
     auto ram=(uint8_t*)regions[0].data;
     view.ops->run_slots(board,100);
     check(ram[0x1003]==0,"no unsolicited power interrupt");
@@ -266,26 +266,26 @@ int main() {
     view.ops->power_button(board,true);
     view.ops->run_slots(board,100);
     check(ram[0x1003]==2,"next press creates a new edge");
-    mrc_m68k_free(board);
+    mh_m68k_free(board);
 
     // Power-off must stop instruction execution without losing RAM. A new
     // press starts at the reset vector, rather than continuing past OFF.
     code(0x200,{0x52b8,0x1000,0x4279,0x2100,0x00d0,
                 0x52b8,0x1004,0x60fe});
     save_rom();
-    board=mrc_m68k_new(path.string().c_str(),4,log);
+    board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"construct power latch fixture");
-    mrc_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
-    mrc_m68k_run(board,100);
-    check(mrc_m68k_powered_off(board),"firmware removes CPU power");
+    mh_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
+    mh_m68k_run(board,100);
+    check(mh_m68k_powered_off(board),"firmware removes CPU power");
     check(ram[0x1003]==1 && ram[0x1007]==0,"CPU cannot execute past power-off");
-    mrc_m68k_lcd(board,frame.data());
+    mh_m68k_lcd(board,frame.data());
     check(frame[0]==3,"powered-off display is black");
-    mrc_m68k_power_button(board,true);
-    mrc_m68k_run(board,100);
+    mh_m68k_power_button(board,true);
+    mh_m68k_run(board,100);
     check(ram[0x1003]==2 && ram[0x1007]==0,"wake resets CPU and retains RAM");
-    check(mrc_m68k_power_off(board),"closing an off device does not wake it");
-    mrc_m68k_free(board);
+    check(mh_m68k_power_off(board),"closing an off device does not wake it");
+    mh_m68k_free(board);
 
     // Envoy reset enters at 024xxxxx and jumps into its 004xxxxx alias.
     // Alternate RAM stores and instruction fetches to exercise bus priority.
@@ -294,52 +294,52 @@ int main() {
                 0x4ef9,0x0040,0x0200});
     code(0x200,{0x52b8,0x1000,0x52b8,0x1004,0x60fe});
     save_rom();
-    board=mrc_m68k_new(path.string().c_str(),4,log);
+    board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"construct experimental Envoy mapping fixture");
-    mrc_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
-    mrc_m68k_run(board,100);
+    mh_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
+    mh_m68k_run(board,100);
     check(ram[0x1003]==1 && ram[0x1007]==1,
           "Envoy executes through ROM alias across RAM accesses");
-    mrc_m68k_free(board);
+    mh_m68k_free(board);
     code(0x200,{0x33fc,0x2000,0x2100,0x0048,
                 0x33fc,0x0010,0x2100,0x0040,0x60fe});
     save_rom();
-    board=mrc_m68k_new(path.string().c_str(),4,log);
+    board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"construct programmable LCD fixture");
-    mrc_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
+    mh_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
     ram[0x2800]=0xff; ram[0x8000]=0x1b;
-    mrc_m68k_lcd(board,frame.data());
+    mh_m68k_lcd(board,frame.data());
     check(frame[0]==3 && frame[1]==3 && frame[2]==3 && frame[3]==3,
           "disabled LCD hides retained framebuffer before initialization");
-    mrc_m68k_run(board,100);
-    mrc_m68k_lcd(board,frame.data());
+    mh_m68k_run(board,100);
+    mh_m68k_lcd(board,frame.data());
     check(frame[0]==0 && frame[1]==1 && frame[2]==2 && frame[3]==3,
           "LCD follows programmed HIX base rather than PIC default");
-    mrc_m68k_free(board);
+    mh_m68k_free(board);
 
     // Identify an Envoy fixture without depending on a proprietary ROM.
     code(0x300,{0x2e7c,0x0010,0,0x91c8,0x4e60,0x60fe});
     constexpr char envoy_identity[] = ",MOTO,1,Motorola Envoy";
     std::memcpy(rom.data()+0x400,envoy_identity,sizeof(envoy_identity));
     save_rom();
-    board=mrc_m68k_new(path.string().c_str(),4,log);
-    check(board && mrc_m68k_is_envoy(board),"identify Envoy battery fixture");
-    check(!mrc_m68k_host_battery(board,50),"Envoy does not borrow PIC charge thresholds");
+    board=mh_m68k_new(path.string().c_str(),4,log);
+    check(board && mh_m68k_is_envoy(board),"identify Envoy battery fixture");
+    check(!mh_m68k_host_battery(board,50),"Envoy does not borrow PIC charge thresholds");
     uint8_t *context=nullptr; uint32_t context_size=0;
-    check(mrc_m68k_save_battery_ram(board,&context,&context_size) && context_size==36,
+    check(mh_m68k_save_battery_ram(board,&context,&context_size) && context_size==36,
           "serialize battery memory separately from CPU context");
     check(!std::memcmp(context,"ECR1",4),"battery context has a format tag");
     for(unsigned i=4;i<36;i++) context[i]=uint8_t(i*37);
-    check(mrc_m68k_load_battery_ram(board,context,context_size),"load retained battery bytes");
-    mrc_m68k_free(board);
-    board=mrc_m68k_new(path.string().c_str(),4,log);
-    check(mrc_m68k_load_battery_ram(board,context,context_size),"restore into a new board");
-    check(mrc_m68k_save_battery_ram(board,&context,&context_size),"save restored memory");
+    check(mh_m68k_load_battery_ram(board,context,context_size),"load retained battery bytes");
+    mh_m68k_free(board);
+    board=mh_m68k_new(path.string().c_str(),4,log);
+    check(mh_m68k_load_battery_ram(board,context,context_size),"restore into a new board");
+    check(mh_m68k_save_battery_ram(board,&context,&context_size),"save restored memory");
     for(unsigned i=4;i<36;i++) check(context[i]==uint8_t(i*37),"all battery bytes survive restart");
     context[0]='?';
-    check(!mrc_m68k_load_battery_ram(board,context,context_size),"reject unknown battery context");
-    check(!mrc_m68k_load_battery_ram(board,context,35),"reject truncated battery context");
-    std::free(context); mrc_m68k_free(board);
+    check(!mh_m68k_load_battery_ram(board,context,context_size),"reject unknown battery context");
+    check(!mh_m68k_load_battery_ram(board,context,35),"reject truncated battery context");
+    std::free(context); mh_m68k_free(board);
 
     // Envoy adapter transitions reach the firmware through IRQ6, with the
     // level sampled independently of the write-one-to-clear edge flags.
@@ -354,21 +354,21 @@ int main() {
                 0x33fc,0x0030,0x2100,0x00b8,
                 0x52b8,0x1000,0x4e73});
     save_rom();
-    board=mrc_m68k_new(path.string().c_str(),4,log);
+    board=mh_m68k_new(path.string().c_str(),4,log);
     check(board!=nullptr,"construct Envoy adapter fixture");
-    mrc_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
-    mrc_m68k_run(board,100);
+    mh_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
+    mh_m68k_run(board,100);
     check(ram[0x1003]==0,"disconnected adapter has no unsolicited event");
-    check(mrc_m68k_host_adapter(board,true),"Envoy accepts host adapter");
-    mrc_m68k_run(board,100);
+    check(mh_m68k_host_adapter(board,true),"Envoy accepts host adapter");
+    mh_m68k_run(board,100);
     check(ram[0x1003]==1 && (ram[0x1009]&0x40),"attach IRQ samples connected input");
-    mrc_m68k_host_adapter(board,true); mrc_m68k_run(board,100);
+    mh_m68k_host_adapter(board,true); mh_m68k_run(board,100);
     check(ram[0x1003]==1,"unchanged adapter does not retrigger");
-    mrc_m68k_host_adapter(board,false); mrc_m68k_run(board,100);
+    mh_m68k_host_adapter(board,false); mh_m68k_run(board,100);
     check(ram[0x1003]==2 && !(ram[0x1009]&0x40),"remove IRQ samples disconnected input");
-    check(mrc_m68k_set_adapter(board,true),"explicit adapter connection accepted");
-    check(!mrc_m68k_host_adapter(board,false),"explicit adapter overrides host state");
-    mrc_m68k_free(board);
+    check(mh_m68k_set_adapter(board,true),"explicit adapter connection accepted");
+    check(!mh_m68k_host_adapter(board,false),"explicit adapter overrides host state");
+    mh_m68k_free(board);
 
     // HIX firmware reads main and backup ADCs after programming CS0.
     std::fill(rom.begin(),rom.end(),0);
@@ -383,18 +383,18 @@ int main() {
                 0x31f9,0x2100,0x00e4,0x1002,0x60fe});
     save_rom();
     for (int percent : {-1,0,50,100}) {
-        board=mrc_m68k_new(path.string().c_str(),4,log);
+        board=mh_m68k_new(path.string().c_str(),4,log);
         check(board!=nullptr,"construct HIX battery fixture");
-        if(percent>=0) check(mrc_m68k_host_battery(board,percent),"HIX host charge mapping available");
-        mrc_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
-        mrc_m68k_run(board,100);
+        if(percent>=0) check(mh_m68k_host_battery(board,percent),"HIX host charge mapping available");
+        mh_m68k_retained_regions(board,regions); ram=(uint8_t*)regions[0].data;
+        mh_m68k_run(board,100);
         unsigned main=(unsigned(ram[0x1000])<<8)|ram[0x1001];
         unsigned backup=(unsigned(ram[0x1002])<<8)|ram[0x1003];
         check(main==unsigned(percent<0?832:745+(63*percent+50)/100),"guest sees HIX main charge endpoints");
         check(backup==640,"HIX backup is healthy independently of host main charge");
-        mrc_m68k_set_adc_chan(board,2,700);
-        check(!mrc_m68k_host_battery(board,100),"HIX explicit main sensor overrides host charge");
-        mrc_m68k_free(board);
+        mh_m68k_set_adc_chan(board,2,700);
+        check(!mh_m68k_host_battery(board,100),"HIX explicit main sensor overrides host charge");
+        mh_m68k_free(board);
     }
     // The block engine has to be the same machine as the reference, not
     // an approximation of it.
@@ -433,20 +433,20 @@ int main() {
     save_rom();
     std::vector<uint8_t> image[2];
     for (int engine = 0; engine < 2; engine++) {
-        board=mrc_m68k_new(path.string().c_str(),4,log);
+        board=mh_m68k_new(path.string().c_str(),4,log);
         check(board!=nullptr,"construct block engine fixture");
-        check(mrc_m68k_set_engine(board,engine?"blocks":"interpreter"),
+        check(mh_m68k_set_engine(board,engine?"blocks":"interpreter"),
               "both engines are offered by name");
-        check(!mrc_m68k_set_engine(board,"nonsense"),
+        check(!mh_m68k_set_engine(board,"nonsense"),
               "an engine this machine does not have is refused");
-        check(mrc_m68k_set_engine(board,engine?"blocks":"interpreter"),
+        check(mh_m68k_set_engine(board,engine?"blocks":"interpreter"),
               "and asking again restores the one that was wanted");
-        mrc_m68k_retained_regions(board,regions);
+        mh_m68k_retained_regions(board,regions);
         long mark = std::ftell(log);
-        mrc_m68k_run(board,2000000);
+        mh_m68k_run(board,2000000);
         image[engine].assign((uint8_t*)regions[0].data,
                              (uint8_t*)regions[0].data + 0x1200);
-        mrc_m68k_engine_report(board);
+        mh_m68k_engine_report(board);
         if (engine) {
             /*
              * A comparison between two runs of the same engine would pass
@@ -461,7 +461,7 @@ int main() {
             check(said.find("block engine ran") != std::string::npos,
                   "the run really went through the block engine");
         }
-        mrc_m68k_free(board);
+        mh_m68k_free(board);
     }
     auto word32=[&](const std::vector<uint8_t> &v,unsigned at) {
         return (uint32_t)v[at]<<24 | (uint32_t)v[at+1]<<16 |

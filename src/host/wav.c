@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-struct mrc_wav {
+struct mh_wav {
     FILE    *f;
     unsigned rate;
     uint32_t samples;
@@ -20,9 +20,9 @@ static void put16(FILE *f, uint16_t v)
     fputc((int)(v & 0xFF), f); fputc((int)((v >> 8) & 0xFF), f);
 }
 
-mrc_wav *mrc_wav_open(const char *path, unsigned rate)
+mh_wav *mh_wav_open(const char *path, unsigned rate)
 {
-    mrc_wav *w = calloc(1, sizeof(*w));
+    mh_wav *w = calloc(1, sizeof(*w));
     if (!w)
         return NULL;
     w->f = fopen(path, "wb");
@@ -47,19 +47,19 @@ mrc_wav *mrc_wav_open(const char *path, unsigned rate)
     return w;
 }
 
-void mrc_wav_sample(void *ctx, int16_t sample)
+void mh_wav_sample(void *ctx, int16_t sample)
 {
-    mrc_wav *w = ctx;
+    mh_wav *w = ctx;
     put16(w->f, (uint16_t)sample);
     w->samples++;
 }
 
-uint32_t mrc_wav_samples(const mrc_wav *w)
+uint32_t mh_wav_samples(const mh_wav *w)
 {
     return w->samples;
 }
 
-void mrc_wav_close(mrc_wav *w)
+void mh_wav_close(mh_wav *w)
 {
     if (!w)
         return;

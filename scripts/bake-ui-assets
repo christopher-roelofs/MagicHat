@@ -145,8 +145,8 @@ def generate():
             ' * Icons: Font Awesome 4.7, SIL OFL 1.1.',
             ' * Both licences are in assets/licenses.',
             ' */',
-            '#ifndef MRC_UI_ASSETS_H',
-            '#define MRC_UI_ASSETS_H',
+            '#ifndef MH_UI_ASSETS_H',
+            '#define MH_UI_ASSETS_H',
             '',
             '#include <stddef.h>',
             '',
@@ -156,32 +156,32 @@ def generate():
             '    unsigned size, advance, cell_w, cell_h, ascent;',
             '    unsigned first, count;',
             '    const unsigned char *alpha;   /* count * cell_w * cell_h */',
-            '} mrc_ui_font_data;',
+            '} mh_ui_font_data;',
             '',
             'typedef struct {',
             '    unsigned size;',
             '    const unsigned char *alpha;   /* size * size */',
-            '} mrc_ui_icon_size;',
+            '} mh_ui_icon_size;',
             '',
             'typedef struct {',
             '    const char *name;',
-            '    mrc_ui_icon_size sizes[%d];' % len(ICON_SIZES),
-            '} mrc_ui_icon_data;',
+            '    mh_ui_icon_size sizes[%d];' % len(ICON_SIZES),
+            '} mh_ui_icon_data;',
             '',
             'enum {']
     for index, (name, _) in enumerate(ICONS):
-        head.append('    MRC_UI_ICON_%s = %d,' % (name.upper(), index))
-    head += ['    MRC_UI_ICON_COUNT = %d' % len(ICONS),
+        head.append('    MH_UI_ICON_%s = %d,' % (name.upper(), index))
+    head += ['    MH_UI_ICON_COUNT = %d' % len(ICONS),
              '};',
              '',
-             'extern const mrc_ui_font_data mrc_ui_fonts[%d];' % len(TEXT_SIZES),
-             'extern const mrc_ui_icon_data mrc_ui_icons[MRC_UI_ICON_COUNT];',
-             'extern const unsigned mrc_ui_glyphs[%d];' % len(GLYPHS),
-             '#define MRC_UI_FONT_COUNT %d' % len(TEXT_SIZES),
-             '#define MRC_UI_FONT_COLUMNS %d' % FONT_COLUMNS,
-             '#define MRC_UI_ICON_SIZES %d' % len(ICON_SIZES),
+             'extern const mh_ui_font_data mh_ui_fonts[%d];' % len(TEXT_SIZES),
+             'extern const mh_ui_icon_data mh_ui_icons[MH_UI_ICON_COUNT];',
+             'extern const unsigned mh_ui_glyphs[%d];' % len(GLYPHS),
+             '#define MH_UI_FONT_COUNT %d' % len(TEXT_SIZES),
+             '#define MH_UI_FONT_COLUMNS %d' % FONT_COLUMNS,
+             '#define MH_UI_ICON_SIZES %d' % len(ICON_SIZES),
              '',
-             '#endif /* MRC_UI_ASSETS_H */',
+             '#endif /* MH_UI_ASSETS_H */',
              '']
 
     body = ['/*',
@@ -200,9 +200,9 @@ def generate():
             body.append(as_c_array("icon_%s_%d" % (name, size), icons[name][size]))
             body.append("")
 
-    body.append('const unsigned mrc_ui_glyphs[%d] = { %s };' %
+    body.append('const unsigned mh_ui_glyphs[%d] = { %s };' %
                 (len(GLYPHS), ', '.join(str(c) for c in GLYPHS)))
-    body.append('const mrc_ui_font_data mrc_ui_fonts[%d] = {' % len(TEXT_SIZES))
+    body.append('const mh_ui_font_data mh_ui_fonts[%d] = {' % len(TEXT_SIZES))
     for font in fonts:
         body.append('    { %d, %d, %d, %d, %d, %d, %d, font_%d },' % (
             font["size"], font["advance"], font["cell_w"], font["cell_h"],
@@ -210,7 +210,7 @@ def generate():
             font["size"]))
     body.append('};')
     body.append('')
-    body.append('const mrc_ui_icon_data mrc_ui_icons[MRC_UI_ICON_COUNT] = {')
+    body.append('const mh_ui_icon_data mh_ui_icons[MH_UI_ICON_COUNT] = {')
     for name, _ in ICONS:
         entries = ", ".join("{ %d, icon_%s_%d }" % (size, name, size)
                             for size in ICON_SIZES)

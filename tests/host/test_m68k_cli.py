@@ -88,7 +88,7 @@ class M68kCli(unittest.TestCase):
         command = [*BASE_PIC, '--temporary', '--fresh', '--rom', str(self.rom),
                    '-n', '2000000', '--tap', '100,200,23,24']
         fast = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        reference_env = dict(os.environ, MRC_68K_IDLE_FAST='0')
+        reference_env = dict(os.environ, MH_68K_IDLE_FAST='0')
         reference = subprocess.run(command, capture_output=True, text=True,
                                    timeout=30, env=reference_env)
         self.assertEqual(fast.returncode, 0, fast.stderr)
@@ -423,9 +423,9 @@ class M68kCli(unittest.TestCase):
                 r = self.run_guest('--cpu-engine', engine)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertNotIn('unknown option', r.stderr)
-        r = self.run_guest('--cpu-engine', 'recompiler')
+        r = self.run_guest('--cpu-engine', 'warp')
         self.assertEqual(r.returncode, 2)
-        self.assertIn('no recompiler engine', r.stderr)
+        self.assertIn('no warp engine', r.stderr)
 
     def test_screen_taps_may_be_scheduled(self):
         r = self.run_guest('--tap', '10,20,23,24',

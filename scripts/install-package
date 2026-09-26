@@ -1,26 +1,26 @@
 #!/bin/bash
 # Install a package into the SDK-ROM guest over PC Link and save the resulting state.
 #
-#   scripts/install-package <package.pkg> <outdir> [tag] [extra mcap options...]
+#   scripts/install-package <package.pkg> <outdir> [tag] [extra mhat options...]
 #
 # Boots from the install-room snapshot (Storeroom with the computer ready),
 # taps the computer, sends the package with scripts/pclink and hangs up.
 # Writes <outdir>/<tag>.{log,state,pgm} and <outdir>/<tag>-pclink.log.
-# Environment: MCAP (emulator binary, default build/mcap), STATE (snapshot to
+# Environment: MHAT (emulator binary, default build/mhat), STATE (snapshot to
 # start from), INSNS (instructions to run: 400M is enough for ~20 KB packages,
 # use 800M-1200M for larger ones). --load-state means this run manages its own
 # state and never touches the device state beside the ROM.
 set -u
 cd "$(dirname "$0")/.."
 PKG=$1; OUT=$2; TAG=${3:-install}; shift 3 2>/dev/null || shift $#
-MCAP=${MCAP:-build/mcap}
-STATE=${STATE:-out/rosemary-boot/install-room.state}
+MHAT=${MHAT:-build/mhat}
+STATE=${STATE:-states/install-room.state}
 # The shipping device ROM boots the same machine, so the same chain works
 # against it; give ROM as well as STATE to install there.
-ROM=${ROM:-roms/Rosemary SDK/MagicCap-USA.image}
+ROM=${ROM:-roms/MagicCap-USA.image}
 INSNS=${INSNS:-400000000}
 mkdir -p "$OUT"
-"$MCAP" --rom "$ROM" --load-state "$STATE" \
+"$MHAT" --rom "$ROM" --load-state "$STATE" \
   --headless --no-host-battery --serial a -n "$INSNS" --tap-px 46 162 50000000 --tap-hold 1500000 \
   --dump-fb "$OUT/$TAG.pgm" --save-state "$OUT/$TAG.state" "$@" > "$OUT/$TAG.log" 2>&1 &
 PID=$!

@@ -11,8 +11,8 @@
 #define IPCP 0x8021
 #define IPV4 0x0021
 
-struct mrc_ppp {
-    mrc_network *net;
+struct mh_ppp {
+    mh_network *net;
     bool command_mode, echo, verbose, escaped, frame_started;
     bool lcp_sent, lcp_local, lcp_peer, ipcp_sent, ipcp_local, ipcp_peer;
     bool bad_frame_reported;
@@ -49,14 +49,14 @@ static void put16(uint8_t *p, uint16_t v)
 static uint32_t ipv4(unsigned a, unsigned b, unsigned c, unsigned d)
 { return (uint32_t)a << 24 | (uint32_t)b << 16 | (uint32_t)c << 8 | d; }
 
-static bool tx_push(mrc_ppp *p, uint8_t b)
+static bool tx_push(mh_ppp *p, uint8_t b)
 {
     if (p->tx_len == PPP_TX_CAP) return false;
     p->tx[(p->tx_read + p->tx_len++) % PPP_TX_CAP] = b;
     return true;
 }
 
-static void serial_text(mrc_ppp *p, const char *s)
+static void serial_text(mh_ppp *p, const char *s)
 {
     if (p->verbose) tx_push(p, '\r'), tx_push(p, '\n');
     while (*s) tx_push(p, (uint8_t)*s++);
@@ -64,7 +64,7 @@ static void serial_text(mrc_ppp *p, const char *s)
     else tx_push(p, '\r');
 }
 
-static void send_frame(mrc_ppp *p, uint16_t protocol,
+static void send_frame(mh_ppp *p, uint16_t protocol,
                        const uint8_t *payload, size_t length)
 {
     if (length + 6 > PPP_FRAME_MAX) return;
@@ -90,7 +90,7 @@ static void send_frame(mrc_ppp *p, uint16_t protocol,
     tx_push(p, 0x7e);
 }
 
-static void send_control(mrc_ppp *p, uint16_t protocol, uint8_t code,
+static void send_control(mh_ppp *p, uint16_t protocol, uint8_t code,
                          uint8_t id, const uint8_t *data, size_t len)
 {
     if (len > 250) return;
@@ -98,13 +98,13 @@ static void send_control(mrc_ppp *p, uint16_t protocol, uint8_t code,
     packet[0] = code; packet[1] = id;
     put16(packet + 2, (uint16_t)(len + 4));
     if (len) memcpy(packet + 4, data, len);
-    if (getenv("MRC_PPP_TRACE"))
+    if (getenv("MH_PPP_TRACE"))
         fprintf(stderr, "ppp: host -> %s code=%u id=%u length=%zu\n",
                 proto_name(protocol), code, id, len + 4);
     send_frame(p, protocol, packet, len + 4);
 }
 
-static void send_configure(mrc_ppp *p, uint16_t protocol)
+static void send_configure(mh_ppp *p, uint16_t protocol)
 {
     uint8_t id;
     uint8_t options[16];
@@ -154,17 +154,17 @@ static bool is_ip(const uint8_t *packet, size_t len, uint32_t *dst)
 
 static void slirp_receive(void *opaque, const uint8_t *frame, size_t len)
 {
-    mrc_ppp *p = opaque;
+    mh_ppp *p = opaque;
     if (len < 34 || frame[12] != 8 || frame[13] != 0) return;
     uint32_t dst;
     if (!is_ip(frame + 14, len - 14, &dst) || dst != p->ip_guest) return;
     ++p->host_ip_packets;
-    if (getenv("MRC_PPP_TRACE"))
+    if (getenv("MH_PPP_TRACE"))
         fprintf(stderr, "ppp: slirp -> guest IPv4 (%u bytes)\n", be16(frame + 16));
     send_frame(p, IPV4, frame + 14, be16(frame + 16));
 }
 
-static void send_network_packet(mrc_ppp *p, const uint8_t *ip, size_t len)
+static void send_network_packet(mh_ppp *p, const uint8_t *ip, size_t len)
 {
     uint32_t dst;
     if (!p->net || len > 1500 || !is_ip(ip, len, &dst)) return;
@@ -176,14 +176,14 @@ static void send_network_packet(mrc_ppp *p, const uint8_t *ip, size_t len)
     memcpy(frame, gateway, 6); memcpy(frame + 6, guest, 6);
     frame[12] = 8; frame[13] = 0;
     memcpy(frame + 14, ip, iplen);
-    if (mrc_network_send(p->net, frame, 14 + iplen)) {
+    if (mh_network_send(p->net, frame, 14 + iplen)) {
         ++p->guest_ip_packets;
-        if (getenv("MRC_PPP_TRACE"))
+        if (getenv("MH_PPP_TRACE"))
             fprintf(stderr, "ppp: guest -> slirp IPv4 (%u bytes)\n", iplen);
     }
 }
 
-static void configure_request(mrc_ppp *p, uint16_t proto,
+static void configure_request(mh_ppp *p, uint16_t proto,
                               uint8_t id, const uint8_t *opt, size_t len)
 {
     uint8_t reject[PPP_FRAME_MAX], nak[PPP_FRAME_MAX];
@@ -245,13 +245,13 @@ static void configure_request(mrc_ppp *p, uint16_t proto,
     }
 }
 
-static void control_packet(mrc_ppp *p, uint16_t proto,
+static void control_packet(mh_ppp *p, uint16_t proto,
                            const uint8_t *d, size_t n)
 {
     if (n < 4 || be16(d + 2) < 4 || be16(d + 2) > n) return;
     size_t len = be16(d + 2) - 4;
     uint8_t id = d[1];
-    if (getenv("MRC_PPP_TRACE"))
+    if (getenv("MH_PPP_TRACE"))
         fprintf(stderr, "ppp: guest -> %s code=%u id=%u length=%zu\n",
                 proto_name(proto), d[0], id, len + 4);
     switch (d[0]) {
@@ -319,7 +319,7 @@ static void control_packet(mrc_ppp *p, uint16_t proto,
     }
 }
 
-static void receive_frame(mrc_ppp *p)
+static void receive_frame(mh_ppp *p)
 {
     if (p->frame_len < 6) return;
     uint16_t fcs = 0xffff;
@@ -339,7 +339,7 @@ static void receive_frame(mrc_ppp *p)
         send_network_packet(p, p->frame + at, n - at);
 }
 
-static void start_dial(mrc_ppp *p)
+static void start_dial(mh_ppp *p)
 {
     p->lcp_sent = p->lcp_local = p->lcp_peer = false;
     p->ipcp_sent = p->ipcp_local = p->ipcp_peer = false;
@@ -349,7 +349,7 @@ static void start_dial(mrc_ppp *p)
     if (!p->lcp_sent) send_configure(p, LCP);
 }
 
-static void at_command(mrc_ppp *p)
+static void at_command(mh_ppp *p)
 {
     uint8_t *s = p->line;
     size_t n = p->line_len;
@@ -370,31 +370,31 @@ static void at_command(mrc_ppp *p)
     serial_text(p, p->verbose ? "OK" : "0");
 }
 
-mrc_ppp *mrc_ppp_open(const char *pcap)
+mh_ppp *mh_ppp_open(const char *pcap)
 {
-    mrc_ppp *p = calloc(1, sizeof(*p));
+    mh_ppp *p = calloc(1, sizeof(*p));
     if (!p) return NULL;
     p->command_mode = true; p->echo = true; p->verbose = true;
     p->ip_peer = ipv4(10,0,2,2); p->ip_guest = ipv4(10,0,2,15);
     p->dns = ipv4(10,0,2,3);
     p->lcp_mru = 1500;
-    p->net = mrc_network_open(slirp_receive, p, pcap);
+    p->net = mh_network_open(slirp_receive, p, pcap);
     if (!p->net) { free(p); return NULL; }
     fprintf(stderr, "ppp: virtual ISP ready; guest .15, gateway .2, DNS .3\n");
     return p;
 }
 
-void mrc_ppp_close(mrc_ppp *p)
+void mh_ppp_close(mh_ppp *p)
 {
     if (!p) return;
     fprintf(stderr, "ppp: closing; %llu IPv4 packets from guest, %llu to guest\n",
             (unsigned long long)p->guest_ip_packets,
             (unsigned long long)p->host_ip_packets);
-    mrc_network_close(p->net);
+    mh_network_close(p->net);
     free(p);
 }
 
-void mrc_ppp_write(mrc_ppp *p, uint8_t b)
+void mh_ppp_write(mh_ppp *p, uint8_t b)
 {
     if (!p) return;
     if (p->command_mode) {
@@ -420,7 +420,7 @@ void mrc_ppp_write(mrc_ppp *p, uint8_t b)
     else p->frame_len = 0;
 }
 
-bool mrc_ppp_read(mrc_ppp *p, uint8_t *b)
+bool mh_ppp_read(mh_ppp *p, uint8_t *b)
 {
     if (!p || !p->tx_len) return false;
     *b = p->tx[p->tx_read];
@@ -429,7 +429,7 @@ bool mrc_ppp_read(mrc_ppp *p, uint8_t *b)
     return true;
 }
 
-void mrc_ppp_poll(mrc_ppp *p, uint64_t now_ns)
+void mh_ppp_poll(mh_ppp *p, uint64_t now_ns)
 {
-    if (p) mrc_network_poll(p->net, now_ns);
+    if (p) mh_network_poll(p->net, now_ns);
 }

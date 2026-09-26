@@ -13,8 +13,8 @@
  * runs from it. That is slower per compiled block and identical in every
  * other respect.
  */
-#ifndef MRC_CODE_ARENA_H
-#define MRC_CODE_ARENA_H
+#ifndef MH_CODE_ARENA_H
+#define MH_CODE_ARENA_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -26,11 +26,11 @@ typedef struct {
     size_t   size, used, page;
     bool     dual;
     uint64_t flushes;
-} mrc_code_arena;
+} mh_code_arena;
 
 /* Returns false when this host will not give out executable memory. */
-bool mrc_code_arena_open(mrc_code_arena *arena, size_t size);
-void mrc_code_arena_close(mrc_code_arena *arena);
+bool mh_code_arena_open(mh_code_arena *arena, size_t size);
+void mh_code_arena_close(mh_code_arena *arena);
 
 /*
  * Reserve space for up to `most` bytes and hand back where to write them.
@@ -38,13 +38,13 @@ void mrc_code_arena_close(mrc_code_arena *arena);
  * different address when the arena is dual-mapped and the emitter needs
  * both to resolve its own branches. Returns NULL when the arena is full;
  * the caller should discard what it has cached and call
- * mrc_code_arena_reset before trying again.
+ * mh_code_arena_reset before trying again.
  */
-uint8_t *mrc_code_arena_reserve(mrc_code_arena *arena, size_t most,
+uint8_t *mh_code_arena_reserve(mh_code_arena *arena, size_t most,
                                 uint8_t **exec_at);
 
 /* Commit `bytes` of the last reservation, making it runnable. */
-void mrc_code_arena_commit(mrc_code_arena *arena, uint8_t *at, size_t bytes);
+void mh_code_arena_commit(mh_code_arena *arena, uint8_t *at, size_t bytes);
 
 /*
  * Rewrite `bytes` of committed code at `at`, a writable-view address, as a
@@ -53,10 +53,10 @@ void mrc_code_arena_commit(mrc_code_arena *arena, uint8_t *at, size_t bytes);
  * and relock closes them; the dual mapping's writable view always is, and
  * both do nothing there. False from unlock means the patch must not be made.
  */
-bool mrc_code_arena_unlock(mrc_code_arena *arena, uint8_t *at, size_t bytes);
-void mrc_code_arena_relock(mrc_code_arena *arena, uint8_t *at, size_t bytes);
+bool mh_code_arena_unlock(mh_code_arena *arena, uint8_t *at, size_t bytes);
+void mh_code_arena_relock(mh_code_arena *arena, uint8_t *at, size_t bytes);
 
 /* Forget everything. The caller must have dropped every pointer into it. */
-void mrc_code_arena_reset(mrc_code_arena *arena);
+void mh_code_arena_reset(mh_code_arena *arena);
 
-#endif /* MRC_CODE_ARENA_H */
+#endif /* MH_CODE_ARENA_H */

@@ -13,8 +13,8 @@
  * from ROM traces; other registers remain a partial register-file model.
  * See docs/NETWORKING.md for the measured paths and remaining unknowns.
  */
-#ifndef MRC_GLACIER_H
-#define MRC_GLACIER_H
+#ifndef MH_GLACIER_H
+#define MH_GLACIER_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -59,14 +59,14 @@ typedef struct {
     uint64_t    unknown_reads, unknown_writes;
 } glacier;
 
-void     mrc_glacier_init(glacier *g, const char *name);
-void     mrc_glacier_set_present(glacier *g, bool present);
-void     mrc_glacier_set_ready_irq(glacier *g, bool high);
-void     mrc_glacier_set_card_irq(glacier *g, bool asserted);
-void     mrc_glacier_set_memory_inputs(glacier *g, bool ready,
+void     mh_glacier_init(glacier *g, const char *name);
+void     mh_glacier_set_present(glacier *g, bool present);
+void     mh_glacier_set_ready_irq(glacier *g, bool high);
+void     mh_glacier_set_card_irq(glacier *g, bool asserted);
+void     mh_glacier_set_memory_inputs(glacier *g, bool ready,
                                        bool write_protected, bool battery_good);
-bool     mrc_glacier_irq(const glacier *g);
-uint32_t mrc_glacier_read(void *ctx, uint32_t off, unsigned size);
-void     mrc_glacier_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
+bool     mh_glacier_irq(const glacier *g);
+uint32_t mh_glacier_read(void *ctx, uint32_t off, unsigned size);
+void     mh_glacier_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
 
-#endif /* MRC_GLACIER_H */
+#endif /* MH_GLACIER_H */

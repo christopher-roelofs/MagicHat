@@ -4,7 +4,7 @@
  * Linux drivers/input/keyboard/atkbd.c, atkbd_set2_keycode. These are protocol
  * numbers, not host-layout characters: Magic Cap owns the resulting layout.
  * Bit 8 means E0. Pause/PrintScreen need special sequences and are excluded. */
-bool mrc_mb_keyboard_usage(unsigned usage, uint8_t *code, bool *extended)
+bool mh_mb_keyboard_usage(unsigned usage, uint8_t *code, bool *extended)
 {
     static const uint16_t map[256] = {
         [4]=0x1c,0x32,0x21,0x23,0x24,0x2b,0x34,0x33,0x43,0x3b,0x42,0x4b,

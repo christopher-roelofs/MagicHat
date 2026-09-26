@@ -4,94 +4,94 @@
 
 #include <string.h>
 
-void mrc_bus_init(mrc_bus *b)
+void mh_bus_init(mh_bus *b)
 {
     memset(b, 0, sizeof(*b));
     b->log = stderr;
 }
 
-void mrc_bus_invalidate_lookup(mrc_bus *b)
+void mh_bus_invalidate_lookup(mh_bus *b)
 {
     b->lookup_generation++;
     memset(b->lookup_cache, 0, sizeof(b->lookup_cache));
 }
 
-void mrc_bus_enable_lookup(mrc_bus *b, bool enabled)
+void mh_bus_enable_lookup(mh_bus *b, bool enabled)
 {
-    mrc_bus_invalidate_lookup(b);
+    mh_bus_invalidate_lookup(b);
     b->lookup_cache_enabled = enabled;
 }
 
-static mrc_region *alloc_region(mrc_bus *b)
+static mh_region *alloc_region(mh_bus *b)
 {
-    if (b->nregion >= MRC_MAX_REGIONS)
+    if (b->nregion >= MH_MAX_REGIONS)
         return NULL;
-    mrc_bus_invalidate_lookup(b);
+    mh_bus_invalidate_lookup(b);
     return &b->region[b->nregion++];
 }
 
-mrc_region *mrc_bus_add_ram(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_ram(mh_bus *b, const char *name, uint32_t base,
                             uint8_t *host, uint32_t len, uint32_t window)
 {
-    mrc_region *r = alloc_region(b);
+    mh_region *r = alloc_region(b);
     if (!r)
         return NULL;
     if (window < len)
         window = len;
-    *r = (mrc_region){ .name = name, .kind = MRC_REGION_RAM, .base = base,
+    *r = (mh_region){ .name = name, .kind = MH_REGION_RAM, .base = base,
                        .size = window, .host = host, .host_len = len };
     return r;
 }
 
-mrc_region *mrc_bus_add_rom(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_rom(mh_bus *b, const char *name, uint32_t base,
                             uint32_t size, uint8_t *host, uint32_t host_len)
 {
-    mrc_region *r = alloc_region(b);
+    mh_region *r = alloc_region(b);
     if (!r)
         return NULL;
-    *r = (mrc_region){ .name = name, .kind = MRC_REGION_ROM, .base = base,
+    *r = (mh_region){ .name = name, .kind = MH_REGION_ROM, .base = base,
                        .size = size, .host = host, .host_len = host_len };
     return r;
 }
 
-mrc_region *mrc_bus_add_flash(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_flash(mh_bus *b, const char *name, uint32_t base,
                               uint32_t size, uint8_t *host, uint32_t host_len)
 {
-    mrc_region *r = mrc_bus_add_rom(b, name, base, size, host, host_len);
+    mh_region *r = mh_bus_add_rom(b, name, base, size, host, host_len);
     if (r)
-        r->kind = MRC_REGION_FLASH;
+        r->kind = MH_REGION_FLASH;
     return r;
 }
 
-mrc_region *mrc_bus_add_float(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_float(mh_bus *b, const char *name, uint32_t base,
                               uint32_t size)
 {
-    mrc_region *r = alloc_region(b);
+    mh_region *r = alloc_region(b);
     if (!r)
         return NULL;
-    *r = (mrc_region){ .name = name, .kind = MRC_REGION_FLOAT, .base = base,
+    *r = (mh_region){ .name = name, .kind = MH_REGION_FLOAT, .base = base,
                        .size = size };
     return r;
 }
 
-mrc_region *mrc_bus_add_mmio(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_mmio(mh_bus *b, const char *name, uint32_t base,
                              uint32_t size, void *ctx,
-                             mrc_mmio_read_fn rd, mrc_mmio_write_fn wr)
+                             mh_mmio_read_fn rd, mh_mmio_write_fn wr)
 {
-    mrc_region *r = alloc_region(b);
+    mh_region *r = alloc_region(b);
     if (!r)
         return NULL;
-    *r = (mrc_region){ .name = name, .kind = MRC_REGION_MMIO, .base = base,
+    *r = (mh_region){ .name = name, .kind = MH_REGION_MMIO, .base = base,
                        .size = size, .ctx = ctx, .read = rd, .write = wr };
     return r;
 }
 
-static uint32_t site(const mrc_bus *b)
+static uint32_t site(const mh_bus *b)
 {
     return b->pc_hint ? *b->pc_hint : 0;
 }
 
-static inline bool in_region(const mrc_region *r, uint32_t pa, unsigned size)
+static inline bool in_region(const mh_region *r, uint32_t pa, unsigned size)
 {
     /*
      * The size check comes first, and it is not redundant. Both terms are
@@ -104,7 +104,7 @@ static inline bool in_region(const mrc_region *r, uint32_t pa, unsigned size)
     return r->size >= size && pa >= r->base && pa - r->base <= r->size - size;
 }
 
-static mrc_region *find(mrc_bus *b, uint32_t pa, unsigned size)
+static mh_region *find(mh_bus *b, uint32_t pa, unsigned size)
 {
     uint32_t page = pa >> 12;
     unsigned slot = (page ^ (page >> 8)) & 255;
@@ -120,7 +120,7 @@ static mrc_region *find(mrc_bus *b, uint32_t pa, unsigned size)
      * A last-hit shortcut is unsafe: Envoy's ROM at 00400000 overlaps
      * the low RAM mirror. A RAM data read must not redirect the next ROM
      * instruction fetch into RAM. */
-    mrc_region *r;
+    mh_region *r;
     for (unsigned i = 0; i < b->nregion; i++) {
         r = &b->region[i];
         if (in_region(r, pa, size)) {
@@ -132,7 +132,7 @@ static mrc_region *find(mrc_bus *b, uint32_t pa, unsigned size)
                 bool uniform = true;
                 uint64_t start = (uint64_t)page << 12;
                 for (unsigned j = 0; j < i; j++) {
-                    const mrc_region *p = &b->region[j];
+                    const mh_region *p = &b->region[j];
                     if (p->size && p->base < start + 4096 &&
                         (uint64_t)p->base + p->size > start) {
                         uniform = false;
@@ -203,9 +203,9 @@ static inline void store_be(uint8_t *p, unsigned size, uint32_t v)
  * expensive integer operation there is and was costing far more than the
  * mirroring is worth. Almost every access is inside the installed size.
  */
-static inline uint32_t backing_offset(const mrc_region *r, uint32_t off)
+static inline uint32_t backing_offset(const mh_region *r, uint32_t off)
 {
-    if (MRC_LIKELY(off < r->host_len))
+    if (MH_LIKELY(off < r->host_len))
         return off;
     /* Most Magic Cap ROM and DRAM chips are power-of-two sized. Their
      * mirrored windows have the same result with a mask and avoid a costly
@@ -215,13 +215,13 @@ static inline uint32_t backing_offset(const mrc_region *r, uint32_t off)
     return off % r->host_len;
 }
 
-uint32_t mrc_bus_read(mrc_bus *b, uint32_t pa, unsigned size, bool *ok)
+uint32_t mh_bus_read(mh_bus *b, uint32_t pa, unsigned size, bool *ok)
 {
-    mrc_region *r = find(b, pa, size);
+    mh_region *r = find(b, pa, size);
     *ok = true;
     b->reads++;
 
-    if (MRC_UNLIKELY(!r)) {
+    if (MH_UNLIKELY(!r)) {
         b->faults++;
         *ok = false;
         if (b->log_unmapped)
@@ -231,12 +231,12 @@ uint32_t mrc_bus_read(mrc_bus *b, uint32_t pa, unsigned size, bool *ok)
 
     uint32_t off = pa - r->base;
 
-    if (MRC_UNLIKELY(r->kind == MRC_REGION_FLOAT)) {
+    if (MH_UNLIKELY(r->kind == MH_REGION_FLOAT)) {
         b->float_reads++;
         return size == 4 ? 0xFFFFFFFFu : (1u << (size * 8)) - 1u;
     }
 
-    if (MRC_UNLIKELY(r->kind == MRC_REGION_MMIO)) {
+    if (MH_UNLIKELY(r->kind == MH_REGION_MMIO)) {
         b->mmio_reads++;
         uint32_t v = r->read ? r->read(r->ctx, off, size) : 0;
         if (b->log_mmio)
@@ -248,14 +248,14 @@ uint32_t mrc_bus_read(mrc_bus *b, uint32_t pa, unsigned size, bool *ok)
     return load_be(r->host + backing_offset(r, off), size);
 }
 
-void mrc_bus_write(mrc_bus *b, uint32_t pa, unsigned size, uint32_t val,
+void mh_bus_write(mh_bus *b, uint32_t pa, unsigned size, uint32_t val,
                    bool *ok)
 {
-    mrc_region *r = find(b, pa, size);
+    mh_region *r = find(b, pa, size);
     *ok = true;
     b->writes++;
 
-    if (MRC_UNLIKELY(!r)) {
+    if (MH_UNLIKELY(!r)) {
         b->faults++;
         *ok = false;
         if (b->log_unmapped)
@@ -266,7 +266,7 @@ void mrc_bus_write(mrc_bus *b, uint32_t pa, unsigned size, uint32_t val,
 
     uint32_t off = pa - r->base;
 
-    if (MRC_UNLIKELY(r->kind == MRC_REGION_MMIO)) {
+    if (MH_UNLIKELY(r->kind == MH_REGION_MMIO)) {
         b->mmio_writes++;
         if (b->log_mmio)
             fprintf(b->log, "[mmio] W%u %s+%03X = %08X  @%08X\n", size * 8,
@@ -276,10 +276,10 @@ void mrc_bus_write(mrc_bus *b, uint32_t pa, unsigned size, uint32_t val,
         return;
     }
 
-    if (MRC_UNLIKELY(r->kind == MRC_REGION_FLOAT))
+    if (MH_UNLIKELY(r->kind == MH_REGION_FLOAT))
         return;
 
-    if (MRC_UNLIKELY(r->kind == MRC_REGION_FLASH)) {
+    if (MH_UNLIKELY(r->kind == MH_REGION_FLASH)) {
         b->flash_writes++;
         if (b->log_mmio)
             fprintf(b->log, "[flash] W%u %s+%08X = %08X  @%08X\n", size * 8,
@@ -288,7 +288,7 @@ void mrc_bus_write(mrc_bus *b, uint32_t pa, unsigned size, uint32_t val,
         return;
     }
 
-    if (MRC_UNLIKELY(r->kind == MRC_REGION_ROM)) {
+    if (MH_UNLIKELY(r->kind == MH_REGION_ROM)) {
         /* A write to ROM is a real event worth knowing about, but the
          * hardware simply ignores it. Do the same, and count it. */
         b->faults++;
@@ -301,9 +301,9 @@ void mrc_bus_write(mrc_bus *b, uint32_t pa, unsigned size, uint32_t val,
     store_be(r->host + backing_offset(r, off), size, val);
 }
 
-uint8_t *mrc_bus_host_ptr(mrc_bus *b, uint32_t pa, uint32_t len)
+uint8_t *mh_bus_host_ptr(mh_bus *b, uint32_t pa, uint32_t len)
 {
-    mrc_region *r = find(b, pa, 1);
+    mh_region *r = find(b, pa, 1);
     if (!r || !r->host)
         return NULL;
     uint32_t off = pa - r->base;
@@ -312,11 +312,11 @@ uint8_t *mrc_bus_host_ptr(mrc_bus *b, uint32_t pa, uint32_t len)
     return r->host + off;
 }
 
-uint8_t *mrc_bus_page_host(mrc_bus *b, uint32_t pa, bool write)
+uint8_t *mh_bus_page_host(mh_bus *b, uint32_t pa, bool write)
 {
     uint32_t start = pa & ~4095u;
     for (unsigned i = 0; i < b->nregion; i++) {
-        mrc_region *r = &b->region[i];
+        mh_region *r = &b->region[i];
         if (!r->size)
             continue;
         if (!in_region(r, start, 1)) {
@@ -328,9 +328,9 @@ uint8_t *mrc_bus_page_host(mrc_bus *b, uint32_t pa, bool write)
         }
         if (!in_region(r, start, 4096) || !r->host || !r->host_len)
             return NULL;
-        if (write ? r->kind != MRC_REGION_RAM
-                  : (r->kind != MRC_REGION_RAM && r->kind != MRC_REGION_ROM &&
-                     r->kind != MRC_REGION_FLASH))
+        if (write ? r->kind != MH_REGION_RAM
+                  : (r->kind != MH_REGION_RAM && r->kind != MH_REGION_ROM &&
+                     r->kind != MH_REGION_FLASH))
             return NULL;
         uint32_t backing = backing_offset(r, start - r->base);
         if ((uint64_t)backing + 4096 > r->host_len)
@@ -340,13 +340,13 @@ uint8_t *mrc_bus_page_host(mrc_bus *b, uint32_t pa, bool write)
     return NULL;
 }
 
-uint8_t *mrc_bus_read_span(mrc_bus *b, uint32_t pa, uint32_t *len)
+uint8_t *mh_bus_read_span(mh_bus *b, uint32_t pa, uint32_t *len)
 {
     *len = 0;
-    mrc_region *r = find(b, pa, 1);
+    mh_region *r = find(b, pa, 1);
     if (!r || !r->host || !r->host_len ||
-        (r->kind != MRC_REGION_RAM && r->kind != MRC_REGION_ROM &&
-         r->kind != MRC_REGION_FLASH))
+        (r->kind != MH_REGION_RAM && r->kind != MH_REGION_ROM &&
+         r->kind != MH_REGION_FLASH))
         return NULL;
     uint32_t off = pa - r->base;
     uint32_t backing = backing_offset(r, off);
@@ -354,22 +354,22 @@ uint8_t *mrc_bus_read_span(mrc_bus *b, uint32_t pa, uint32_t *len)
     uint64_t backing_end = (uint64_t)pa + r->host_len - backing;
     if (end > backing_end) end = backing_end;
     if (end > UINT64_C(0x100000000)) end = UINT64_C(0x100000000);
-    for (mrc_region *p = b->region; p < r; p++)
+    for (mh_region *p = b->region; p < r; p++)
         if (p->size && p->base > pa && p->base < end)
             end = p->base;
     *len = (uint32_t)(end - pa);
     return r->host + backing;
 }
 
-void mrc_bus_print_map(const mrc_bus *b, FILE *f)
+void mh_bus_print_map(const mh_bus *b, FILE *f)
 {
     static const char *kind[] = { "RAM", "ROM", "FLSH", "MMIO", "----" };
     fprintf(f, "Physical memory map:\n");
     for (unsigned i = 0; i < b->nregion; i++) {
-        const mrc_region *r = &b->region[i];
+        const mh_region *r = &b->region[i];
         fprintf(f, "  %08X-%08X  %-4s  %s", r->base, r->base + r->size - 1,
                 kind[r->kind], r->name);
-        if (r->kind == MRC_REGION_FLOAT)
+        if (r->kind == MH_REGION_FLOAT)
             fprintf(f, " (decoded, nothing installed)");
         if (r->host && r->host_len < r->size)
             fprintf(f, " (mirrors %u bytes)", r->host_len);

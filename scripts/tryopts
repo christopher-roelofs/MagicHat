@@ -13,12 +13,12 @@ cd "$(dirname "$0")/.."
 ROM=roms/MagicCap-USA.image
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 
-./build/mcap --rom $ROM --headless --load-state states/monitor.state --input 'go -c\n' \
+./build/mhat --rom $ROM --headless --load-state states/monitor.state --input 'go -c\n' \
     "$@" -n 1500000000 --save-state "$W/boot.state" >/dev/null 2>&1
-./build/mcap --rom $ROM --headless --load-state "$W/boot.state" \
+./build/mhat --rom $ROM --headless --load-state "$W/boot.state" \
     "$@" --tap 500 500 5000000 --tap-hold 20000000 -n 400000000 \
     --save-state "$W/cal.state" >/dev/null 2>&1
-./build/mcap --rom $ROM --headless --load-state "$W/cal.state" "$@" \
+./build/mhat --rom $ROM --headless --load-state "$W/cal.state" "$@" \
     --taps-px "22,22,20000000;456,296,140000000;239,159,260000000" \
     --tap-hold 45000000 -n 450000000 --dump-fb "$W/desk.pgm" >/dev/null 2>&1
 

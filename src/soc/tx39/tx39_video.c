@@ -19,7 +19,7 @@ static unsigned ctrl_index(uint32_t off)
     return (off - TX39_VIDEOCTRL1) / 4;
 }
 
-uint32_t mrc_video_read(tx39_video *v, uint32_t off, bool *decoded)
+uint32_t mh_video_read(tx39_video *v, uint32_t off, bool *decoded)
 {
     unsigned i = ctrl_index(off);
     if (i >= 14) {
@@ -30,7 +30,7 @@ uint32_t mrc_video_read(tx39_video *v, uint32_t off, bool *decoded)
     return v->ctrl[i];
 }
 
-bool mrc_video_write(tx39_video *v, uint32_t off, uint32_t val)
+bool mh_video_write(tx39_video *v, uint32_t off, uint32_t val)
 {
     unsigned i = ctrl_index(off);
     if (i >= 14)
@@ -39,7 +39,7 @@ bool mrc_video_write(tx39_video *v, uint32_t off, uint32_t val)
     return true;
 }
 
-bool mrc_video_geometry(const tx39_video *v, uint32_t *fb_pa, unsigned *w,
+bool mh_video_geometry(const tx39_video *v, uint32_t *fb_pa, unsigned *w,
                         unsigned *h, unsigned *bpp)
 {
     uint32_t c1 = v->ctrl[0], c2 = v->ctrl[1], c3 = v->ctrl[2];

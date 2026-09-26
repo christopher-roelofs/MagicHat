@@ -9,66 +9,66 @@
 #define ROW_SIDE  0x5001
 #define ROW_CARDS 0x5002
 
-static mrc_ui_row rows[5];
+static mh_ui_row rows[5];
 static unsigned   row_count;
 static bool       showing;
 
-static void build(mrc_ui *ui, mrc_runtime *m)
+static void build(mh_ui *ui, mh_runtime *m)
 {
     row_count = 0;
-    rows[row_count++] = (mrc_ui_row){
-        .kind = MRC_UI_ROW_CHOICE,
+    rows[row_count++] = (mh_ui_row){
+        .kind = MH_UI_ROW_CHOICE,
         .label = "Controls on the",
-        .value = mrc_ui_get_side(ui) == MRC_UI_LEFT ? "left" : "right",
+        .value = mh_ui_get_side(ui) == MH_UI_LEFT ? "left" : "right",
         .id = ROW_SIDE,
     };
     if (m && m->ops->card_insert_sram) {
-        rows[row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_ACTION,
+        rows[row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_ACTION,
             .label = "PC Cards",
             .value = "insert, eject, or configure",
             .id = ROW_CARDS,
         };
     }
     if (m && m->ops->power_button) {
-        rows[row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_ACTION,
+        rows[row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_ACTION,
             .label = "Press power button",
             .id = ROW_POWER,
         };
     }
-    mrc_ui_open_panel(ui, "Settings", rows, row_count);
+    mh_ui_open_panel(ui, "Settings", rows, row_count);
     showing = true;
 }
 
-void mrc_settings_panel_open(mrc_ui *ui, mrc_runtime *m)
+void mh_settings_panel_open(mh_ui *ui, mh_runtime *m)
 {
     build(ui, m);
 }
 
-void mrc_settings_panel_close(mrc_ui *ui)
+void mh_settings_panel_close(mh_ui *ui)
 {
-    if (mrc_ui_panel_open(ui)) mrc_ui_close_panel(ui);
+    if (mh_ui_panel_open(ui)) mh_ui_close_panel(ui);
     showing = false;
 }
 
-bool mrc_settings_panel_showing(void)
+bool mh_settings_panel_showing(void)
 {
     return showing;
 }
 
-bool mrc_settings_panel_row(mrc_ui *ui, mrc_runtime *m, int id)
+bool mh_settings_panel_row(mh_ui *ui, mh_runtime *m, int id)
 {
     if (!showing) return false;
     switch (id) {
     case ROW_CARDS:
         /* The card sheet replaces Settings; keep only one panel owner. */
-        mrc_settings_panel_close(ui);
-        mrc_card_panel_open(ui, m);
+        mh_settings_panel_close(ui);
+        mh_card_panel_open(ui, m);
         return true;
     case ROW_SIDE:
-        mrc_ui_set_side(ui, mrc_ui_get_side(ui) == MRC_UI_LEFT
-                            ? MRC_UI_RIGHT : MRC_UI_LEFT);
+        mh_ui_set_side(ui, mh_ui_get_side(ui) == MH_UI_LEFT
+                            ? MH_UI_RIGHT : MH_UI_LEFT);
         build(ui, m);           /* the row shows which side it is now on */
         return true;
     case ROW_POWER:
@@ -82,7 +82,7 @@ bool mrc_settings_panel_row(mrc_ui *ui, mrc_runtime *m, int id)
             m->ops->power_button(m->board, false);
             fprintf(stderr, "[gui] pressed power button\n");
         }
-        mrc_settings_panel_close(ui);
+        mh_settings_panel_close(ui);
         return true;
     default:
         return false;

@@ -23,7 +23,7 @@
  * And it runs the whole thing four times, once for each pairing of the two
  * engines. Nothing in the format is supposed to know which one is running --
  * the block engine hands the processor back to the reference core before
- * mrc_m68k_run returns, so the reference core is the state of record at every
+ * mh_m68k_run returns, so the reference core is the state of record at every
  * point a caller could save -- but that is an argument, and saving on one
  * engine and restoring on the other is the measurement.
  *
@@ -123,7 +123,7 @@ std::vector<unsigned char> read_file(const std::filesystem::path &p)
 std::vector<uint8_t> screen(m68k_machine *m)
 {
     std::vector<uint8_t> px(PIC2000_SCREEN_W * PIC2000_SCREEN_H);
-    mrc_m68k_lcd(m, px.data());
+    mh_m68k_lcd(m, px.data());
     return px;
 }
 
@@ -150,42 +150,42 @@ bool round_trip(const std::filesystem::path &dir, const std::filesystem::path &r
      * passes, so a machine restored one pass out of step would not line up. */
     const uint64_t leg1 = 20000, leg2 = 7331;
 
-    m68k_machine *a = mrc_m68k_new(rom.string().c_str(), 4, log);
+    m68k_machine *a = mh_m68k_new(rom.string().c_str(), 4, log);
     CHECK(a != nullptr);
     if (!a) return false;
-    CHECK(mrc_m68k_set_engine(a, save_engine));
+    CHECK(mh_m68k_set_engine(a, save_engine));
 
-    CHECK(mrc_m68k_run(a, leg1) == leg1);
-    const uint64_t insns_t1 = mrc_m68k_insns(a);
+    CHECK(mh_m68k_run(a, leg1) == leg1);
+    const uint64_t insns_t1 = mh_m68k_insns(a);
     const auto picture_t1 = screen(a);
     CHECK(!blank(picture_t1));      /* the overlay really did retire */
-    CHECK(mrc_m68k_save_state(a, at_t1.c_str()));
+    CHECK(mh_m68k_save_state(a, at_t1.c_str()));
 
     /* From here both machines run the engine the state is being restored
      * onto, so what is left is the state file and nothing else. */
-    CHECK(mrc_m68k_set_engine(a, load_engine));
-    CHECK(mrc_m68k_run(a, leg2) == leg2);
+    CHECK(mh_m68k_set_engine(a, load_engine));
+    CHECK(mh_m68k_run(a, leg2) == leg2);
     const auto picture_t2 = screen(a);
     CHECK(picture_t2 != picture_t1);
-    const uint64_t insns_t2 = mrc_m68k_insns(a);
-    CHECK(mrc_m68k_save_state(a, from_a.c_str()));
+    const uint64_t insns_t2 = mh_m68k_insns(a);
+    CHECK(mh_m68k_save_state(a, from_a.c_str()));
 
     /* A second machine, built from the same ROM and nowhere near the same
      * place, told to become the first one. */
-    m68k_machine *b = mrc_m68k_new(rom.string().c_str(), 4, log);
+    m68k_machine *b = mh_m68k_new(rom.string().c_str(), 4, log);
     CHECK(b != nullptr);
-    if (!b) { mrc_m68k_free(a); return false; }
-    CHECK(mrc_m68k_set_engine(b, load_engine));
-    CHECK(mrc_m68k_run(b, 977) == 977);        /* somewhere else entirely */
+    if (!b) { mh_m68k_free(a); return false; }
+    CHECK(mh_m68k_set_engine(b, load_engine));
+    CHECK(mh_m68k_run(b, 977) == 977);        /* somewhere else entirely */
     CHECK(screen(b) != picture_t1);
-    CHECK(mrc_m68k_load_state(b, at_t1.c_str()));
+    CHECK(mh_m68k_load_state(b, at_t1.c_str()));
     CHECK(screen(b) == picture_t1);
-    CHECK(mrc_m68k_insns(b) == insns_t1);
+    CHECK(mh_m68k_insns(b) == insns_t1);
 
-    CHECK(mrc_m68k_run(b, leg2) == leg2);
+    CHECK(mh_m68k_run(b, leg2) == leg2);
     CHECK(screen(b) == picture_t2);
-    CHECK(mrc_m68k_insns(b) == insns_t2);
-    CHECK(mrc_m68k_save_state(b, from_b.c_str()));
+    CHECK(mh_m68k_insns(b) == insns_t2);
+    CHECK(mh_m68k_save_state(b, from_b.c_str()));
 
     /*
      * The real check. Everything the interface can show has already agreed;
@@ -218,22 +218,22 @@ bool round_trip(const std::filesystem::path &dir, const std::filesystem::path &r
         write_file(cut, bytes);
     }
     const auto before = screen(b);
-    const uint64_t insns_before = mrc_m68k_insns(b);
-    CHECK(!mrc_m68k_load_state(b, cut.c_str()));
+    const uint64_t insns_before = mh_m68k_insns(b);
+    CHECK(!mh_m68k_load_state(b, cut.c_str()));
     CHECK(screen(b) == before);
-    CHECK(mrc_m68k_insns(b) == insns_before);
+    CHECK(mh_m68k_insns(b) == insns_before);
 
-    CHECK(!mrc_m68k_load_state(b, (dir / "absent.state").string().c_str()));
+    CHECK(!mh_m68k_load_state(b, (dir / "absent.state").string().c_str()));
 
     /* And a state saved after a load is still a state: restoring is not a
      * one-way door, which is what switching between devices will need. */
     const auto again = (dir / (tag + "-again.state")).string();
-    CHECK(mrc_m68k_save_state(b, again.c_str()));
-    CHECK(mrc_m68k_load_state(b, again.c_str()));
+    CHECK(mh_m68k_save_state(b, again.c_str()));
+    CHECK(mh_m68k_load_state(b, again.c_str()));
     CHECK(screen(b) == before);
 
-    mrc_m68k_free(a);
-    mrc_m68k_free(b);
+    mh_m68k_free(a);
+    mh_m68k_free(b);
     return true;
 }
 
@@ -242,7 +242,7 @@ bool round_trip(const std::filesystem::path &dir, const std::filesystem::path &r
 int main()
 {
     auto dir = std::filesystem::temp_directory_path() /
-        ("mrc-m68k-state-" +
+        ("mh-m68k-state-" +
          std::to_string(std::chrono::steady_clock::now()
                         .time_since_epoch().count()));
     std::filesystem::create_directory(dir);
@@ -272,25 +272,25 @@ int main()
      */
     {
         const auto held = (dir / "held.state").string();
-        m68k_machine *k = mrc_m68k_new(rom.string().c_str(), 4, log);
+        m68k_machine *k = mh_m68k_new(rom.string().c_str(), 4, log);
         CHECK(k != nullptr);
         if (k) {
-            CHECK(mrc_m68k_run(k, 20000) == 20000);
-            CHECK(!mrc_m68k_option_held(k));
-            mrc_m68k_set_option(k, true);
-            CHECK(mrc_m68k_option_held(k));
-            CHECK(mrc_m68k_save_state(k, held.c_str()));
-            mrc_m68k_free(k);
+            CHECK(mh_m68k_run(k, 20000) == 20000);
+            CHECK(!mh_m68k_option_held(k));
+            mh_m68k_set_option(k, true);
+            CHECK(mh_m68k_option_held(k));
+            CHECK(mh_m68k_save_state(k, held.c_str()));
+            mh_m68k_free(k);
         }
-        m68k_machine *back = mrc_m68k_new(rom.string().c_str(), 4, log);
+        m68k_machine *back = mh_m68k_new(rom.string().c_str(), 4, log);
         CHECK(back != nullptr);
         if (back) {
-            CHECK(!mrc_m68k_option_held(back));   /* fresh: not held */
-            CHECK(mrc_m68k_load_state(back, held.c_str()));
-            CHECK(mrc_m68k_option_held(back));    /* restored: still held */
-            mrc_m68k_set_option(back, false);     /* and it still releases */
-            CHECK(!mrc_m68k_option_held(back));
-            mrc_m68k_free(back);
+            CHECK(!mh_m68k_option_held(back));   /* fresh: not held */
+            CHECK(mh_m68k_load_state(back, held.c_str()));
+            CHECK(mh_m68k_option_held(back));    /* restored: still held */
+            mh_m68k_set_option(back, false);     /* and it still releases */
+            CHECK(!mh_m68k_option_held(back));
+            mh_m68k_free(back);
         }
     }
 
@@ -304,22 +304,22 @@ int main()
                 "-t1.state")).string();
     {
         const auto serial_state = (dir / "serial-a.state").string();
-        auto *source = mrc_m68k_new(rom.string().c_str(), 4, log);
-        auto *restored = mrc_m68k_new(rom.string().c_str(), 4, log);
+        auto *source = mh_m68k_new(rom.string().c_str(), 4, log);
+        auto *restored = mh_m68k_new(rom.string().c_str(), 4, log);
         CHECK(source && restored);
         if (source && restored) {
 #ifdef _WIN32
             source->duart.a.enabled = true; // no pty to open; the state is the same
 #else
-            CHECK(mrc_m68k_open_serial_a(source));
+            CHECK(mh_m68k_open_serial_a(source));
 #endif
             auto &a = source->duart.a;
             a.rx_enabled = a.tx_enabled = a.tx_busy = true;
             a.rx[0] = 0x7e; a.rx[1] = 0x7d; a.rx[2] = 0xff;
             a.rx_at = 2; a.rx_len = 3; a.tx_byte = 'T';
             a.tx_done_at = 12345; a.rx_next_at = 67890;
-            CHECK(mrc_m68k_save_state(source, serial_state.c_str()));
-            CHECK(mrc_m68k_load_state(restored, serial_state.c_str()));
+            CHECK(mh_m68k_save_state(source, serial_state.c_str()));
+            CHECK(mh_m68k_load_state(restored, serial_state.c_str()));
             const auto &b = restored->duart.a;
             CHECK(b.enabled && b.rx_enabled && b.tx_enabled && b.tx_busy);
             CHECK(b.rx_at == 2 && b.rx_len == 3 && b.tx_byte == 'T');
@@ -333,35 +333,35 @@ int main()
                 file.seekp(-12, std::ios::end); // A trailer byte 20: rx_len
                 file.put(4);
             }
-            CHECK(!mrc_m68k_load_state(restored, serial_state.c_str()));
+            CHECK(!mh_m68k_load_state(restored, serial_state.c_str()));
             CHECK(restored->duart.a.rx_len == 3);
-            CHECK(mrc_m68k_save_state(source, serial_state.c_str()));
+            CHECK(mh_m68k_save_state(source, serial_state.c_str()));
             std::filesystem::resize_file(serial_state, std::filesystem::file_size(serial_state) - 1);
-            CHECK(!mrc_m68k_load_state(restored, serial_state.c_str()));
+            CHECK(!mh_m68k_load_state(restored, serial_state.c_str()));
             CHECK(restored->duart.a.rx_len == 3);
-            CHECK(mrc_m68k_load_state(restored, a_state.c_str()));
+            CHECK(mh_m68k_load_state(restored, a_state.c_str()));
             CHECK(!restored->duart.a.enabled && !restored->duart.a.rx_len);
         }
-        mrc_m68k_free(source);
-        mrc_m68k_free(restored);
+        mh_m68k_free(source);
+        mh_m68k_free(restored);
     }
-    m68k_machine *wrong_rom = mrc_m68k_new(other.string().c_str(), 4, log);
+    m68k_machine *wrong_rom = mh_m68k_new(other.string().c_str(), 4, log);
     CHECK(wrong_rom != nullptr);
     if (wrong_rom) {
-        CHECK(!mrc_m68k_load_state(wrong_rom, a_state.c_str()));
-        mrc_m68k_free(wrong_rom);
+        CHECK(!mh_m68k_load_state(wrong_rom, a_state.c_str()));
+        mh_m68k_free(wrong_rom);
     }
-    m68k_machine *wrong_ram = mrc_m68k_new(rom.string().c_str(), 8, log);
+    m68k_machine *wrong_ram = mh_m68k_new(rom.string().c_str(), 8, log);
     CHECK(wrong_ram != nullptr);
     if (wrong_ram) {
-        CHECK(!mrc_m68k_load_state(wrong_ram, a_state.c_str()));
-        mrc_m68k_free(wrong_ram);
+        CHECK(!mh_m68k_load_state(wrong_ram, a_state.c_str()));
+        mh_m68k_free(wrong_ram);
     }
 
     std::fclose(log);
-    /* MRC_KEEP=1 leaves the state files behind: when this fails it fails by
+    /* MH_KEEP=1 leaves the state files behind: when this fails it fails by
      * naming a byte offset, and the files are what turn that into a field. */
-    if (std::getenv("MRC_KEEP"))
+    if (std::getenv("MH_KEEP"))
         std::fprintf(stderr, "states kept in %s\n", dir.string().c_str());
     else
         std::filesystem::remove_all(dir);

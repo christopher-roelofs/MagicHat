@@ -16,7 +16,7 @@
 /*
  * Row ids. The rail hands back whatever id a row carried, and the caller may
  * be running panels of its own, so these sit in a range of their own and
- * mrc_picker_row answers only for those.
+ * mh_picker_row answers only for those.
  */
 #define PICKER_ID_BASE 0x7000
 #define PICKER_ID_UP   (PICKER_ID_BASE - 1)
@@ -26,8 +26,8 @@ typedef struct {
     bool directory;
 } entry;
 
-struct mrc_picker {
-    mrc_ui     *ui;
+struct mh_picker {
+    mh_ui     *ui;
     const char *title;
     char        dir[PATH_CAP];
     char        taken[PATH_CAP];
@@ -41,7 +41,7 @@ struct mrc_picker {
      * so it lives here for as long as the picker does, and the labels point
      * into the entries beside them.
      */
-    mrc_ui_row  rows[ENTRIES_MAX + 1];
+    mh_ui_row  rows[ENTRIES_MAX + 1];
     unsigned    row_count;
     char        up_label[PATH_CAP + 8];
 
@@ -58,14 +58,14 @@ static bool is_dir(const char *path)
 
 /* A child of the current directory. A root ("/", or "C:/" on Windows)
  * already ends in its separator, so it is not doubled. */
-static bool child_path(const mrc_picker *p, const char *name, char *out, size_t size)
+static bool child_path(const mh_picker *p, const char *name, char *out, size_t size)
 {
     size_t n = strlen(p->dir);
     if (n && p->dir[n - 1] == '/') n--;
     return snprintf(out, size, "%.*s/%s", (int)n, p->dir, name) < (int)size;
 }
 
-static bool wanted(const mrc_picker *p, const char *name)
+static bool wanted(const mh_picker *p, const char *name)
 {
     if (!p->suffix_count) return true;
     size_t n = strlen(name);
@@ -84,33 +84,33 @@ static int before(const entry *a, const entry *b)
     return strcasecmp(a->name, b->name) < 0;
 }
 
-static void build_rows(mrc_picker *p)
+static void build_rows(mh_picker *p)
 {
     p->row_count = 0;
     /* The way out, unless there is nowhere further out to go. */
-    if (!mrc_path_is_root(p->dir)) {
+    if (!mh_path_is_root(p->dir)) {
         snprintf(p->up_label, sizeof(p->up_label), "\xe2\x86\x91  %s", p->dir);
-        p->rows[p->row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_ACTION, .label = p->up_label,
+        p->rows[p->row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_ACTION, .label = p->up_label,
             .id = PICKER_ID_UP,
         };
     }
     for (unsigned i = 0; i < p->count; i++) {
-        p->rows[p->row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_ACTION,
+        p->rows[p->row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_ACTION,
             .label = p->entries[i].name,
             .value = p->entries[i].directory ? "\xe2\x80\xba" : NULL,
             .id = (int)(PICKER_ID_BASE + i),
         };
     }
     if (!p->count)
-        p->rows[p->row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_HEADING, .label = "nothing here to open",
+        p->rows[p->row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_HEADING, .label = "nothing here to open",
         };
-    mrc_ui_open_panel(p->ui, p->title, p->rows, p->row_count);
+    mh_ui_open_panel(p->ui, p->title, p->rows, p->row_count);
 }
 
-static void read_dir(mrc_picker *p)
+static void read_dir(mh_picker *p)
 {
     p->count = 0;
     DIR *d = opendir(p->dir);
@@ -139,7 +139,7 @@ static void read_dir(mrc_picker *p)
 }
 
 /* Somewhere readable to start, so the picker always opens on something. */
-static void settle(mrc_picker *p, const char *start)
+static void settle(mh_picker *p, const char *start)
 {
     const char *candidates[5];
     unsigned n = 0;
@@ -154,7 +154,7 @@ static void settle(mrc_picker *p, const char *start)
     candidates[n++] = "/";
     for (unsigned i = 0; i < n; i++) {
         char resolved[PATH_CAP];
-        if (!mrc_realpath(candidates[i], resolved, sizeof(resolved))) continue;
+        if (!mh_realpath(candidates[i], resolved, sizeof(resolved))) continue;
         if (!is_dir(resolved)) continue;
         snprintf(p->dir, sizeof(p->dir), "%s", resolved);
         return;
@@ -162,11 +162,11 @@ static void settle(mrc_picker *p, const char *start)
     snprintf(p->dir, sizeof(p->dir), "/");
 }
 
-mrc_picker *mrc_picker_open(mrc_ui *ui, const char *title, const char *start,
+mh_picker *mh_picker_open(mh_ui *ui, const char *title, const char *start,
                             const char *const *suffixes, unsigned suffix_count)
 {
     if (!ui) return NULL;
-    mrc_picker *p = calloc(1, sizeof(*p));
+    mh_picker *p = calloc(1, sizeof(*p));
     if (!p) return NULL;
     p->ui = ui;
     p->title = title ? title : "Open";
@@ -181,22 +181,22 @@ mrc_picker *mrc_picker_open(mrc_ui *ui, const char *title, const char *start,
     return p;
 }
 
-void mrc_picker_close(mrc_picker *p)
+void mh_picker_close(mh_picker *p)
 {
     if (!p) return;
-    if (mrc_ui_panel_open(p->ui)) mrc_ui_close_panel(p->ui);
+    if (mh_ui_panel_open(p->ui)) mh_ui_close_panel(p->ui);
     free(p);
 }
 
-static void go_to(mrc_picker *p, const char *path)
+static void go_to(mh_picker *p, const char *path)
 {
     char resolved[PATH_CAP];
-    if (!mrc_realpath(path, resolved, sizeof(resolved)) || !is_dir(resolved)) return;
+    if (!mh_realpath(path, resolved, sizeof(resolved)) || !is_dir(resolved)) return;
     snprintf(p->dir, sizeof(p->dir), "%s", resolved);
     read_dir(p);
 }
 
-bool mrc_picker_row(mrc_picker *p, int id)
+bool mh_picker_row(mh_picker *p, int id)
 {
     if (!p) return false;
     if (id == PICKER_ID_UP) {
@@ -217,14 +217,14 @@ bool mrc_picker_row(mrc_picker *p, int id)
     return true;
 }
 
-const char *mrc_picker_taken(mrc_picker *p)
+const char *mh_picker_taken(mh_picker *p)
 {
     if (!p || !p->have_taken) return NULL;
     p->have_taken = false;
     return p->taken;
 }
 
-const char *mrc_picker_directory(const mrc_picker *p)
+const char *mh_picker_directory(const mh_picker *p)
 {
     return p ? p->dir : NULL;
 }

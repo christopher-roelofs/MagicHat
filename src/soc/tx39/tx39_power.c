@@ -30,7 +30,7 @@ static uint64_t stptimer_ticks(uint32_t ctrl)
     return val + 1;
 }
 
-uint32_t mrc_power_read(tx39_power *p, uint32_t off, bool *decoded)
+uint32_t mh_power_read(tx39_power *p, uint32_t off, bool *decoded)
 {
     if (off != TX39_POWERCTRL) {
         *decoded = false;
@@ -46,7 +46,7 @@ uint32_t mrc_power_read(tx39_power *p, uint32_t off, bool *decoded)
     return p->ctrl | PWRCTRL_PWROK | (p->warm ? PWRCTRL_WARMSTART : 0);
 }
 
-bool mrc_power_write(tx39_power *p, uint32_t off, uint32_t val)
+bool mh_power_write(tx39_power *p, uint32_t off, uint32_t val)
 {
     if (off != TX39_POWERCTRL)
         return false;
@@ -71,7 +71,7 @@ bool mrc_power_write(tx39_power *p, uint32_t off, uint32_t val)
 
     if ((val & PWRCTRL_ENSTPTIMER) && !was_armed) {
         p->stptimer_armed = true;
-        p->stptimer_deadline = mrc_timer_rtc_now(&p->soc->timer) +
+        p->stptimer_deadline = mh_timer_rtc_now(&p->soc->timer) +
                                stptimer_ticks(val);
     } else if (!(val & PWRCTRL_ENSTPTIMER)) {
         p->stptimer_armed = false;
@@ -79,18 +79,18 @@ bool mrc_power_write(tx39_power *p, uint32_t off, uint32_t val)
     return true;
 }
 
-void mrc_power_tick(tx39_power *p)
+void mh_power_tick(tx39_power *p)
 {
     if (!p->stptimer_armed)
         return;
-    if (mrc_timer_rtc_now(&p->soc->timer) < p->stptimer_deadline)
+    if (mh_timer_rtc_now(&p->soc->timer) < p->stptimer_deadline)
         return;
 
     p->stptimer_armed = false;
-    mrc_icu_raise(&p->soc->icu, 5, INT5_STPTIMERINT);
+    mh_icu_raise(&p->soc->icu, 5, INT5_STPTIMERINT);
 }
 
-void mrc_power_set_button(tx39_power *p, bool pressed)
+void mh_power_set_button(tx39_power *p, bool pressed)
 {
     /* NetBSD TX39 power/ICU register definitions:
      * ONBUTN status and separate positive/negative button-edge sources. */
@@ -98,11 +98,11 @@ void mrc_power_set_button(tx39_power *p, bool pressed)
     if (old == pressed) return;
     p->ctrl ^= PWRCTRL_ONBUTN;
     /* TMPR3912 product brief, p. 14: ONBUTN asserts PWRCS when PWROK
-     * is high. Our modeled supply is good (mrc_power_read). This external
+     * is high. Our modeled supply is good (mh_power_read). This external
      * wake action is separate from the button's edge interrupt. */
     if (pressed) {
         p->ctrl |= PWRCTRL_PWRCS;
         p->soc->cpu->power_stopped = false;
     }
-    mrc_icu_raise(&p->soc->icu, 5, pressed ? INT5_POSONBUTNINT : INT5_NEGONBUTNINT);
+    mh_icu_raise(&p->soc->icu, 5, pressed ? INT5_POSONBUTNINT : INT5_NEGONBUTNINT);
 }

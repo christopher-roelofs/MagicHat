@@ -166,7 +166,7 @@ std::string difference(const m68k &a, const m68k &b)
  * and the retired count being the total for the whole chain rather than
  * for the last block through.
  */
-int chaining(mrc_code_arena &arena, uint8_t **pages_a)
+int chaining(mh_code_arena &arena, uint8_t **pages_a)
 {
     /* ADDQ.L #1,D0 ; BRA back to the ADDQ. Two instructions, one block. */
     static const uint8_t code_bytes[] = { 0x52, 0x80, 0x60, 0xFC };
@@ -187,7 +187,7 @@ int chaining(mrc_code_arena &arena, uint8_t **pages_a)
     }
 
     uint8_t *exec = nullptr;
-    uint8_t *out = mrc_code_arena_reserve(&arena, 4096, &exec);
+    uint8_t *out = mh_code_arena_reserve(&arena, 4096, &exec);
     if (!out) { printf("FAIL: no room for the chaining fixture\n"); return 1; }
     unsigned native = 0;
     m68k_emit_points points = { 0, 0 };
@@ -195,13 +195,13 @@ int chaining(mrc_code_arena &arena, uint8_t **pages_a)
                              nullptr, nullptr, 0, false, &native, &points,
                              nullptr);
     if (!bytes) { printf("FAIL: the chaining fixture did not compile\n"); return 1; }
-    mrc_code_arena_commit(&arena, out, bytes);
+    mh_code_arena_commit(&arena, out, bytes);
     /* Its own successor, which is what a loop is. */
-    if (!mrc_code_arena_unlock(&arena, out + points.link, 4)) {
+    if (!mh_code_arena_unlock(&arena, out + points.link, 4)) {
         printf("FAIL: the chaining fixture could not be patched\n"); return 1;
     }
     m68k_patch_link(out + points.link, exec + points.link, exec + points.chain);
-    mrc_code_arena_relock(&arena, out + points.link, 4);
+    mh_code_arena_relock(&arena, out + points.link, 4);
 
     int failures = 0;
     for (unsigned budget = 1; budget <= 9; budget++) {
@@ -233,8 +233,8 @@ int main(int argc, char **argv)
         printf("no emitter for this host; nothing to compare\n");
         return 0;
     }
-    mrc_code_arena arena;
-    if (!mrc_code_arena_open(&arena, 4u << 20)) {
+    mh_code_arena arena;
+    if (!mh_code_arena_open(&arena, 4u << 20)) {
         printf("no executable memory on this host; nothing to compare\n");
         return 0;
     }
@@ -247,7 +247,7 @@ int main(int argc, char **argv)
      * extension words are pseudo-random but fixed per opcode, so a failure
      * names one instruction that can be reproduced.
      */
-    struct Form { uint16_t word; uint8_t bytes[MRC_JIT_M68K_MAX_BYTES]; };
+    struct Form { uint16_t word; uint8_t bytes[MH_JIT_M68K_MAX_BYTES]; };
     std::vector<Form> forms;
     for (uint32_t w = 0; w < 0x10000; w++) {
         Form f;
@@ -279,13 +279,13 @@ int main(int argc, char **argv)
         /* One instruction, compiled on its own, with no guard: the guard is
          * about the guest rewriting itself and has its own coverage. */
         uint8_t *exec = nullptr;
-        uint8_t *out = mrc_code_arena_reserve(&arena, 320 * 4 + 256, &exec);
-        if (!out) { mrc_code_arena_reset(&arena); continue; }
+        uint8_t *out = mh_code_arena_reserve(&arena, 320 * 4 + 256, &exec);
+        if (!out) { mh_code_arena_reset(&arena); continue; }
         unsigned native = 0;
         size_t bytes = m68k_emit(out, exec, 320 * 4 + 256, &insn, 1, CODE_AT,
                                  nullptr, nullptr, 0, true, &native, nullptr, nullptr);
         if (!bytes) { refused++; continue; }
-        mrc_code_arena_commit(&arena, out, bytes);
+        mh_code_arena_commit(&arena, out, bytes);
         m68k_code code = (m68k_code)exec;
 
         for (unsigned round = 0; round < rounds; round++) {
@@ -371,6 +371,6 @@ int main(int argc, char **argv)
                g.second.detail.c_str());
     if (chaining(arena, pages_a)) failures++;
     if (!failures) printf("all 68k emitter checks passed\n");
-    mrc_code_arena_close(&arena);
+    mh_code_arena_close(&arena);
     return failures ? 1 : 0;
 }

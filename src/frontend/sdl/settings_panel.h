@@ -8,8 +8,8 @@
  * Shared between the frontends because both machines answer the same way,
  * and because a settings sheet written twice becomes two different sheets.
  */
-#ifndef MRC_SDL_SETTINGS_PANEL_H
-#define MRC_SDL_SETTINGS_PANEL_H
+#ifndef MH_SDL_SETTINGS_PANEL_H
+#define MH_SDL_SETTINGS_PANEL_H
 
 #include <stdbool.h>
 #include "frontend/sdl/ui.h"
@@ -17,9 +17,9 @@
 
 /* Open the sheet for this machine. Rows it cannot offer are left out rather
  * than shown doing nothing. */
-void mrc_settings_panel_open(mrc_ui *ui, mrc_runtime *m);
-void mrc_settings_panel_close(mrc_ui *ui);
-bool mrc_settings_panel_showing(void);
+void mh_settings_panel_open(mh_ui *ui, mh_runtime *m);
+void mh_settings_panel_close(mh_ui *ui);
+bool mh_settings_panel_showing(void);
 
 /*
  * Hand it a row the rail reported. True when the panel consumed it.
@@ -27,6 +27,6 @@ bool mrc_settings_panel_showing(void);
  * Acting on a row is done here, because everything on this sheet is a
  * question the runtime can answer for itself.
  */
-bool mrc_settings_panel_row(mrc_ui *ui, mrc_runtime *m, int id);
+bool mh_settings_panel_row(mh_ui *ui, mh_runtime *m, int id);
 
-#endif /* MRC_SDL_SETTINGS_PANEL_H */
+#endif /* MH_SDL_SETTINGS_PANEL_H */

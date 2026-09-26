@@ -10,8 +10,8 @@
  * traffic each one absorbed, so an unidentified device cannot quietly become
  * load-bearing.
  */
-#ifndef MRC_UNKNOWN_DEV_H
-#define MRC_UNKNOWN_DEV_H
+#ifndef MH_UNKNOWN_DEV_H
+#define MH_UNKNOWN_DEV_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -27,8 +27,8 @@ typedef struct {
     uint64_t    reads, writes;
 } unknown_dev;
 
-void     mrc_unknown_init(unknown_dev *d, const char *name);
-uint32_t mrc_unknown_read(void *ctx, uint32_t off, unsigned size);
-void     mrc_unknown_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
+void     mh_unknown_init(unknown_dev *d, const char *name);
+uint32_t mh_unknown_read(void *ctx, uint32_t off, unsigned size);
+void     mh_unknown_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
 
-#endif /* MRC_UNKNOWN_DEV_H */
+#endif /* MH_UNKNOWN_DEV_H */

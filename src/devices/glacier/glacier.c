@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-void mrc_glacier_init(glacier *g, const char *name)
+void mh_glacier_init(glacier *g, const char *name)
 {
     memset(g, 0, sizeof(*g));
     g->name = name;
@@ -10,7 +10,7 @@ void mrc_glacier_init(glacier *g, const char *name)
     g->card_present = false;
 }
 
-uint32_t mrc_glacier_read(void *ctx, uint32_t off, unsigned size)
+uint32_t mh_glacier_read(void *ctx, uint32_t off, unsigned size)
 {
     glacier *g = ctx;
 
@@ -34,7 +34,7 @@ uint32_t mrc_glacier_read(void *ctx, uint32_t off, unsigned size)
     return v;
 }
 
-void mrc_glacier_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
+void mh_glacier_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
     glacier *g = ctx;
 
@@ -60,7 +60,7 @@ void mrc_glacier_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
     }
 }
 
-void mrc_glacier_set_present(glacier *g, bool present)
+void mh_glacier_set_present(glacier *g, bool present)
 {
     if (g->card_present == present) return;
     g->card_present = present;
@@ -68,7 +68,7 @@ void mrc_glacier_set_present(glacier *g, bool present)
     g->reg[pending / 2] |= GLACIER_ST_CD_MASK;
 }
 
-void mrc_glacier_set_memory_inputs(glacier *g, bool ready,
+void mh_glacier_set_memory_inputs(glacier *g, bool ready,
                                    bool write_protected, bool battery_good)
 {
     /* ROM 13C338D4: ready (bit 2); 13C33924 / selector 0511:
@@ -82,14 +82,14 @@ void mrc_glacier_set_memory_inputs(glacier *g, bool ready,
     g->reg[GLACIER_FALL_PENDING / 2] |= old & ~value;
 }
 
-bool mrc_glacier_irq(const glacier *g)
+bool mh_glacier_irq(const glacier *g)
 {
     for (unsigned off = 0x10; off <= 0x16; off += 2)
         if (g->reg[off / 2] & g->reg[(off + 8) / 2]) return true;
     return false;
 }
 
-void mrc_glacier_set_ready_irq(glacier *g, bool high)
+void mh_glacier_set_ready_irq(glacier *g, bool high)
 {
     /* Legacy I/O-card status helper. ROM 0x13C33974 debounces bit 3;
      * Ne2000 package offset 0x580 disables that interrupt. For SRAM this
@@ -101,7 +101,7 @@ void mrc_glacier_set_ready_irq(glacier *g, bool high)
     g->reg[(high ? GLACIER_RISE_PENDING : GLACIER_FALL_PENDING) / 2] |= bit;
 }
 
-void mrc_glacier_set_card_irq(glacier *g, bool asserted)
+void mh_glacier_set_card_irq(glacier *g, bool asserted)
 {
     /* With WCPack/Ne2000 installed the guest writes +1C=4, then enables
      * +14 bit 2. ROM 0x13C20050/0x13C200F8 dispatches falling events from

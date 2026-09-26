@@ -5,8 +5,8 @@
  * peripheral, so this is modelled as a single MMIO region that dispatches by
  * offset to the submodule that owns it — which is how the silicon is laid out.
  */
-#ifndef MRC_TX39_H
-#define MRC_TX39_H
+#ifndef MH_TX39_H
+#define MH_TX39_H
 
 #include "soc/tx39/tx39_mbus.h"
 #include <stddef.h>
@@ -51,10 +51,10 @@
 typedef struct tx39 tx39;
 
 /*
- * Post-codec sound samples at mrc_sib_output_rate_hz(). A NULL sink disables
+ * Post-codec sound samples at mh_sib_output_rate_hz(). A NULL sink disables
  * delivery only; guest DMA, codec state and interrupts still advance.
  */
-typedef void (*mrc_audio_sink)(void *ctx, int16_t sample);
+typedef void (*mh_audio_sink)(void *ctx, int16_t sample);
 
 /* ---- UART ---- */
 typedef struct {
@@ -85,7 +85,7 @@ typedef struct {
     /* The codec's IRQ pin, which the SIB presents to the host. */
     bool     irq_out;
     /* Auxiliary ADC channels AD0..AD3 — board voltages. AD2 is the main
-     * battery and AD3 the backup; see mrc_ucb_init() for the defaults. */
+     * battery and AD3 the backup; see mh_ucb_init() for the defaults. */
     uint16_t aux[4];
 } ucb1100;
 
@@ -111,7 +111,7 @@ typedef struct {
     bool     irq_seen;      /* last codec IRQ level, for edge detection */
     /* Diagnostics: which codec registers software actually touches. */
     uint64_t codec_reads[16], codec_writes[16];
-    mrc_audio_sink audio_sink;
+    mh_audio_sink audio_sink;
     void          *audio_ctx;
     unsigned log_codec;     /* log this many codec transactions, then stop */
 } tx39_sib;
@@ -203,82 +203,82 @@ struct tx39 {
     tx39_mbus_port *mbus_port;
 };
 
-#define MRC_TX39_STATE_BYTES offsetof(tx39, mbus_port)
+#define MH_TX39_STATE_BYTES offsetof(tx39, mbus_port)
 
-void mrc_tx39_init(tx39 *s, r3900 *cpu, uint32_t cpu_hz);
+void mh_tx39_init(tx39 *s, r3900 *cpu, uint32_t cpu_hz);
 
 /* MMIO entry points, registered with the bus. */
-uint32_t mrc_tx39_read(void *ctx, uint32_t off, unsigned size);
-void     mrc_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
+uint32_t mh_tx39_read(void *ctx, uint32_t off, unsigned size);
+void     mh_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
 
 /* Called once per emulated instruction batch to advance time-based devices. */
-void mrc_tx39_tick(tx39 *s);
-void mrc_tx39_print_histogram(const tx39 *s, FILE *f, unsigned top);
+void mh_tx39_tick(tx39 *s);
+void mh_tx39_print_histogram(const tx39 *s, FILE *f, unsigned top);
 
 /* ---- submodule interfaces ---- */
 
 /* ICU: raise a source in bank (1..6). Recomputes the CPU interrupt lines. */
-bool mrc_icu_pending(const tx39_icu *icu);
-void mrc_icu_raise(tx39_icu *icu, unsigned bank, uint32_t bits);
-void mrc_icu_update(tx39_icu *icu);
-uint32_t mrc_icu_read(tx39_icu *icu, uint32_t off, bool *decoded);
-bool     mrc_icu_write(tx39_icu *icu, uint32_t off, uint32_t val);
+bool mh_icu_pending(const tx39_icu *icu);
+void mh_icu_raise(tx39_icu *icu, unsigned bank, uint32_t bits);
+void mh_icu_update(tx39_icu *icu);
+uint32_t mh_icu_read(tx39_icu *icu, uint32_t off, bool *decoded);
+bool     mh_icu_write(tx39_icu *icu, uint32_t off, uint32_t val);
 
 /* UART */
-uint32_t mrc_uart_read(tx39_uart *u, uint32_t off, bool *decoded);
-bool     mrc_uart_write(tx39_uart *u, uint32_t off, uint32_t val);
-void     mrc_uart_set_link(tx39_uart *u, void *link);
-void    *mrc_uart_link(const tx39_uart *u);
-void     mrc_uart_rx_byte(tx39_uart *u, uint8_t byte);
-void     mrc_uart_update(tx39_uart *u);
-uint64_t mrc_uart_frame_cycles(const tx39_uart *u);
+uint32_t mh_uart_read(tx39_uart *u, uint32_t off, bool *decoded);
+bool     mh_uart_write(tx39_uart *u, uint32_t off, uint32_t val);
+void     mh_uart_set_link(tx39_uart *u, void *link);
+void    *mh_uart_link(const tx39_uart *u);
+void     mh_uart_rx_byte(tx39_uart *u, uint8_t byte);
+void     mh_uart_update(tx39_uart *u);
+uint64_t mh_uart_frame_cycles(const tx39_uart *u);
 
 /* Timer */
-uint32_t mrc_timer_read(tx39_timer *t, uint32_t off, bool *decoded);
-bool     mrc_timer_write(tx39_timer *t, uint32_t off, uint32_t val);
-void     mrc_timer_tick(tx39_timer *t);
-uint64_t mrc_timer_rtc_now(const tx39_timer *t);
+uint32_t mh_timer_read(tx39_timer *t, uint32_t off, bool *decoded);
+bool     mh_timer_write(tx39_timer *t, uint32_t off, uint32_t val);
+void     mh_timer_tick(tx39_timer *t);
+uint64_t mh_timer_rtc_now(const tx39_timer *t);
 
 /* Video */
-uint32_t mrc_video_read(tx39_video *v, uint32_t off, bool *decoded);
-bool     mrc_video_write(tx39_video *v, uint32_t off, uint32_t val);
+uint32_t mh_video_read(tx39_video *v, uint32_t off, bool *decoded);
+bool     mh_video_write(tx39_video *v, uint32_t off, uint32_t val);
 /* Current framebuffer geometry as programmed. Returns false when video is off. */
-bool     mrc_video_geometry(const tx39_video *v, uint32_t *fb_pa,
+bool     mh_video_geometry(const tx39_video *v, uint32_t *fb_pa,
                             unsigned *w, unsigned *h, unsigned *bpp);
 
 /* Power */
-uint32_t mrc_power_read(tx39_power *p, uint32_t off, bool *decoded);
-bool     mrc_power_write(tx39_power *p, uint32_t off, uint32_t val);
-void     mrc_power_tick(tx39_power *p);
-void     mrc_power_set_button(tx39_power *p, bool pressed);
+uint32_t mh_power_read(tx39_power *p, uint32_t off, bool *decoded);
+bool     mh_power_write(tx39_power *p, uint32_t off, uint32_t val);
+void     mh_power_tick(tx39_power *p);
+void     mh_power_set_button(tx39_power *p, bool pressed);
 
 /* MBUS */
-void mrc_mbus_connect(tx39_mbus *m, tx39_mbus_port *port);
-void mrc_mbus_input(tx39_mbus *m, bool high);
-bool mrc_mbus_receive_word(tx39_mbus *m, uint32_t word);
-bool mrc_mbus_receive_command(tx39_mbus *m, uint16_t word);
-uint32_t mrc_mbus_read(tx39_mbus *m, uint32_t off, bool *decoded);
-bool     mrc_mbus_write(tx39_mbus *m, uint32_t off, uint32_t val);
-void     mrc_mbus_update(tx39_mbus *m);
+void mh_mbus_connect(tx39_mbus *m, tx39_mbus_port *port);
+void mh_mbus_input(tx39_mbus *m, bool high);
+bool mh_mbus_receive_word(tx39_mbus *m, uint32_t word);
+bool mh_mbus_receive_command(tx39_mbus *m, uint16_t word);
+uint32_t mh_mbus_read(tx39_mbus *m, uint32_t off, bool *decoded);
+bool     mh_mbus_write(tx39_mbus *m, uint32_t off, uint32_t val);
+void     mh_mbus_update(tx39_mbus *m);
 
 /* SIB */
-uint32_t mrc_sib_read(tx39_sib *sib, uint32_t off, bool *decoded);
-void     mrc_sib_update(tx39_sib *sib);
+uint32_t mh_sib_read(tx39_sib *sib, uint32_t off, bool *decoded);
+void     mh_sib_update(tx39_sib *sib);
 
-uint32_t mrc_sib_snd_rate_hz(const tx39_sib *sib);
-uint32_t mrc_sib_output_rate_hz(const tx39_sib *sib);
-void     mrc_sib_set_audio_sink(tx39_sib *sib, mrc_audio_sink fn, void *ctx);
-void     mrc_sib_pump_audio(tx39_sib *sib);
-void     mrc_sib_print_codec_traffic(const tx39_sib *sib, FILE *f);
-bool     mrc_sib_write(tx39_sib *sib, uint32_t off, uint32_t val);
+uint32_t mh_sib_snd_rate_hz(const tx39_sib *sib);
+uint32_t mh_sib_output_rate_hz(const tx39_sib *sib);
+void     mh_sib_set_audio_sink(tx39_sib *sib, mh_audio_sink fn, void *ctx);
+void     mh_sib_pump_audio(tx39_sib *sib);
+void     mh_sib_print_codec_traffic(const tx39_sib *sib, FILE *f);
+bool     mh_sib_write(tx39_sib *sib, uint32_t off, uint32_t val);
 
 /* UCB1100 codec register access, as seen from the SIB. */
-uint16_t mrc_ucb_read(ucb1100 *u, unsigned reg);
-void     mrc_ucb_write(ucb1100 *u, unsigned reg, uint16_t val);
-void     mrc_ucb_init(ucb1100 *u);
-void     mrc_ucb_set_pen(ucb1100 *u, bool down, uint16_t x, uint16_t y);
+uint16_t mh_ucb_read(ucb1100 *u, unsigned reg);
+void     mh_ucb_write(ucb1100 *u, unsigned reg, uint16_t val);
+void     mh_ucb_init(ucb1100 *u);
+void     mh_ucb_set_pen(ucb1100 *u, bool down, uint16_t x, uint16_t y);
 /* Raw codec GPIO inputs; DataRover Option is TX39 IO3, not a codec pin. */
-void     mrc_ucb_set_gpio_in(ucb1100 *u, uint16_t level);
+void     mh_ucb_set_gpio_in(ucb1100 *u, uint16_t level);
 
 /*
  * Panel geometry: where on the digitiser a given screen pixel is.
@@ -304,7 +304,7 @@ void     mrc_ucb_set_gpio_in(ucb1100 *u, uint16_t level);
 #define PANEL_RAW_Y0     69u    /* raw reading at screen y = 0   */
 #define PANEL_RAW_Y1    791u    /* raw reading at screen y = 319 */
 
-void     mrc_panel_px_to_raw(unsigned px, unsigned py,
+void     mh_panel_px_to_raw(unsigned px, unsigned py,
                              uint16_t *rx, uint16_t *ry);
 
-#endif /* MRC_TX39_H */
+#endif /* MH_TX39_H */

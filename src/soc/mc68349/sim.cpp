@@ -5,7 +5,7 @@ uint32_t mc68349_sim_read(void *ctx, uint32_t off, unsigned size)
     auto *s = (Mc68349Sim *)ctx;
     if (s->duart && off >= 0x700 && off < 0x722 && off + size <= 0x722) {
         const uint32_t value = mc68349_duart_read(s->duart, off - 0x700, size);
-        if (std::getenv("MRC_DUART_TRACE"))
+        if (std::getenv("MH_DUART_TRACE"))
             std::fprintf(s->log, "[duart] R%u +%03X = %0*X\n", size * 8,
                          off, (int)(size * 2), value);
         return value;
@@ -26,7 +26,7 @@ void mc68349_sim_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
     auto *s = (Mc68349Sim *)ctx;
     if (s->duart && off >= 0x700 && off < 0x722 && off + size <= 0x722) {
-        if (std::getenv("MRC_DUART_TRACE"))
+        if (std::getenv("MH_DUART_TRACE"))
             std::fprintf(s->log, "[duart] W%u +%03X = %0*X\n", size * 8,
                          off, (int)(size * 2), val);
         mc68349_duart_write(s->duart, off - 0x700, size, val);
@@ -63,7 +63,7 @@ void mc68349_sim_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
     if (off == 0x44 && !s->overlay_off && s->boot_select_programmed) {
         s->overlay_off = true;
         s->boot_select_programmed(s->board);
-        if (s->bus) mrc_bus_invalidate_lookup(s->bus);
+        if (s->bus) mh_bus_invalidate_lookup(s->bus);
         fprintf(s->log, "[sim] CS0 base programmed: boot overlay retired, "
                 "low memory is now DRAM\n");
     }

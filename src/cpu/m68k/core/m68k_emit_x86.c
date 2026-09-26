@@ -2,7 +2,7 @@
 #include "cpu/m68k/core/m68k_block.h"
 #include "cpu/m68k/core/m68k_emit_policy.h"
 
-#if defined(MRC_M68K_EMIT_X86)
+#if defined(MH_M68K_EMIT_X86)
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
@@ -968,7 +968,7 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
      * millions of instructions later.
      */
     size_t exits[M68K_BLOCK_MAX * 5 +
-                 (M68K_BLOCK_MAX * MRC_JIT_M68K_MAX_BYTES) / 2 + 8];
+                 (M68K_BLOCK_MAX * MH_JIT_M68K_MAX_BYTES) / 2 + 8];
     unsigned nexits = 0;
 
 #ifdef _WIN32

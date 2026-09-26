@@ -25,7 +25,7 @@ static const uint8_t magic_tuple[] = {
     0x6d,0x1f,0x5f,0x83,
 };
 
-bool mrc_ne2000_card_attribute_byte(uint32_t off, uint8_t config, uint8_t *value)
+bool mh_ne2000_card_attribute_byte(uint32_t off, uint8_t config, uint8_t *value)
 {
     if (!value) return false;
     if (off == 0x3f8) { *value = config; return true; }
@@ -36,7 +36,7 @@ bool mrc_ne2000_card_attribute_byte(uint32_t off, uint8_t config, uint8_t *value
     return false;
 }
 
-bool mrc_ne2000_magic_attribute_byte(uint32_t off, uint8_t config, uint8_t *value)
+bool mh_ne2000_magic_attribute_byte(uint32_t off, uint8_t config, uint8_t *value)
 {
     if (!value) return false;
     if (off == 0x3f8) { *value = config; return true; }
@@ -57,17 +57,17 @@ bool mrc_ne2000_magic_attribute_byte(uint32_t off, uint8_t config, uint8_t *valu
  * that range. Glacier +20 bit 3 toggles around odd-byte cycles; it is not
  * a persistent attribute/I/O mode switch. Only this observed I/O range is
  * decoded here: other aliases and the complete controller decoder are unknown. */
-static bool io_address(const mrc_pccard *c, mrc_pccard_window w, uint32_t off)
+static bool io_address(const mh_pccard *c, mh_pccard_window w, uint32_t off)
 {
-    return w == MRC_PCCARD_WINDOW_A && off >= 0x300 && off < 0x320 &&
+    return w == MH_PCCARD_WINDOW_A && off >= 0x300 && off < 0x320 &&
            (c->config & 0x3f) == 0x20 && !(c->config & 0x80);
 }
 
-static bool read_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+static bool read_card(mh_pccard *c, mh_pccard_window w, uint32_t off,
                       unsigned size, uint32_t *out)
 {
     if (io_address(c, w, off)) {
-        *out = mrc_ne2000_read(&c->nic, off - 0x300, size);
+        *out = mh_ne2000_read(&c->nic, off - 0x300, size);
         /* Board word lanes: the BE guest stores EtherType 0x0806 directly
          * at +310, and packet RAM must contain bytes 08,06. The core's
          * NE2000 data port is little-endian. PROM duplicates hid this swap. */
@@ -75,28 +75,28 @@ static bool read_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
             *out = ((*out & 255) << 8) | ((*out >> 8) & 255);
         return true;
     }
-    if (w != MRC_PCCARD_WINDOW_A || size != 1) return false;
+    if (w != MH_PCCARD_WINDOW_A || size != 1) return false;
     uint8_t byte;
-    if (!mrc_ne2000_card_attribute_byte(off, c->config, &byte)) return false;
+    if (!mh_ne2000_card_attribute_byte(off, c->config, &byte)) return false;
     *out = byte;
     return true;
 }
 
-static bool write_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+static bool write_card(mh_pccard *c, mh_pccard_window w, uint32_t off,
                        unsigned size, uint32_t value)
 {
     if (io_address(c, w, off)) {
         if (off == 0x310 && size == 2)
             value = ((value & 255) << 8) | ((value >> 8) & 255);
-        mrc_ne2000_write(&c->nic, off - 0x300, size, value);
+        mh_ne2000_write(&c->nic, off - 0x300, size, value);
         return true;
     }
-    if (w != MRC_PCCARD_WINDOW_A || off != 0x3f8 || size != 1) return false;
+    if (w != MH_PCCARD_WINDOW_A || off != 0x3f8 || size != 1) return false;
     c->config = (uint8_t)value;
-    if (value & 0x80) (void)mrc_ne2000_read(&c->nic, 0x1f, 1);
+    if (value & 0x80) (void)mh_ne2000_read(&c->nic, 0x1f, 1);
     return true;
 }
 
-const mrc_pccard_kind mrc_pccard_ne2000 = {
+const mh_pccard_kind mh_pccard_ne2000 = {
     .name = "ne2000", .read = read_card, .write = write_card
 };

@@ -7,7 +7,7 @@
  */
 #include "cpu/m68k/core/m68k_emit.h"
 
-#if !defined(MRC_M68K_EMIT_X86) && !defined(MRC_M68K_EMIT_A64)
+#if !defined(MH_M68K_EMIT_X86) && !defined(MH_M68K_EMIT_A64)
 
 bool m68k_emit_supported(void) { return false; }
 

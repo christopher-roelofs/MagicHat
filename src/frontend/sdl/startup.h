@@ -4,7 +4,7 @@
 /* Prefer the native desktop backend before either probing or opening a
  * window. SDL's X11 default can hang in window creation under XWayland.
  * Explicit user settings (including dummy for tests) retain priority. */
-static inline void mrc_sdl_prepare_video(void)
+static inline void mh_sdl_prepare_video(void)
 {
 #if defined(__linux__)
     const char *wayland = SDL_getenv("WAYLAND_DISPLAY");

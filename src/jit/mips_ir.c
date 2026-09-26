@@ -3,11 +3,11 @@
 /* Every word decodes: what the backends do not implement becomes J_EXEC.
  * Returns false only for words that must not join a block at all (none at
  * present; the return value is kept so the frontend can veto later). */
-bool mrc_jit_decode_mips(uint32_t w, mrc_jit_ir *i)
+bool mh_jit_decode_mips(uint32_t w, mh_jit_ir *i)
 {
     unsigned op = w >> 26, fn = w & 63;
     unsigned rs = (w >> 21) & 31, rt = (w >> 16) & 31, rd = (w >> 11) & 31;
-    *i = (mrc_jit_ir){.op = J_EXEC, .dst = rt, .left = rs, .right = rt,
+    *i = (mh_jit_ir){.op = J_EXEC, .dst = rt, .left = rs, .right = rt,
                        .word = w};
     if (!op) {
         i->dst = rd;

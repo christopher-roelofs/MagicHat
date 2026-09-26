@@ -3,8 +3,8 @@
 /*
  * machine.h — the DataRover 840 as a whole.
  */
-#ifndef MRC_MACHINE_H
-#define MRC_MACHINE_H
+#ifndef MH_MACHINE_H
+#define MH_MACHINE_H
 
 #include "core/bus/bus.h"
 #include "cpu/mips/r3900.h"
@@ -85,12 +85,12 @@ typedef struct {
 } datarover_card_port;
 
 struct machine {
-    mrc_bus  bus;
+    mh_bus  bus;
     r3900    cpu;
     r3900_jit *jit; /* host-only optional native engine */
     r3900_decode_cache *decode_cache; /* host-only optional engine */
     tx39     soc;
-    mrc_dr_keyboard keyboard;
+    mh_dr_keyboard keyboard;
     glacier  pcmcia[2];
     uint8_t    *card_image[2];
     /*
@@ -106,7 +106,7 @@ struct machine {
      */
     uint64_t        card_at[2];
     bool            card_in[2];
-    mrc_pccard      card[2];
+    mh_pccard      card[2];
     /*
      * What is in each slot, so that a state can put it back.
      *
@@ -116,12 +116,12 @@ struct machine {
      * session, and a device picked up again is expected to still have it.
      * So this is what a state records: a name, not a copy.
      */
-    mrc_card_kind   card_kind[2];
+    mh_card_kind   card_kind[2];
     char           *card_path[2];   /* resolved, so a later run finds it */
-    mrc_network    *network[2];
-    mrc_card_image storage[2];
-    mrc_pccard_port card_port[2][MRC_PCCARD_NWINDOW];
-    datarover_card_port socket_port[2][MRC_PCCARD_NWINDOW];
+    mh_network    *network[2];
+    mh_card_image storage[2];
+    mh_pccard_port card_port[2][MH_PCCARD_NWINDOW];
+    datarover_card_port socket_port[2][MH_PCCARD_NWINDOW];
     unknown_dev kseg3;
     console  con;
     bool     con_active;
@@ -131,12 +131,12 @@ struct machine {
      * the OS maps them through its own calibration and we must not do that
      * for it. Times are relative to the start of the run.
      */
-#define MRC_MAX_TAPS 256
+#define MH_MAX_TAPS 256
     struct {
         uint64_t at;
         uint16_t x, y, end_x, end_y;
         bool drag;
-    }        tap[MRC_MAX_TAPS];
+    }        tap[MH_MAX_TAPS];
     unsigned tap_n;
     /* Keys, by instruction count: AT set 2 code, extended, make or break. */
     struct { uint8_t code; bool ext, down; uint64_t at; } key[64];
@@ -150,20 +150,20 @@ struct machine {
     uint64_t tap_period;    /* repeat the whole sequence; 0 = once */
 
     /* Probe: drive the codec's input pins on a schedule. */
-    struct { uint16_t level; uint64_t at; } gpio[MRC_MAX_TAPS];
+    struct { uint16_t level; uint64_t at; } gpio[MH_MAX_TAPS];
     unsigned gpio_n, gpio_i;
     /* Scheduled MFIO input words: each change raises the edge interrupts
      * (INTSTATUS3 rising, INTSTATUS4 falling) for the pins that moved. */
-    struct { uint32_t level; uint64_t at; } mfio_sched[MRC_MAX_TAPS];
+    struct { uint32_t level; uint64_t at; } mfio_sched[MH_MAX_TAPS];
     unsigned mfio_n, mfio_i;
     /* Scheduled IO pin levels (IOCTRL's IODIN, pins 0..6): each change
      * raises INTSTATUS5's IOPOSINT (bit 7+n) or IONEGINT (bit n). */
-    struct { uint32_t level; uint64_t at; } io_sched[MRC_MAX_TAPS];
+    struct { uint32_t level; uint64_t at; } io_sched[MH_MAX_TAPS];
     unsigned io_n, io_i;
     /* Scheduled PWRINT pin levels: POSPWRINT / NEGPWRINT on each change. */
-    struct { uint32_t level; uint64_t at; } pwrint_sched[MRC_MAX_TAPS];
+    struct { uint32_t level; uint64_t at; } pwrint_sched[MH_MAX_TAPS];
     unsigned pwrint_n, pwrint_i;
-    struct { bool down; uint64_t at; } option_key[MRC_MAX_TAPS];
+    struct { bool down; uint64_t at; } option_key[MH_MAX_TAPS];
     unsigned option_n, option_i;
     bool input_epoch_set;
     uint64_t input_epoch;
@@ -191,49 +191,49 @@ struct machine {
 };
 
 /* ram_size=0 detects known ROM constants, falling back to stock RAM. */
-bool mrc_machine_init(machine *m, const char *rom_path, uint32_t ram_size);
-void mrc_machine_free(machine *m);
-void mrc_machine_reset(machine *m, uint32_t reset_pc);
+bool mh_machine_init(machine *m, const char *rom_path, uint32_t ram_size);
+void mh_machine_free(machine *m);
+void mh_machine_reset(machine *m, uint32_t reset_pc);
 
 /* Re-establish the pointers that wire the machine together. Called by init,
  * and again after a snapshot load overwrites the structs wholesale. */
-void mrc_machine_rebind(machine *m);
+void mh_machine_rebind(machine *m);
 
 /*
  * Put a PC Card in a slot (0 or 1). The image appears in the card's memory
  * window, which is where the ROM looks: the probe at 0x83C06F38 powers the
  * slot and then reads a byte from 0x24000000 for slot 1.
  */
-bool mrc_machine_insert_sram(machine *m, unsigned slot, const char *path, uint32_t create_size);
+bool mh_machine_insert_sram(machine *m, unsigned slot, const char *path, uint32_t create_size);
 /*
  * Take the card out. The controller announces a departure on the same
  * card-detect edge it announces an arrival on, which is what the guest needs
  * to stop believing whatever it cached about the card. Its image is flushed
  * and closed, so the file is complete the moment this returns.
  */
-bool mrc_machine_eject_card(machine *m, unsigned slot);
-bool mrc_machine_insert_ne2000(machine *m, unsigned slot);
-bool mrc_machine_insert_modem(machine *m, unsigned slot, void *link);
-bool mrc_machine_network(machine *m, unsigned slot, const char *pcap);
-bool mrc_machine_insert_card(machine *m, unsigned slot, const char *path);
+bool mh_machine_eject_card(machine *m, unsigned slot);
+bool mh_machine_insert_ne2000(machine *m, unsigned slot);
+bool mh_machine_insert_modem(machine *m, unsigned slot, void *link);
+bool mh_machine_network(machine *m, unsigned slot, const char *pcap);
+bool mh_machine_insert_card(machine *m, unsigned slot, const char *path);
 
-bool mrc_snapshot_save(machine *m, const char *path);
-bool mrc_snapshot_load(machine *m, const char *path);
-bool mrc_snapshot_ram_size(const char *path, uint32_t *size);
+bool mh_snapshot_save(machine *m, const char *path);
+bool mh_snapshot_load(machine *m, const char *path);
+bool mh_snapshot_ram_size(const char *path, uint32_t *size);
 
 /* Run `insns` instructions, servicing devices as it goes. */
-void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval);
+void mh_machine_run(machine *m, uint64_t insns, uint32_t tick_interval);
 /* Request guest shutdown through the power button; bounded host-side wait. */
-bool mrc_machine_power_off(machine *m);
-bool mrc_suspend_save(machine *m, uint8_t **data, uint32_t *size);
-bool mrc_suspend_load(machine *m, const uint8_t *data, uint32_t size);
-void mrc_machine_wake(machine *m);
+bool mh_machine_power_off(machine *m);
+bool mh_suspend_save(machine *m, uint8_t **data, uint32_t *size);
+bool mh_suspend_load(machine *m, const uint8_t *data, uint32_t size);
+void mh_machine_wake(machine *m);
 /* ROM 13C268E0 samples IOCTRL input 3, low when Option is pressed. */
-void mrc_machine_set_option(machine *m, bool down);
+void mh_machine_set_option(machine *m, bool down);
 /* Whether it is held now. The line lives in the machine and travels in its
  * state, so a window asks rather than keeping a copy that a restore would
  * silently contradict. */
-bool mrc_machine_option_held(const machine *m);
+bool mh_machine_option_held(const machine *m);
 
 /*
  * Read the framebuffer out as 8-bit greyscale, one byte per pixel, 0 = black.
@@ -241,10 +241,10 @@ bool mrc_machine_option_held(const machine *m);
  * false when the video controller is disabled or the framebuffer it points
  * at is outside RAM.
  */
-bool mrc_machine_read_fb(machine *m, uint8_t *out, unsigned *w, unsigned *h);
+bool mh_machine_read_fb(machine *m, uint8_t *out, unsigned *w, unsigned *h);
 
 /* Write the current framebuffer to a PGM file. Returns false if video is off. */
-bool mrc_machine_dump_fb(machine *m, const char *path);
+bool mh_machine_dump_fb(machine *m, const char *path);
 
-mrc_runtime mrc_datarover_runtime(machine *m);
-#endif /* MRC_MACHINE_H */
+mh_runtime mh_datarover_runtime(machine *m);
+#endif /* MH_MACHINE_H */

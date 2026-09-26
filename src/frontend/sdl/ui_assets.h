@@ -5,8 +5,8 @@
  * Icons: Font Awesome 4.7, SIL OFL 1.1.
  * Both licences are in assets/licenses.
  */
-#ifndef MRC_UI_ASSETS_H
-#define MRC_UI_ASSETS_H
+#ifndef MH_UI_ASSETS_H
+#define MH_UI_ASSETS_H
 
 #include <stddef.h>
 
@@ -16,39 +16,39 @@ typedef struct {
     unsigned size, advance, cell_w, cell_h, ascent;
     unsigned first, count;
     const unsigned char *alpha;   /* count * cell_w * cell_h */
-} mrc_ui_font_data;
+} mh_ui_font_data;
 
 typedef struct {
     unsigned size;
     const unsigned char *alpha;   /* size * size */
-} mrc_ui_icon_size;
+} mh_ui_icon_size;
 
 typedef struct {
     const char *name;
-    mrc_ui_icon_size sizes[5];
-} mrc_ui_icon_data;
+    mh_ui_icon_size sizes[5];
+} mh_ui_icon_data;
 
 enum {
-    MRC_UI_ICON_ROMS = 0,
-    MRC_UI_ICON_POWER = 1,
-    MRC_UI_ICON_ROTATE = 2,
-    MRC_UI_ICON_DISPLAY = 3,
-    MRC_UI_ICON_STORAGE = 4,
-    MRC_UI_ICON_INSTALL = 5,
-    MRC_UI_ICON_OPTION = 6,
-    MRC_UI_ICON_SETTINGS = 7,
-    MRC_UI_ICON_PLAY = 8,
-    MRC_UI_ICON_TRASH = 9,
-    MRC_UI_ICON_EJECT = 10,
-    MRC_UI_ICON_STOP = 11,
-    MRC_UI_ICON_COUNT = 12
+    MH_UI_ICON_ROMS = 0,
+    MH_UI_ICON_POWER = 1,
+    MH_UI_ICON_ROTATE = 2,
+    MH_UI_ICON_DISPLAY = 3,
+    MH_UI_ICON_STORAGE = 4,
+    MH_UI_ICON_INSTALL = 5,
+    MH_UI_ICON_OPTION = 6,
+    MH_UI_ICON_SETTINGS = 7,
+    MH_UI_ICON_PLAY = 8,
+    MH_UI_ICON_TRASH = 9,
+    MH_UI_ICON_EJECT = 10,
+    MH_UI_ICON_STOP = 11,
+    MH_UI_ICON_COUNT = 12
 };
 
-extern const mrc_ui_font_data mrc_ui_fonts[3];
-extern const mrc_ui_icon_data mrc_ui_icons[MRC_UI_ICON_COUNT];
-extern const unsigned mrc_ui_glyphs[202];
-#define MRC_UI_FONT_COUNT 3
-#define MRC_UI_FONT_COLUMNS 16
-#define MRC_UI_ICON_SIZES 5
+extern const mh_ui_font_data mh_ui_fonts[3];
+extern const mh_ui_icon_data mh_ui_icons[MH_UI_ICON_COUNT];
+extern const unsigned mh_ui_glyphs[202];
+#define MH_UI_FONT_COUNT 3
+#define MH_UI_FONT_COLUMNS 16
+#define MH_UI_ICON_SIZES 5
 
-#endif /* MRC_UI_ASSETS_H */
+#endif /* MH_UI_ASSETS_H */

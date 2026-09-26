@@ -16,24 +16,24 @@
  * already there instead of replacing one window with another. What it leaves
  * out is a guest.
  */
-#ifndef MRC_SDL_CHOOSER_H
-#define MRC_SDL_CHOOSER_H
+#ifndef MH_SDL_CHOOSER_H
+#define MH_SDL_CHOOSER_H
 
 #include <stdbool.h>
 
 /*
  * Open it and stay until a device is chosen or the window is closed. True
  * when a device was chosen, which the caller collects with
- * mrc_state_take_requested_device.
+ * mh_state_take_requested_device.
  *
  * False when the window was closed, and also when there is no window to be
  * had -- a build without SDL, or a display that will not open. A caller that
  * has nothing else to offer should say so rather than appear to have worked.
  */
-struct mrc_shell;
-bool mrc_chooser_run(struct mrc_shell *shell);
+struct mh_shell;
+bool mh_chooser_run(struct mh_shell *shell);
 
 /* Whether this build can open one at all. */
-bool mrc_chooser_available(void);
+bool mh_chooser_available(void);
 
-#endif /* MRC_SDL_CHOOSER_H */
+#endif /* MH_SDL_CHOOSER_H */

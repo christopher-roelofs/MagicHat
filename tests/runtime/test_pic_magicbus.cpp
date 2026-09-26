@@ -37,28 +37,28 @@ static void exercise(unsigned board) {
     auto path=dir/"fixture.rom";
     { std::ofstream f(path,std::ios::binary); f.write((char*)rom.data(),rom.size()); }
     FILE *log=std::tmpfile(); check(log!=nullptr,"log");
-    std::unique_ptr<m68k_machine,decltype(&mrc_m68k_free)> owner(
-        mrc_m68k_new(path.string().c_str(),4,log),mrc_m68k_free);
+    std::unique_ptr<m68k_machine,decltype(&mh_m68k_free)> owner(
+        mh_m68k_new(path.string().c_str(),4,log),mh_m68k_free);
     auto *m=owner.get(); check(m!=nullptr,"construct fixture");
     auto &k=m->magicbus;
     check(m->envoy==(board==1 || board==3) && m->hix==(board==2),"board identification");
     if(board>=3) {
-        check(m->envoy_mc31==(board==3) && !mrc_m68k_keyboard_connect(m,true),"unverified ROM stays gated");
+        check(m->envoy_mc31==(board==3) && !mh_m68k_keyboard_connect(m,true),"unverified ROM stays gated");
         if(board==3) {
             check(m->hix_checksum_pending && m->stop_at==0x400e88,"mc31 guarded intercept armed");
             auto state=dir/"mc31.state";
             m->core.pc=0x400e88; m->core.a[3]=0x40000c; m->core.d[0]=0;
-            check(mrc_m68k_save_state(m,state.string().c_str()),"save pending mc31 checksum");
-            m->hix_checksum_pending=false; mrc_m68k_set_stop_at(m,0);
-            check(mrc_m68k_load_state(m,state.string().c_str()) && m->hix_checksum_pending &&
+            check(mh_m68k_save_state(m,state.string().c_str()),"save pending mc31 checksum");
+            m->hix_checksum_pending=false; mh_m68k_set_stop_at(m,0);
+            check(mh_m68k_load_state(m,state.string().c_str()) && m->hix_checksum_pending &&
                   m->stop_at==0x400e88,"restore mc31-specific stop address");
-            mrc_m68k_run(m,1);
+            mh_m68k_run(m,1);
             check(!m->hix_checksum_pending && !m->stop_at && m->core.d[0]==1 &&
                   m->core.z,"mc31 executes normal successful comparison");
-            check(mrc_m68k_save_state(m,state.string().c_str()),"save completed mc31 checksum");
-            check(mrc_m68k_load_state(m,state.string().c_str()) && !m->hix_checksum_pending &&
+            check(mh_m68k_save_state(m,state.string().c_str()),"save completed mc31 checksum");
+            check(mh_m68k_load_state(m,state.string().c_str()) && !m->hix_checksum_pending &&
                   !m->stop_at,"completed checksum does not rearm on state load");
-            m->dev21.power_off=true; mrc_m68k_power_button(m,true);
+            m->dev21.power_off=true; mh_m68k_power_button(m,true);
             check(m->hix_checksum_pending && m->stop_at==0x400e88,"power reset rearms mc31 checksum");
         }
         owner.reset(); std::fclose(log); std::filesystem::remove_all(dir);
@@ -85,7 +85,7 @@ static void exercise(unsigned board) {
     constexpr uint32_t memory=0x04001000;
     uint8_t *data=m->xram+0x1000;
     check(pin()!=0,"disconnected input");
-    check(mrc_m68k_keyboard_connect(m,true),"identified board supports keyboard");
+    check(mh_m68k_keyboard_connect(m,true),"identified board supports keyboard");
     check(pin()==0,"connected input");
     if(m->envoy || m->hix) {
         unsigned at=m->envoy?0xe6:0xee, mask=m->envoy?4:0x4000;
@@ -107,9 +107,9 @@ static void exercise(unsigned board) {
     w(0xb2,0xffff); w(0xbc,0xffff);
     w(0xb4,0); w(0xb6,m->envoy?0:0x200);
     w(0xc0,0); w(0xc2,0); w(0xc4,m->envoy?0x20:0);
-    k.line(m,true); m68k_set_sr(&m->core,0x2700); mrc_m68k_run(m,1);
+    k.line(m,true); m68k_set_sr(&m->core,0x2700); mh_m68k_run(m,1);
     check(m->irq_now==5,"accessory edge uses IPL5, including Envoy's second bank");
-    w(m->envoy?0xbc:0xb2,m->envoy?0x20:0x200); mrc_m68k_run(m,1);
+    w(m->envoy?0xbc:0xb2,m->envoy?0x20:0x200); mh_m68k_run(m,1);
     check(m->irq_now==0,"W1C acknowledgement releases accessory IRQ");
     k.line(m,false);
     send(0xdef0); check(k.input_high && !k.assigned,"broadcast reset response");
@@ -129,7 +129,7 @@ static void exercise(unsigned board) {
     check(n<254 && uint16_t(sum)==uint16_t(unsigned(data[n])<<8|data[n+1]),"PIC descriptor checksum");
     check(std::memcmp(data+2,id,4)==0 && data[0x4e]!=0,"descriptor field positions");
 
-    mrc_runtime runtime=mrc_pic2000_runtime(m);
+    mh_runtime runtime=mh_pic2000_runtime(m);
     check(runtime.ops->keyboard_key(m,4,true,false),"host a make");
     runtime.ops->keyboard_key(m,4,true,false); // duplicate make
     runtime.ops->keyboard_key(m,4,false,false);
@@ -161,7 +161,7 @@ static void exercise(unsigned board) {
     }
 
     runtime.ops->keyboard_key(m,0xe1,true,false);
-    while(k.keys.count<MRC_MBKEY_CAPACITY) mrc_mb_keyboard_key(&k.keys,0x1c,false,true);
+    while(k.keys.count<MH_MBKEY_CAPACITY) mh_mb_keyboard_key(&k.keys,0x1c,false,true);
     runtime.ops->keyboard_release(m);
     check(k.release[0xe1/8]!=0,"full queue retains focus-loss break");
     send(0xcc24); dma(0x21000092,memory,16,0xb6a5);
@@ -169,11 +169,11 @@ static void exercise(unsigned board) {
 
     const auto saved=dir/"keyboard.state";
     w(0x96,0xcc); // persist an in-flight command high byte
-    check(mrc_m68k_save_state(m,saved.string().c_str()),"save attached keyboard");
+    check(mh_m68k_save_state(m,saved.string().c_str()),"save attached keyboard");
     std::array<uint8_t,PicMagicBus::state_size> expected{},actual{};
     k.encode(expected.data());
     k={};
-    check(mrc_m68k_load_state(m,saved.string().c_str()),"restore attached keyboard");
+    check(mh_m68k_load_state(m,saved.string().c_str()),"restore attached keyboard");
     k.encode(actual.data()); check(expected==actual,"snapshot preserves peripheral and host lifecycle");
     w(0x94,0x24); check(k.pending_read==2,"resume command assembled across snapshot");
     unsigned queued=k.keys.count;
@@ -189,14 +189,14 @@ static void exercise(unsigned board) {
     std::array<uint8_t,PicMagicBus::state_size> unchanged{}; k.encode(unchanged.data());
     check(actual==unchanged,"invalid keyboard state leaves live device intact");
     std::filesystem::resize_file(saved,std::filesystem::file_size(saved)-1);
-    check(!mrc_m68k_load_state(m,saved.string().c_str()),"truncated keyboard trailer rejected");
+    check(!mh_m68k_load_state(m,saved.string().c_str()),"truncated keyboard trailer rejected");
     k.encode(unchanged.data()); check(actual==unchanged,"short state load is atomic");
-    check(mrc_m68k_keyboard_connect(m,false),"detach keyboard");
+    check(mh_m68k_keyboard_connect(m,false),"detach keyboard");
     check(pin()!=0,"disconnected input restored");
     check(!runtime.ops->keyboard_key(m,4,true,false),"disconnected host input rejected");
     m->dev0c.magicbus_empty_input=false;
     m->envoy=m->hix=false;
-    check(!mrc_m68k_keyboard_connect(m,true),"unverified board rejected");
+    check(!mh_m68k_keyboard_connect(m,true),"unverified board rejected");
     owner.reset(); std::fclose(log); std::filesystem::remove_all(dir);
 }
 int main() {

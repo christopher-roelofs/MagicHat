@@ -45,7 +45,7 @@ static const char *current_test = "";
 #define DATA_PA       0x00002000u
 
 typedef struct {
-    mrc_bus  bus;
+    mh_bus  bus;
     r3900    cpu;
     r3900_decode_cache *cache;
     r3900_jit *jit;
@@ -55,16 +55,16 @@ typedef struct {
 
 static void fx_init(fixture *f)
 {
-    f->jit = jit_execution ? mrc_cpu_jit_create() : NULL;
+    f->jit = jit_execution ? mh_cpu_jit_create() : NULL;
     if (jit_execution && !f->jit) abort();
-    f->cache = decoded_execution ? mrc_cpu_decode_cache_create() : NULL;
+    f->cache = decoded_execution ? mh_cpu_decode_cache_create() : NULL;
     if (decoded_execution && !f->cache) abort();
     f->ram = calloc(1, TEST_RAM_SIZE);
-    mrc_bus_init(&f->bus);
-    mrc_bus_add_ram(&f->bus, "ram", 0, f->ram, TEST_RAM_SIZE, TEST_RAM_SIZE);
-    mrc_bus_enable_lookup(&f->bus, cached_execution);
-    mrc_cpu_init(&f->cpu, &f->bus);
-    mrc_cpu_reset(&f->cpu, CODE_VA);
+    mh_bus_init(&f->bus);
+    mh_bus_add_ram(&f->bus, "ram", 0, f->ram, TEST_RAM_SIZE, TEST_RAM_SIZE);
+    mh_bus_enable_lookup(&f->bus, cached_execution);
+    mh_cpu_init(&f->cpu, &f->bus);
+    mh_cpu_reset(&f->cpu, CODE_VA);
     /* Run out of kseg0 with BEV clear so exception vectors land in RAM. */
     f->cpu.cp0[CP0_STATUS] = 0;
     f->next = CODE_PA;
@@ -72,16 +72,16 @@ static void fx_init(fixture *f)
 
 static void fx_free(fixture *f)
 {
-    mrc_cpu_jit_free(f->jit);
-    mrc_cpu_decode_cache_free(f->cache);
+    mh_cpu_jit_free(f->jit);
+    mh_cpu_decode_cache_free(f->cache);
     free(f->ram);
 }
 
 static void fx_run(fixture *f, uint64_t count)
 {
-    if (f->jit) mrc_cpu_run_jit(&f->cpu, count, f->jit);
-    else if (f->cache) mrc_cpu_run_decoded(&f->cpu, count, f->cache);
-    else mrc_cpu_run(&f->cpu, count);
+    if (f->jit) mh_cpu_run_jit(&f->cpu, count, f->jit);
+    else if (f->cache) mh_cpu_run_decoded(&f->cpu, count, f->cache);
+    else mh_cpu_run(&f->cpu, count);
 }
 
 static void emit_at(fixture *f, uint32_t pa, uint32_t insn)
@@ -396,7 +396,7 @@ static void test_interrupt_gating(void)
         emit(&f, NOP);
 
     /* IP2 asserted, but neither IE nor the mask bit is set: nothing happens. */
-    mrc_cpu_set_irq(&f.cpu, 2, true);
+    mh_cpu_set_irq(&f.cpu, 2, true);
     fx_run(&f, 2);
     CHECK_EQ(f.cpu.pc, CODE_VA + 8, "masked interrupt does not divert");
 
@@ -485,7 +485,7 @@ static void remap_write(void *ctx, uint32_t off, unsigned size, uint32_t value)
 {
     remap_context *r = ctx;
     r->f->bus.region[0].host = r->replacement;
-    mrc_bus_invalidate_lookup(&r->f->bus);
+    mh_bus_invalidate_lookup(&r->f->bus);
 }
 
 static void test_fetch_remap(void)
@@ -495,7 +495,7 @@ static void test_fetch_remap(void)
     fx_init(&f);
     uint8_t *replacement = calloc(1, TEST_RAM_SIZE);
     remap_context context = {&f, replacement};
-    mrc_bus_add_mmio(&f.bus, "remapper", 0x20000, 4,
+    mh_bus_add_mmio(&f.bus, "remapper", 0x20000, 4,
                      &context, NULL, remap_write);
     emit(&f, I(0x2b, 8, 0, 0));
     emit(&f, I(0x09, 0, 2, 42));
@@ -518,7 +518,7 @@ static void test_live_instruction_writes(void)
     current_test = "live instruction writes through alias";
     fixture f;
     fx_init(&f);
-    mrc_bus_add_ram(&f.bus, "alias", 0x100000, f.ram, TEST_RAM_SIZE, TEST_RAM_SIZE);
+    mh_bus_add_ram(&f.bus, "alias", 0x100000, f.ram, TEST_RAM_SIZE, TEST_RAM_SIZE);
     f.cpu.r[8] = 0x80101004;
     f.cpu.r[9] = I(0x09, 0, 2, 42); /* replacement addiu v0,zero,42 */
     emit(&f, I(0x2b, 8, 9, 0));     /* overwrite the next instruction */
@@ -551,9 +551,9 @@ static void test_differential_blocks(bool native)
     decoded_execution = false;
     fixture reference, fast;
     fx_init(&reference); fx_init(&fast);
-    r3900_decode_cache *cache = mrc_cpu_decode_cache_create();
+    r3900_decode_cache *cache = mh_cpu_decode_cache_create();
     if (!cache) abort();
-    r3900_jit *jit = native ? mrc_cpu_jit_create() : NULL;
+    r3900_jit *jit = native ? mh_cpu_jit_create() : NULL;
     if (native && !jit) abort();
     uint32_t seed = 0x4d495053;
     static const unsigned ops[] = {9, 10, 11, 12, 13, 14, 15, 0x23, 0x2b, 4, 5};
@@ -588,15 +588,15 @@ static void test_differential_blocks(bool native)
         if (batch % 47 == 0) {
             reference.cpu.cp0[CP0_STATUS] |= SR_IEc | (1u << 10);
             fast.cpu.cp0[CP0_STATUS] |= SR_IEc | (1u << 10);
-            mrc_cpu_set_irq(&reference.cpu, 2, true);
-            mrc_cpu_set_irq(&fast.cpu, 2, true);
+            mh_cpu_set_irq(&reference.cpu, 2, true);
+            mh_cpu_set_irq(&fast.cpu, 2, true);
         } else {
-            mrc_cpu_set_irq(&reference.cpu, 2, false);
-            mrc_cpu_set_irq(&fast.cpu, 2, false);
+            mh_cpu_set_irq(&reference.cpu, 2, false);
+            mh_cpu_set_irq(&fast.cpu, 2, false);
         }
-        for (unsigned j = 0; j < 7; j++) mrc_cpu_step(&reference.cpu);
-        if (native) mrc_cpu_run_jit(&fast.cpu, 7, jit);
-        else mrc_cpu_run_decoded(&fast.cpu, 7, cache);
+        for (unsigned j = 0; j < 7; j++) mh_cpu_step(&reference.cpu);
+        if (native) mh_cpu_run_jit(&fast.cpu, 7, jit);
+        else mh_cpu_run_decoded(&fast.cpu, 7, cache);
         r3900 a = reference.cpu, b = fast.cpu;
         a.bus = b.bus = NULL; a.log = b.log = NULL;
         CHECK(memcmp(&a, &b, sizeof(a)) == 0, "CPU diverged at batch %u", batch);
@@ -609,11 +609,11 @@ static void test_differential_blocks(bool native)
         if (failures) break;
     }
     if (native) {
-        CHECK(mrc_cpu_jit_native_count(jit) > 0, "differential test never ran native code");
-        mrc_cpu_jit_report(jit, stdout);
+        CHECK(mh_cpu_jit_native_count(jit) > 0, "differential test never ran native code");
+        mh_cpu_jit_report(jit, stdout);
     }
-    mrc_cpu_jit_free(jit);
-    mrc_cpu_decode_cache_free(cache);
+    mh_cpu_jit_free(jit);
+    mh_cpu_decode_cache_free(cache);
     fx_free(&reference); fx_free(&fast);
 }
 
@@ -623,7 +623,7 @@ static void test_jit_integer(void)
     jit_execution = decoded_execution = false;
     fixture reference, fast;
     fx_init(&reference); fx_init(&fast);
-    r3900_jit *jit = mrc_cpu_jit_create();
+    r3900_jit *jit = mh_cpu_jit_create();
     if (!jit) abort();
     uint32_t seed = 0x4141524d;
     const unsigned special[] = {0,2,3,4,6,7,0x21,0x23,0x24,0x25,0x26,0x27,0x2a,0x2b};
@@ -651,8 +651,8 @@ static void test_jit_integer(void)
         reference.cpu.next_pc = fast.cpu.next_pc = CODE_VA + 4;
         reference.cpu.branch_pending = fast.cpu.branch_pending = false;
         unsigned budget = 1 + batch % 40;
-        for (unsigned k = 0; k < budget; k++) mrc_cpu_step(&reference.cpu);
-        mrc_cpu_run_jit(&fast.cpu, budget, jit);
+        for (unsigned k = 0; k < budget; k++) mh_cpu_step(&reference.cpu);
+        mh_cpu_run_jit(&fast.cpu, budget, jit);
         r3900 a = reference.cpu, b = fast.cpu;
         a.bus = b.bus = NULL; a.log = b.log = NULL;
         CHECK(!memcmp(&a, &b, sizeof(a)), "CPU mismatch at batch %u", batch);
@@ -661,14 +661,14 @@ static void test_jit_integer(void)
             printf("budget %u; code:", budget);
             for (unsigned k = 0; k < 18; k++)
                 printf(" %08X", load_word(&reference, CODE_PA + k * 4));
-            printf("\nreference:\n"); mrc_cpu_dump(&reference.cpu, stdout);
-            printf("native:\n"); mrc_cpu_dump(&fast.cpu, stdout);
+            printf("\nreference:\n"); mh_cpu_dump(&reference.cpu, stdout);
+            printf("native:\n"); mh_cpu_dump(&fast.cpu, stdout);
             break;
         }
     }
-    CHECK(mrc_cpu_jit_native_count(jit) > 1000, "native emission not exercised");
-    mrc_cpu_jit_report(jit, stdout);
-    mrc_cpu_jit_free(jit);
+    CHECK(mh_cpu_jit_native_count(jit) > 1000, "native emission not exercised");
+    mh_cpu_jit_report(jit, stdout);
+    mh_cpu_jit_free(jit);
     fx_free(&reference); fx_free(&fast);
 }
 
@@ -681,7 +681,7 @@ static void test_jit_branches(void)
     jit_execution = decoded_execution = false;
     fixture reference, fast;
     fx_init(&reference); fx_init(&fast);
-    r3900_jit *jit = mrc_cpu_jit_create();
+    r3900_jit *jit = mh_cpu_jit_create();
     if (!jit) abort();
     const uint32_t values[] = {0, 1, 0xffffffff, 0x80000000, 0x7fffffff};
     for (unsigned kind = 0; kind < 12; kind++)
@@ -690,7 +690,7 @@ static void test_jit_branches(void)
         uint32_t pc = (variant & 1) ? 0xa0001000 : CODE_VA;
         unsigned prefix = (variant >> 1) & 1;
         bool fault = (variant & 4) != 0, split = (variant & 8) != 0;
-        mrc_cpu_reset(&reference.cpu, pc); mrc_cpu_reset(&fast.cpu, pc);
+        mh_cpu_reset(&reference.cpu, pc); mh_cpu_reset(&fast.cpu, pc);
         reference.cpu.cp0[CP0_STATUS] = fast.cpu.cp0[CP0_STATUS] = 0;
         reference.cpu.r[8] = fast.cpu.r[8] = kind >= 10 ? pc + 0x40 : values[value];
         reference.cpu.r[9] = fast.cpu.r[9] = 1;
@@ -706,8 +706,8 @@ static void test_jit_branches(void)
         memcpy(fast.ram, reference.ram, TEST_RAM_SIZE);
         for (unsigned part = 0; part < (split ? 2u : 1u); part++) {
             unsigned budget = split ? (part ? 1 : prefix + 1) : prefix + 2;
-            for (unsigned k = 0; k < budget; k++) mrc_cpu_step(&reference.cpu);
-            mrc_cpu_run_jit(&fast.cpu, budget, jit);
+            for (unsigned k = 0; k < budget; k++) mh_cpu_step(&reference.cpu);
+            mh_cpu_run_jit(&fast.cpu, budget, jit);
             r3900 a = reference.cpu, b = fast.cpu;
             a.bus = b.bus = NULL; a.log = b.log = NULL;
             CHECK(!memcmp(&a, &b, sizeof(a)),
@@ -716,9 +716,9 @@ static void test_jit_branches(void)
                   reference.bus.faults == fast.bus.faults, "branch bus effects");
         }
     }
-    CHECK(mrc_cpu_jit_native_count(jit) > 500, "native branches not exercised");
-    mrc_cpu_jit_report(jit, stdout);
-    mrc_cpu_jit_free(jit);
+    CHECK(mh_cpu_jit_native_count(jit) > 500, "native branches not exercised");
+    mh_cpu_jit_report(jit, stdout);
+    mh_cpu_jit_free(jit);
     fx_free(&reference); fx_free(&fast);
 }
 
@@ -728,14 +728,14 @@ typedef struct { r3900 *cpu; uint32_t value; unsigned writes; } chain_device;
 static uint32_t chain_read(void *ctx, uint32_t off, unsigned size)
 {
     chain_device *d = ctx;
-    mrc_cpu_set_irq(d->cpu, 2, false);
+    mh_cpu_set_irq(d->cpu, 2, false);
     return d->value++ + off;
 }
 static void chain_write(void *ctx, uint32_t off, unsigned size, uint32_t value)
 {
     chain_device *d = ctx;
     d->value = value;
-    if (++d->writes % 3 == 0) mrc_cpu_set_irq(d->cpu, 2, true);
+    if (++d->writes % 3 == 0) mh_cpu_set_irq(d->cpu, 2, true);
 }
 
 /* Native blocks chain into each other across taken and untaken branches,
@@ -750,11 +750,11 @@ static void test_jit_chains(void)
     cached_execution = true;
     fixture reference, fast;
     fx_init(&reference); fx_init(&fast);
-    r3900_jit *jit = mrc_cpu_jit_create();
+    r3900_jit *jit = mh_cpu_jit_create();
     if (!jit) abort();
     chain_device ref_dev = {&reference.cpu, 0, 0}, fast_dev = {&fast.cpu, 0, 0};
-    mrc_bus_add_mmio(&reference.bus, "dev", 0x20000, 16, &ref_dev, chain_read, chain_write);
-    mrc_bus_add_mmio(&fast.bus, "dev", 0x20000, 16, &fast_dev, chain_read, chain_write);
+    mh_bus_add_mmio(&reference.bus, "dev", 0x20000, 16, &ref_dev, chain_read, chain_write);
+    mh_bus_add_mmio(&fast.bus, "dev", 0x20000, 16, &fast_dev, chain_read, chain_write);
     static const uint32_t program[] = {
         /* 0x1000 L0: */
         0x8F880000, /* lw   t0, 0(gp)        */
@@ -818,8 +818,8 @@ static void test_jit_chains(void)
             uint32_t word = I(9, 8, 8, random_word(&seed) & 0xff);
             emit_at(&reference, offset, word); emit_at(&fast, offset, word);
         }
-        for (unsigned j = 0; j < budget; j++) mrc_cpu_step(&reference.cpu);
-        mrc_cpu_run_jit(&fast.cpu, budget, jit);
+        for (unsigned j = 0; j < budget; j++) mh_cpu_step(&reference.cpu);
+        mh_cpu_run_jit(&fast.cpu, budget, jit);
         r3900 a = reference.cpu, b = fast.cpu;
         a.bus = b.bus = NULL; a.log = b.log = NULL;
         CHECK(memcmp(&a, &b, sizeof(a)) == 0, "CPU diverged at batch %u", batch);
@@ -833,24 +833,24 @@ static void test_jit_chains(void)
               "bus effects diverged at batch %u", batch);
         if (failures) {
             printf("budget %u\nreference:\n", budget);
-            mrc_cpu_dump(&reference.cpu, stdout);
+            mh_cpu_dump(&reference.cpu, stdout);
             printf("native:\n");
-            mrc_cpu_dump(&fast.cpu, stdout);
+            mh_cpu_dump(&fast.cpu, stdout);
             break;
         }
     }
     CHECK(reference.cpu.irqs_taken > 100, "interrupts were not exercised");
-    CHECK(mrc_cpu_jit_native_count(jit) > 100000, "chains not exercised");
-    mrc_cpu_jit_report(jit, stdout);
-    mrc_cpu_jit_free(jit);
+    CHECK(mh_cpu_jit_native_count(jit) > 100000, "chains not exercised");
+    mh_cpu_jit_report(jit, stdout);
+    mh_cpu_jit_free(jit);
     fx_free(&reference); fx_free(&fast);
 }
 
 int main(void)
 {
-  r3900_jit *probe = mrc_cpu_jit_create();
+  r3900_jit *probe = mh_cpu_jit_create();
   bool native_available = probe != NULL;
-  mrc_cpu_jit_free(probe);
+  mh_cpu_jit_free(probe);
 #if (defined(__aarch64__) && !defined(__AARCH64EB__)) || defined(__x86_64__)
   if (!native_available) { fprintf(stderr, "native JIT unavailable on test host\n"); return 1; }
 #endif

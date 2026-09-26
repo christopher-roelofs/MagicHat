@@ -13,8 +13,8 @@
  * both machines have exactly this to offer, and a list written twice is a
  * list that ends up describing two different things.
  */
-#ifndef MRC_SDL_DEVICES_PANEL_H
-#define MRC_SDL_DEVICES_PANEL_H
+#ifndef MH_SDL_DEVICES_PANEL_H
+#define MH_SDL_DEVICES_PANEL_H
 
 #include <stdbool.h>
 #include "frontend/sdl/ui.h"
@@ -24,31 +24,31 @@
  * the machine was started from a plain ROM path and is not one -- it is shown
  * as the one in use so that a list of similar names is not a guess.
  */
-void mrc_devices_panel_open(mrc_ui *ui, const char *current);
-void mrc_devices_panel_close(mrc_ui *ui);
+void mh_devices_panel_open(mh_ui *ui, const char *current);
+void mh_devices_panel_close(mh_ui *ui);
 
 /*
  * Hand it a row the rail reported. True when the panel consumed it. What the
  * caller does about a chosen device is the caller's business, because only it
  * knows how to put the running machine down and start another.
  */
-bool mrc_devices_panel_row(mrc_ui *ui, int id);
-bool mrc_devices_panel_back(mrc_ui *ui);
+bool mh_devices_panel_row(mh_ui *ui, int id);
+bool mh_devices_panel_back(mh_ui *ui);
 
 /*
  * The device chosen since this was last asked, by id, or NULL. Taking it
  * clears it. The string is valid until the next call.
  */
-const char *mrc_devices_panel_taken(void);
+const char *mh_devices_panel_taken(void);
 
 /*
  * Collect anything the platform's own picker has produced. The list stays on
  * screen while that picker is up, so this is called once a frame; it does
  * nothing when there is nothing waiting.
  */
-void mrc_devices_panel_tick(mrc_ui *ui);
+void mh_devices_panel_tick(mh_ui *ui);
 
 /* Whether the panel currently on screen is this one. */
-bool mrc_devices_panel_showing(void);
+bool mh_devices_panel_showing(void);
 
-#endif /* MRC_SDL_DEVICES_PANEL_H */
+#endif /* MH_SDL_DEVICES_PANEL_H */

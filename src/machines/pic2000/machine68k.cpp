@@ -38,7 +38,7 @@ extern "C" {
  * stop in front of an address, finding it meant checking every program
  * counter on every interpreter step.
  */
-static const uint32_t HIX_CHECKSUM_PC = MRC_M68K_HIX_CHECKSUM_PC;
+static const uint32_t HIX_CHECKSUM_PC = MH_M68K_HIX_CHECKSUM_PC;
 
 /*
  * Ask the engine to stop in front of an address, or stop asking.
@@ -47,7 +47,7 @@ static const uint32_t HIX_CHECKSUM_PC = MRC_M68K_HIX_CHECKSUM_PC;
  * watched for covers whatever instructions follow each other, and one of
  * them may be the address now being watched for.
  */
-void mrc_m68k_set_stop_at(m68k_machine *m, uint32_t pc)
+void mh_m68k_set_stop_at(m68k_machine *m, uint32_t pc)
 {
     if (m->stop_at == pc) return;
     m->stop_at = pc;
@@ -95,22 +95,22 @@ static inline uint32_t cpu_vbr(const m68k_machine *m)
     return m->core.vbr;
 }
 
-bool mrc_m68k_is_envoy(const m68k_machine *m)
+bool mh_m68k_is_envoy(const m68k_machine *m)
 {
     return m->envoy;
 }
 
-bool mrc_m68k_is_hix(const m68k_machine *m) { return m->hix; }
+bool mh_m68k_is_hix(const m68k_machine *m) { return m->hix; }
 
-m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
+m68k_machine *mh_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
 {
     auto *m = new m68k_machine();
     m->log = log ? log : stderr;
     m->sim.log = m->log;
     m->sim.bus = &m->bus;
-    const char *idle_env = std::getenv("MRC_68K_IDLE_FAST");
+    const char *idle_env = std::getenv("MH_68K_IDLE_FAST");
     m->idle_fast_enabled = !idle_env || std::strcmp(idle_env, "0");
-    const char *quiet_env = std::getenv("MRC_68K_QUIET_FAST");
+    const char *quiet_env = std::getenv("MH_68K_QUIET_FAST");
     m->quiet_fast_enabled = !quiet_env || std::strcmp(quiet_env, "0");
     if (!ram_mb || ram_mb > 16) {
         fprintf(m->log, "68k: RAM must be between 1 and 16 MB\n");
@@ -135,10 +135,10 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
     }
     m->rom = (uint8_t *)malloc((size_t)n);
     if (!m->rom || fread(m->rom, 1, (size_t)n, f) != (size_t)n) {
-        fclose(f); mrc_m68k_free(m); return nullptr;
+        fclose(f); mh_m68k_free(m); return nullptr;
     }
     fclose(f);
-    if (mrc_rom_identify(m->rom, (size_t)n) == MRC_ROM_HIX300) {
+    if (mh_rom_identify(m->rom, (size_t)n) == MH_ROM_HIX300) {
         m->hix = true;
         // Default HIX model requested by the user; the inferred divider
         // fits known rate codes but still lacks a hardware specification.
@@ -164,7 +164,7 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
                 !memcmp(m->rom + 0xA7C, check_code, sizeof(check_code));
             m->hix_checksum_pending = m->hix_checksum_intercept;
             if (m->hix_checksum_pending)
-                mrc_m68k_set_stop_at(m, HIX_CHECKSUM_PC);
+                mh_m68k_set_stop_at(m, HIX_CHECKSUM_PC);
             m->hix_checksum_actual = actual;
             m->hix_checksum_stored = stored;
             fprintf(m->log, m->hix_checksum_intercept
@@ -178,7 +178,7 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
     // vector is 02400216; the Sony images use 0E000xxx.
     const uint32_t rom_base = reset_pc & ~(PIC2000_ROM_SIZE - 1u);
 
-    mrc_bus_init(&m->bus);
+    mh_bus_init(&m->bus);
     m->bus.log = m->log;
     m->bus.log_unmapped = false;   /* we report unknowns ourselves, with a PC */
     m->duart.insns = &m->cpu.insns;
@@ -197,18 +197,18 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
      * reset path here does at 0x3C000040 onwards. The SIM callback retires
      * the low ROM mapping when CS0 is programmed; power-on restores it.
      */
-    mrc_bus_add_rom(&m->bus, "rom", rom_base, PIC2000_ROM_SIZE,
+    mh_bus_add_rom(&m->bus, "rom", rom_base, PIC2000_ROM_SIZE,
                     m->rom, (uint32_t)n);
     if (rom_base == ENVOY_ROM_BASE) {
-        mrc_bus_add_rom(&m->bus, "envoy-rom-alias", ENVOY_ROM_ALIAS, PIC2000_ROM_SIZE,
+        mh_bus_add_rom(&m->bus, "envoy-rom-alias", ENVOY_ROM_ALIAS, PIC2000_ROM_SIZE,
                        m->rom, (uint32_t)n);
         fprintf(m->log,"68k: experimental Envoy ROM alias at 00400000 (CS0 boot configuration)\n");
     }
-    mrc_region *ovl = mrc_bus_add_rom(&m->bus, "bootovl", 0x00000000u,
+    mh_region *ovl = mh_bus_add_rom(&m->bus, "bootovl", 0x00000000u,
                                       0x01000000u, m->rom, (uint32_t)n);
     m->sim.board = ovl;
     m->sim.boot_select_programmed = [](void *region) {
-        mrc_region *r = static_cast<mrc_region *>(region);
+        mh_region *r = static_cast<mh_region *>(region);
         r->size = 0;
     };
 
@@ -238,14 +238,14 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
      */
     m->ram_len = ram_mb * 1024u * 1024u;
     m->ram = (uint8_t *)calloc(1, m->ram_len);
-    if (!m->ram) { mrc_m68k_free(m); return nullptr; }
-    mrc_bus_add_ram(&m->bus, "dram", 0x00000000u, m->ram, m->ram_len,
+    if (!m->ram) { mh_m68k_free(m); return nullptr; }
+    mh_bus_add_ram(&m->bus, "dram", 0x00000000u, m->ram, m->ram_len,
                     0x01000000u);
 
     m->xram_len = ram_mb * 1024u * 1024u;
     m->xram = (uint8_t *)calloc(1, m->xram_len);
-    if (!m->xram) { mrc_m68k_free(m); return nullptr; }
-    m->xram_region = mrc_bus_add_ram(&m->bus, "xram", 0x04000000u,
+    if (!m->xram) { mh_m68k_free(m); return nullptr; }
+    m->xram_region = mh_bus_add_ram(&m->bus, "xram", 0x04000000u,
                                      m->xram, m->xram_len, 0x01000000u);
 
     /*
@@ -261,8 +261,8 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
      * hundred instructions in. Registering it here at all is so that an
      * access before that write is decoded rather than lost.
      */
-    mrc_region *modreg =
-        mrc_bus_add_mmio(&m->bus, "modules", PIC2000_SIM_BASE, PIC2000_SIM_SIZE,
+    mh_region *modreg =
+        mh_bus_add_mmio(&m->bus, "modules", PIC2000_SIM_BASE, PIC2000_SIM_SIZE,
                          &m->sim, mc68349_sim_read, mc68349_sim_write);
     m->cpu.module_region = modreg;
 
@@ -288,7 +288,7 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
      * region that floats high says "decoded, empty" where an undecoded fault
      * would wrongly say "the board does not answer here".
      */
-    m->testimg_region = mrc_bus_add_float(&m->bus, "testimg",
+    m->testimg_region = mh_bus_add_float(&m->bus, "testimg",
                                           0x08000000u, 0x01000000u);
 
     m->dev21.name = "dev21"; m->dev21.base = 0x21000000u; m->dev21.log = m->log;
@@ -326,13 +326,13 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
     m->dev21.adc_done_bits = 0x40u;
     m->dev21.w1c_lo[0] = 0xB0u; m->dev21.w1c_hi[0] = 0xB4u;
     m->dev21.w1c_lo[1] = 0xB8u; m->dev21.w1c_hi[1] = 0xBEu;
-    mrc_m68k_set_cpi(m, PIC2000_DEFAULT_CPI);
+    mh_m68k_set_cpi(m, PIC2000_DEFAULT_CPI);
     m->dev0c.name = "dev0c"; m->dev0c.base = 0x0C000000u; m->dev0c.log = m->log;
     /* Only established for PIC-2000. Other 68k ROMs using this diagnostic
      * harness need their own board wiring established independently. */
     m->dev0c.magicbus_empty_input =
-        mrc_rom_identify(m->rom, (size_t)n) == MRC_ROM_PIC2000;
-    m->envoy = mrc_rom_identify(m->rom, (size_t)n) == MRC_ROM_ENVOY;
+        mh_rom_identify(m->rom, (size_t)n) == MH_ROM_PIC2000;
+    m->envoy = mh_rom_identify(m->rom, (size_t)n) == MH_ROM_ENVOY;
     static const char mc31[]="1,0.31,MOTO,1,";
     m->envoy_mc31 = m->envoy &&
         std::search(m->rom,m->rom+n,mc31,mc31+sizeof(mc31)-1)!=m->rom+n;
@@ -360,7 +360,7 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
                 !memcmp(m->rom+0x34,range_start,sizeof(range_start)) &&
                 !memcmp(m->rom+0x1124,range_size,sizeof(range_size));
             m->hix_checksum_pending=m->hix_checksum_intercept;
-            if(m->hix_checksum_pending) mrc_m68k_set_stop_at(m,mrc_m68k_checksum_pc(m));
+            if(m->hix_checksum_pending) mh_m68k_set_stop_at(m,mh_m68k_checksum_pc(m));
             fprintf(m->log,m->hix_checksum_intercept ?
                 "68k: DEVIATION: Envoy mc31 checksum-result interception enabled; ROM bytes remain unchanged\n" :
                 "68k: Envoy mc31 checksum interception refused: unrecognized check instructions or range\n");
@@ -402,16 +402,16 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
         };
         m->dev21.clock_hz = PIC2000_CPU_HZ;
     }
-    if (mrc_rom_identify(m->rom, (size_t)n) == MRC_ROM_HIX300) {
+    if (mh_rom_identify(m->rom, (size_t)n) == MH_ROM_HIX300) {
         /* HIX reset programs CS3=1E0000F1, and its speaker startup at
          * 0E077D82 writes the auxiliary output latch at 1E000000.
          * Keep this a reported register file until its wiring is known. */
         m->dev0c.name = "hix-aux";
         m->dev0c.base = 0x1E000000u;
     }
-    mrc_bus_add_mmio(&m->bus, "dev21", 0x21000000u, 0x1000u,
+    mh_bus_add_mmio(&m->bus, "dev21", 0x21000000u, 0x1000u,
                      m, pic2000_dev21_read, pic2000_dev21_write);
-    mrc_bus_add_mmio(&m->bus, m->dev0c.name, m->dev0c.base, 0x1000u,
+    mh_bus_add_mmio(&m->bus, m->dev0c.name, m->dev0c.base, 0x1000u,
                      m, pic2000_dev0c_read, pic2000_dev0c_write);
 
     m->cpu.bus = &m->bus;
@@ -429,37 +429,37 @@ m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log)
     m68k_reset(&m->core);
     /* All board regions are installed before enabling the shared page cache.
      * CS0 and MBAR mutations invalidate it when their geometry changes. */
-    const char *cache_env = std::getenv("MRC_68K_BUS_CACHE");
+    const char *cache_env = std::getenv("MH_68K_BUS_CACHE");
     const bool cache_enabled = !cache_env || std::strcmp(cache_env, "0");
-    mrc_bus_enable_lookup(&m->bus, cache_enabled);
-    const char *direct_env = std::getenv("MRC_68K_DIRECT");
+    mh_bus_enable_lookup(&m->bus, cache_enabled);
+    const char *direct_env = std::getenv("MH_68K_DIRECT");
     m->cpu.direct_enabled = !(direct_env && !strcmp(direct_env, "0"));
     fprintf(m->log, "68k: bus page cache %s\n", cache_enabled ? "enabled" : "disabled");
 
     fprintf(m->log, "68k: %s (%ld bytes) at %08X, %u MB DRAM at 0\n",
             rom_path, n, rom_base, ram_mb);
-    mrc_bus_print_map(&m->bus, m->log);
+    mh_bus_print_map(&m->bus, m->log);
     fprintf(m->log, "68k: reset PC=%08X SP=%08X\n",
             cpu_pc(m), cpu_a(m, 7));
     return m;
 }
 
-bool mrc_m68k_insert_sram(m68k_machine *m, unsigned slot, const char *path,
+bool mh_m68k_insert_sram(m68k_machine *m, unsigned slot, const char *path,
                           uint32_t create_size)
 {
     static const uint32_t common_base[2] = {0x04000000u, 0x08000000u};
     static const uint32_t attr_base[2]   = {0x24000000u, 0x2C000000u};
     if (!m || slot > 1 || !path || m->card[slot].kind)
         return false;
-    if (!mrc_card_image_open(&m->card_storage[slot], path, create_size))
+    if (!mh_card_image_open(&m->card_storage[slot], path, create_size))
         return false;
 
-    mrc_pccard_sram_init(&m->card[slot], slot, m->card_storage[slot].data,
+    mh_pccard_sram_init(&m->card[slot], slot, m->card_storage[slot].data,
                          m->card_storage[slot].size);
     m->card[slot].log = m->log;
     m->card_path[slot] = strdup(path);
     if (!m->card_path[slot]) {
-        mrc_card_image_close(&m->card_storage[slot]);
+        mh_card_image_close(&m->card_storage[slot]);
         m->card[slot] = {};
         return false;
     }
@@ -473,17 +473,17 @@ bool mrc_m68k_insert_sram(m68k_machine *m, unsigned slot, const char *path,
     if (slot == 1 && m->testimg_region) m->testimg_region->size = 0;
 
     const uint32_t base[2] = {attr_base[slot], common_base[slot]};
-    for (unsigned w = 0; w < MRC_PCCARD_NWINDOW; w++) {
-        mrc_pccard_port &p = m->card_port[slot][w];
+    for (unsigned w = 0; w < MH_PCCARD_NWINDOW; w++) {
+        mh_pccard_port &p = m->card_port[slot][w];
         p.card = &m->card[slot];
-        p.window = (mrc_pccard_window)w;
+        p.window = (mh_pccard_window)w;
         p.pc_hint = &m->core.pc;
         p.present = &m->card_present[slot];
-        if (!mrc_bus_add_mmio(&m->bus, w ? "68k-card-common" : "68k-card-attr",
+        if (!mh_bus_add_mmio(&m->bus, w ? "68k-card-common" : "68k-card-attr",
                               base[w], 0x04000000u, &p,
-                              mrc_pccard_read, mrc_pccard_write)) {
+                              mh_pccard_read, mh_pccard_write)) {
             fprintf(m->log, "68k: card slot %u could not be mapped\n", slot + 1);
-            mrc_card_image_close(&m->card_storage[slot]);
+            mh_card_image_close(&m->card_storage[slot]);
             free(m->card_path[slot]);
             m->card_path[slot] = nullptr;
             m->card[slot] = {};
@@ -498,19 +498,19 @@ bool mrc_m68k_insert_sram(m68k_machine *m, unsigned slot, const char *path,
      * battery. The lock-switch inputs are left low (unlocked); the ROM's
      * write-protect tuple bit remains clear because this card is writable. */
     m->dev21.reg[0xEE / 2] |= (uint16_t)(slot ? 0xC280u : 0x3140u);
-    mrc_bus_invalidate_lookup(&m->bus);
+    mh_bus_invalidate_lookup(&m->bus);
     fprintf(m->log, "68k: SRAM card slot %u <- %s (%u bytes)\n", slot + 1,
             path, m->card_storage[slot].size);
     return true;
 }
 
-bool mrc_m68k_eject_card(m68k_machine *m, unsigned slot)
+bool mh_m68k_eject_card(m68k_machine *m, unsigned slot)
 {
     if (!m || slot > 1 || !m->card[slot].kind)
         return false;
     m->card_present[slot] = false;
     m->dev21.reg[0xEE / 2] &= (uint16_t)~(slot ? 0xC280u : 0x3140u);
-    mrc_card_image_close(&m->card_storage[slot]);
+    mh_card_image_close(&m->card_storage[slot]);
     free(m->card_path[slot]);
     m->card_path[slot] = nullptr;
     m->card[slot] = {};
@@ -525,32 +525,32 @@ bool mrc_m68k_eject_card(m68k_machine *m, unsigned slot)
      * bus values and the earlier board region wins again. */
     if (slot == 0 && m->xram_region) m->xram_region->size = 0x01000000u;
     if (slot == 1 && m->testimg_region) m->testimg_region->size = 0x01000000u;
-    mrc_bus_invalidate_lookup(&m->bus);
+    mh_bus_invalidate_lookup(&m->bus);
     fprintf(m->log, "68k: SRAM card ejected from slot %u\n", slot + 1);
     return true;
 }
 
-bool mrc_m68k_card_present(const m68k_machine *m, unsigned slot)
+bool mh_m68k_card_present(const m68k_machine *m, unsigned slot)
 {
     return m && slot < 2 && m->card[slot].kind && m->card_present[slot];
 }
 
-const char *mrc_m68k_card_path(const m68k_machine *m, unsigned slot)
+const char *mh_m68k_card_path(const m68k_machine *m, unsigned slot)
 {
     return m && slot < 2 && m->card[slot].kind && m->card_present[slot]
          ? m->card_path[slot] : nullptr;
 }
 
-void mrc_m68k_free(m68k_machine *m)
+void mh_m68k_free(m68k_machine *m)
 {
     if (!m) return;
-    mrc_network_close(m->net_probe_link);
-    mrc_serial_close(&m->duart.link_a);
-    mrc_serial_close(&m->duart.link);
-    mrc_ppp_close(m->duart.ppp);
+    mh_network_close(m->net_probe_link);
+    mh_serial_close(&m->duart.link_a);
+    mh_serial_close(&m->duart.link);
+    mh_ppp_close(m->duart.ppp);
     for (unsigned slot = 0; slot < 2; slot++)
     {
-        mrc_card_image_close(&m->card_storage[slot]);
+        mh_card_image_close(&m->card_storage[slot]);
         free(m->card_path[slot]);
     }
     if (m->blocks) m68k_blocks_free(m->blocks);
@@ -575,7 +575,7 @@ void mrc_m68k_free(m68k_machine *m)
  * +0xB8 first. So the hardware that interrupts this machine is dev21, and an
  * interrupt asserted from nowhere is a test, not a model of it.
  */
-void mrc_m68k_force_irq(m68k_machine *m, unsigned level, uint64_t at)
+void mh_m68k_force_irq(m68k_machine *m, unsigned level, uint64_t at)
 {
     m->cpu.force_irq_level = level;
     m->cpu.force_irq_at = at;
@@ -591,7 +591,7 @@ void mrc_m68k_force_irq(m68k_machine *m, unsigned level, uint64_t at)
  * effort goes into modelling what is behind it. Nothing here is a model: the
  * value comes from the command line, and the run says so in its output.
  */
-bool mrc_m68k_probe_preset(m68k_machine *m, const char *dev, uint32_t off,
+bool mh_m68k_probe_preset(m68k_machine *m, const char *dev, uint32_t off,
                            uint16_t val)
 {
     Pic2000Registers *p = !strcmp(dev, "dev21") ? &m->dev21
@@ -629,7 +629,7 @@ bool mrc_m68k_probe_preset(m68k_machine *m, const char *dev, uint32_t off,
  * the only way to tell "the sensor is unmodelled" from "the sensor is
  * unmodelled AND that is why this subsystem stopped".
  */
-void mrc_m68k_set_adc(m68k_machine *m, int value)
+void mh_m68k_set_adc(m68k_machine *m, int value)
 {
     m->battery_override = true;
     m->dev21.adc_value = value;
@@ -660,7 +660,7 @@ static void set_adc_pair(m68k_machine *m, unsigned mux, unsigned chan,
             mux & 0x7F, chan & 0x3FF);
 }
 
-bool mrc_m68k_load_battery_ram(m68k_machine *m, const uint8_t *data, uint32_t size)
+bool mh_m68k_load_battery_ram(m68k_machine *m, const uint8_t *data, uint32_t size)
 {
     if (!size) return true;
     if (!m->dev21.econoram || size != 36 || std::memcmp(data, "ECR1", 4))
@@ -669,7 +669,7 @@ bool mrc_m68k_load_battery_ram(m68k_machine *m, const uint8_t *data, uint32_t si
     return true;
 }
 
-bool mrc_m68k_save_battery_ram(m68k_machine *m, uint8_t **data, uint32_t *size)
+bool mh_m68k_save_battery_ram(m68k_machine *m, uint8_t **data, uint32_t *size)
 {
     if (!m->dev21.econoram) return true;
     auto *out = static_cast<uint8_t *>(std::malloc(36));
@@ -680,7 +680,7 @@ bool mrc_m68k_save_battery_ram(m68k_machine *m, uint8_t **data, uint32_t *size)
     return true;
 }
 
-bool mrc_m68k_host_battery(m68k_machine *m, int percent)
+bool mh_m68k_host_battery(m68k_machine *m, int percent)
 {
     if (m->envoy || m->battery_override || percent < 0 || percent > 100)
         return false;
@@ -696,13 +696,13 @@ bool mrc_m68k_host_battery(m68k_machine *m, int percent)
     return true;
 }
 
-void mrc_m68k_set_adc_pair(m68k_machine *m, unsigned mux, unsigned chan, int value)
+void mh_m68k_set_adc_pair(m68k_machine *m, unsigned mux, unsigned chan, int value)
 {
     if ((chan & 0x3ff) == 2) m->battery_override = true;
     set_adc_pair(m, mux, chan, value, true);
 }
 
-void mrc_m68k_set_adc_chan(m68k_machine *m, unsigned chan, int value)
+void mh_m68k_set_adc_chan(m68k_machine *m, unsigned chan, int value)
 {
     if ((chan & 0x3ff) == 2) m->battery_override = true;
     m->dev21.adc_chan[chan & 0x3FF] = value;
@@ -713,11 +713,11 @@ void mrc_m68k_set_adc_chan(m68k_machine *m, unsigned chan, int value)
 static uint32_t core_read(void *ctx, uint32_t addr, unsigned size);
 static void core_write(void *ctx, uint32_t addr, unsigned size, uint32_t value);
 
-bool mrc_m68k_set_engine(m68k_machine *m, const char *name)
+bool mh_m68k_set_engine(m68k_machine *m, const char *name)
 {
     /* Read for every engine, so that a trace taken one way can be
      * compared line for line against a trace taken the other. */
-    if (const char *t = std::getenv("MRC_68K_CORE_TRACE"))
+    if (const char *t = std::getenv("MH_68K_CORE_TRACE"))
         m->core_trace = strtoull(t, nullptr, 0);
     if (!name || !strcmp(name, "interpreter")) {
         /* The single-step interpreter is the same project-owned core as the
@@ -742,7 +742,7 @@ bool mrc_m68k_set_engine(m68k_machine *m, const char *name)
     return true;
 }
 
-void mrc_m68k_engine_report(const m68k_machine *m)
+void mh_m68k_engine_report(const m68k_machine *m)
 {
     if (!m->blocks || !m->core_calls) return;
     m68k_block_stats st;
@@ -768,7 +768,7 @@ void mrc_m68k_engine_report(const m68k_machine *m)
      * path and one that did not, and tests/host/test_m68k_cli requires
      * those two runs to say the same things on stderr.
      */
-    if (!std::getenv("MRC_68K_ENGINE_STATS")) return;
+    if (!std::getenv("MH_68K_ENGINE_STATS")) return;
     fprintf(m->log, "68k:   %llu fetches from an odd address, which this "
             "part faults on\n", (unsigned long long)m->core_odd);
     fprintf(m->log, "68k:   quiet path refused: %llu stopped, %llu hix "
@@ -812,7 +812,7 @@ void mrc_m68k_engine_report(const m68k_machine *m)
             (unsigned long long)st.arena_resets);
 }
 
-void mrc_m68k_set_cpi(m68k_machine *m, unsigned cpi)
+void mh_m68k_set_cpi(m68k_machine *m, unsigned cpi)
 {
     m->audio_at = 0;
     if (!cpi) cpi = 1;
@@ -938,16 +938,16 @@ static void duart_tick(m68k_machine *m)
  * With --trace-conv every conversion the driver starts is printed with the
  * control and mux words in force, which is the measurement this exists for.
  */
-void mrc_m68k_touch(m68k_machine *m, uint64_t at, uint64_t len, bool trace)
+void mh_m68k_touch(m68k_machine *m, uint64_t at, uint64_t len, bool trace)
 {
     /* A measured, internally consistent point near the middle of the panel.
      * Explicit --adc-chan pairs are parsed after --touch and replace these. */
-    mrc_m68k_set_adc_pair(m, 0x35, 64, 500 << 6);
-    mrc_m68k_set_adc_pair(m, 0x55,  0, 300 << 6);
-    mrc_m68k_set_adc_pair(m, 0x55, 64, 310 << 6);
-    mrc_m68k_set_adc_pair(m, 0x66,  0, 320 << 6);
-    mrc_m68k_set_adc_pair(m, 0x69,  0, 300 << 6);
-    mrc_m68k_set_adc_pair(m, 0x69, 64, 310 << 6);
+    mh_m68k_set_adc_pair(m, 0x35, 64, 500 << 6);
+    mh_m68k_set_adc_pair(m, 0x55,  0, 300 << 6);
+    mh_m68k_set_adc_pair(m, 0x55, 64, 310 << 6);
+    mh_m68k_set_adc_pair(m, 0x66,  0, 320 << 6);
+    mh_m68k_set_adc_pair(m, 0x69,  0, 300 << 6);
+    mh_m68k_set_adc_pair(m, 0x69, 64, 310 << 6);
     m->touches.push_back({at, len ? at + len : 0, 300, 500, false});
     m->dev21.trace_conv = trace;
     fprintf(m->log, "68k: DEVIATION: asserting pen-down (IPL5 bit 1) at +%llu"
@@ -955,7 +955,7 @@ void mrc_m68k_touch(m68k_machine *m, uint64_t at, uint64_t len, bool trace)
             len ? ", releasing after the window" : " and never releasing");
 }
 
-bool mrc_m68k_tap(m68k_machine *m, uint64_t at, uint64_t len,
+bool mh_m68k_tap(m68k_machine *m, uint64_t at, uint64_t len,
                   unsigned x, unsigned y, bool trace)
 {
     if (x >= 480 || y >= 320 || !len) return false;
@@ -998,7 +998,7 @@ static void touch_screen_point(m68k_machine *m, unsigned x, unsigned y)
     const int raw_y = (int)(y0 + (uint64_t)y * (y1 - y0) / 319);
     touch_point(m, raw_x, raw_y);
     m->dev21.pen_second_690 = raw_y << 6;
-    if (!m->touch_down || getenv("MRC_TOUCH_TRACE"))
+    if (!m->touch_down || getenv("MH_TOUCH_TRACE"))
         fprintf(m->log, "68k: DEVIATION: screen tap (%u,%u) uses current raw "
             "mapping (%d,%d)\n", x, y, raw_x, raw_y);
 }
@@ -1037,18 +1037,18 @@ static void touch_release_now(m68k_machine *m)
             m->dev21.adc_pair[k].value = 0;
 }
 
-uint64_t mrc_m68k_elapsed_ns(const m68k_machine *m)
+uint64_t mh_m68k_elapsed_ns(const m68k_machine *m)
 {
     // insns is the legacy execution-slot counter, including LPSTOP waits.
-    return mrc_time_ns(m->cpu.insns * m->cpi, PIC2000_CPU_HZ);
+    return mh_time_ns(m->cpu.insns * m->cpi, PIC2000_CPU_HZ);
 }
 
-uint64_t mrc_m68k_insns(const m68k_machine *m)
+uint64_t mh_m68k_insns(const m68k_machine *m)
 {
     return m->cpu.insns;
 }
 
-void mrc_m68k_lcd(const m68k_machine *m, uint8_t *pixels)
+void mh_m68k_lcd(const m68k_machine *m, uint8_t *pixels)
 {
     if (!pixels)
         return;
@@ -1074,7 +1074,7 @@ void mrc_m68k_lcd(const m68k_machine *m, uint8_t *pixels)
     }
 }
 
-bool mrc_m68k_set_pen(m68k_machine *m, bool down, unsigned x, unsigned y)
+bool mh_m68k_set_pen(m68k_machine *m, bool down, unsigned x, unsigned y)
 {
     if (down && (x >= PIC2000_SCREEN_W || y >= PIC2000_SCREEN_H))
         return false;
@@ -1085,7 +1085,7 @@ bool mrc_m68k_set_pen(m68k_machine *m, bool down, unsigned x, unsigned y)
     return true;
 }
 
-bool mrc_m68k_host_adapter(m68k_machine *m, bool attached)
+bool mh_m68k_host_adapter(m68k_machine *m, bool attached)
 {
     if (!m->envoy || m->adapter_override) return false;
     // ACAdapterAttached at 00466816 samples D1 bit 6. IRQ6 fallback
@@ -1100,16 +1100,16 @@ bool mrc_m68k_host_adapter(m68k_machine *m, bool attached)
     return true;
 }
 
-bool mrc_m68k_set_adapter(m68k_machine *m, bool attached)
+bool mh_m68k_set_adapter(m68k_machine *m, bool attached)
 {
     const bool previous = m->adapter_override;
     m->adapter_override = false;
-    const bool ok = mrc_m68k_host_adapter(m, attached);
+    const bool ok = mh_m68k_host_adapter(m, attached);
     m->adapter_override = ok || previous;
     return ok;
 }
 
-void mrc_m68k_power_button(m68k_machine *m, bool down)
+void mh_m68k_power_button(m68k_machine *m, bool down)
 {
     if (m->hix) {
         // HIX 0E054D4E requests shutdown when the input becomes false;
@@ -1133,8 +1133,8 @@ void mrc_m68k_power_button(m68k_machine *m, bool down)
         /* Reset fetches its vectors through CS0's boot overlay. The previous
          * session retired it when it programmed CS0, so restore that decode
          * before resetting the CPU, without touching the RAM underneath. */
-        static_cast<mrc_region *>(m->sim.board)->size = 0x01000000u;
-        mrc_bus_invalidate_lookup(&m->bus);
+        static_cast<mh_region *>(m->sim.board)->size = 0x01000000u;
+        mh_bus_invalidate_lookup(&m->bus);
         m->sim.overlay_off = false;
         /* Whichever core reads the reset vectors holds the registers
           * afterwards; the engine picks them up again at the first
@@ -1143,7 +1143,7 @@ void mrc_m68k_power_button(m68k_machine *m, bool down)
         m68k_reset(&m->core);
         /* It will check its ROM again on the way up. */
         m->hix_checksum_pending = m->hix_checksum_intercept;
-        mrc_m68k_set_stop_at(m, m->hix_checksum_pending ? mrc_m68k_checksum_pc(m) : 0);
+        mh_m68k_set_stop_at(m, m->hix_checksum_pending ? mh_m68k_checksum_pc(m) : 0);
         fprintf(m->log, "68k: power on; CPU reset with retained RAM\n");
     }
     /* PIC ROM 0E07FC2E reads the active-high button at dev21+D1 bit 2.
@@ -1156,12 +1156,12 @@ void mrc_m68k_power_button(m68k_machine *m, bool down)
     dev21_irq(m);
 }
 
-void mrc_m68k_attach_pclink(m68k_machine *m, struct mrc_pclink *link)
+void mh_m68k_attach_pclink(m68k_machine *m, struct mh_pclink *link)
 {
     m->duart.attach(link);
 }
 
-bool mrc_m68k_open_serial_a(m68k_machine *m)
+bool mh_m68k_open_serial_a(m68k_machine *m)
 {
     if (!m || !m->duart.open_a()) return false;
     fprintf(m->log, "68k: experimental DUART A at %s; modem power/carrier and PPP backend unimplemented\n",
@@ -1169,10 +1169,10 @@ bool mrc_m68k_open_serial_a(m68k_machine *m)
     return true;
 }
 
-bool mrc_m68k_open_ppp(m68k_machine *m, const char *pcap)
+bool mh_m68k_open_ppp(m68k_machine *m, const char *pcap)
 {
     if (!m || m->duart.ppp || m->duart.link_a.fd >= 0) return false;
-    mrc_ppp *endpoint = mrc_ppp_open(pcap);
+    mh_ppp *endpoint = mh_ppp_open(pcap);
     if (!endpoint) return false;
     m->duart.attach_ppp(endpoint);
     fprintf(m->log, "68k: experimental channel-A virtual ISP attached; PPP is available after Hayes dialing\n");
@@ -1193,8 +1193,8 @@ static uint32_t net_slot2_attribute_read(void *ctx, uint32_t off, unsigned size)
     auto *m = (m68k_machine *)ctx;
     uint8_t value = 0;
     bool decoded = size == 1 &&
-        mrc_ne2000_magic_attribute_byte(off, m->net_slot2_config, &value);
-    if (std::getenv("MRC_68K_NET_TRACE") && m->net_slot2_attr_logged++ < 128)
+        mh_ne2000_magic_attribute_byte(off, m->net_slot2_config, &value);
+    if (std::getenv("MH_68K_NET_TRACE") && m->net_slot2_attr_logged++ < 128)
         fprintf(m->log, "68k: slot-2 attribute R%u +%08X = %02X (%s, pc=%08X)\n",
                 size * 8, off, decoded ? value : 0xff,
                 decoded ? "CIS" : "open", m->cpu.at_pc());
@@ -1209,8 +1209,8 @@ static void net_slot2_attribute_write(void *ctx, uint32_t off,
     auto *m = (m68k_machine *)ctx;
     if (off != 0x3f8 || size != 1) return;
     m->net_slot2_config = (uint8_t)value;
-    if (value & 0x80) (void)mrc_ne2000_read(&m->net_probe_nic, 0x1f, 1);
-    if (std::getenv("MRC_68K_NET_TRACE"))
+    if (value & 0x80) (void)mh_ne2000_read(&m->net_probe_nic, 0x1f, 1);
+    if (std::getenv("MH_68K_NET_TRACE"))
         fprintf(m->log, "68k: slot-2 NE2000 COR <- %02X\n", value & 255);
 }
 
@@ -1219,9 +1219,9 @@ static uint32_t net_probe_read(void *ctx, uint32_t off, unsigned size)
     auto *m = (m68k_machine *)ctx;
     if (size != 1) return 0xFFFFFFFFu;
     uint16_t addr = m->net_probe_nic.rsar;
-    uint32_t value = mrc_ne2000_read(&m->net_probe_nic, off, size);
+    uint32_t value = mh_ne2000_read(&m->net_probe_nic, off, size);
     if (off == 0x10 && addr >= 0x4800 && addr < 0x4838 &&
-        std::getenv("MRC_68K_NET_TRACE"))
+        std::getenv("MH_68K_NET_TRACE"))
         fprintf(m->log, "68k: NIC DMA[%04X] -> %02X\n", addr, value & 255);
     return value;
 }
@@ -1230,55 +1230,55 @@ static void net_probe_write(void *ctx, uint32_t off, unsigned size, uint32_t val
 {
     auto *m = (m68k_machine *)ctx;
     if (off == 0x10 && size == 1 && m->net_probe_logged < 80 &&
-        std::getenv("MRC_68K_NET_TRACE")) {
+        std::getenv("MH_68K_NET_TRACE")) {
         fprintf(m->log, "68k: NIC DMA[%04X] <- %02X (CR=%02X count=%u)\n",
                 m->net_probe_nic.rsar, val & 255, m->net_probe_nic.cr,
                 m->net_probe_nic.rbcr);
         m->net_probe_logged++;
     }
-    if (size == 1) mrc_ne2000_write(&m->net_probe_nic, off, size, val);
+    if (size == 1) mh_ne2000_write(&m->net_probe_nic, off, size, val);
 }
 
 static void net_probe_receive(void *ctx, const uint8_t *frame, size_t len)
 {
     auto *m = (m68k_machine *)ctx;
     unsigned at = m->net_probe_nic.curr;
-    bool accepted = mrc_ne2000_receive(&m->net_probe_nic, frame, len);
-    if (std::getenv("MRC_68K_NET_TRACE"))
+    bool accepted = mh_ne2000_receive(&m->net_probe_nic, frame, len);
+    if (std::getenv("MH_68K_NET_TRACE"))
         fprintf(m->log, "68k: NIC RX len=%zu accepted=%u page=%02X next=%02X BNRY=%02X ISR=%02X\n",
                 len, accepted, at, m->net_probe_nic.curr,
                 m->net_probe_nic.bnry, m->net_probe_nic.isr);
 }
 
-bool mrc_m68k_open_ne2000_probe(m68k_machine *m, const char *pcap)
+bool mh_m68k_open_ne2000_probe(m68k_machine *m, const char *pcap)
 {
     if (!m || m->envoy || m->hix || m->net_probe_enabled) return false;
     unsigned regions_before = m->bus.nregion;
     static const uint8_t mac[6] = {0x02, 0x00, 0x00, 0x68, 0x00, 0x01};
-    mrc_ne2000_init(&m->net_probe_nic, mac);
+    mh_ne2000_init(&m->net_probe_nic, mac);
     m->net_slot2_config = 0;
-    m->net_probe_link = mrc_network_open(net_probe_receive, m, pcap);
+    m->net_probe_link = mh_network_open(net_probe_receive, m, pcap);
     if (!m->net_probe_link) return false;
     /* Experimental card-space mapping. The dev21 slot-2 presence input is
      * asserted while attached; common memory and IRQ remain unmodeled. The
      * original diagnostic aperture stays available. */
-    bool mapped = mrc_bus_add_mmio(&m->bus, "68k-ne2000-probe", NET_PROBE_BASE,
+    bool mapped = mh_bus_add_mmio(&m->bus, "68k-ne2000-probe", NET_PROBE_BASE,
                                    0x20u, m, net_probe_read, net_probe_write) &&
-                  mrc_bus_add_mmio(&m->bus, "68k-ne2000-slot2-attribute",
+                  mh_bus_add_mmio(&m->bus, "68k-ne2000-slot2-attribute",
                                    NET_SLOT2_ATTRIBUTE_BASE, 0x04000000u, m,
                                    net_slot2_attribute_read,
                                    net_slot2_attribute_write) &&
-                  mrc_bus_add_mmio(&m->bus, "68k-ne2000-slot2-io",
+                  mh_bus_add_mmio(&m->bus, "68k-ne2000-slot2-io",
                                    NET_SLOT2_IO_BASE, 0x20u, m,
                                    net_probe_read, net_probe_write);
     if (!mapped) {
         m->bus.nregion = regions_before;
-        mrc_bus_invalidate_lookup(&m->bus);
-        mrc_network_close(m->net_probe_link);
+        mh_bus_invalidate_lookup(&m->bus);
+        mh_network_close(m->net_probe_link);
         m->net_probe_link = nullptr;
         return false;
     }
-    m->net_probe_nic.send = mrc_network_send;
+    m->net_probe_nic.send = mh_network_send;
     m->net_probe_nic.send_opaque = m->net_probe_link;
     m->net_probe_enabled = true;
     /* An insertion edge is deliberately not synthesized yet: BA=2000
@@ -1305,47 +1305,47 @@ bool mrc_m68k_open_ne2000_probe(m68k_machine *m, const char *pcap)
  * rather than something pressed: on a touchscreen there is no way to hold a
  * modifier and tap at the same time with one finger.
  */
-void mrc_m68k_set_option(m68k_machine *m, bool down)
+void mh_m68k_set_option(m68k_machine *m, bool down)
 {
     if (down) m->dev21.reg[0xD0 / 2] |= 2u;
     else m->dev21.reg[0xD0 / 2] &= (uint16_t)~2u;
 }
 
-bool mrc_m68k_option_held(const m68k_machine *m)
+bool mh_m68k_option_held(const m68k_machine *m)
 {
     return (m->dev21.reg[0xD0 / 2] & 2u) != 0;
 }
 
-void mrc_m68k_start(m68k_machine *m)
+void mh_m68k_start(m68k_machine *m)
 {
     /* Launching a device is a press of its ON button, including on a warm
      * boot. A CPU reset without this input can legitimately return to off. */
-    mrc_m68k_power_button(m, true);
+    mh_m68k_power_button(m, true);
     if (m->hix) {
-        mrc_m68k_power_button(m, false); // release host key; switch stays ON
+        mh_m68k_power_button(m, false); // release host key; switch stays ON
         fprintf(m->log, "68k: HIX-300 power switch ON (ROM-inferred latching input)\n");
     } else m->boot_release_at = m->cpu.insns + 1000000;
 }
 
-bool mrc_m68k_powered_off(const m68k_machine *m)
+bool mh_m68k_powered_off(const m68k_machine *m)
 {
     return m->dev21.power_off;
 }
 
-bool mrc_m68k_power_off(m68k_machine *m)
+bool mh_m68k_power_off(m68k_machine *m)
 {
     if (m->dev21.power_off) return true;
-    mrc_m68k_set_pen(m, false, 0, 0);
-    mrc_m68k_power_button(m, false);
-    mrc_m68k_power_button(m, true);
-    mrc_m68k_run(m, 1000000);
-    mrc_m68k_power_button(m, false);
+    mh_m68k_set_pen(m, false, 0, 0);
+    mh_m68k_power_button(m, false);
+    mh_m68k_power_button(m, true);
+    mh_m68k_run(m, 1000000);
+    mh_m68k_power_button(m, false);
     for (unsigned i = 0; i < 160 && !m->dev21.power_off && !m->cpu.stopped; i++)
-        mrc_m68k_run(m, 1000000);
+        mh_m68k_run(m, 1000000);
     return m->dev21.power_off;
 }
 
-void mrc_m68k_schedule_power(m68k_machine *m, uint64_t at, uint64_t hold)
+void mh_m68k_schedule_power(m68k_machine *m, uint64_t at, uint64_t hold)
 {
     m->power_scheduled = true;
     m->power_at = at;
@@ -1354,7 +1354,7 @@ void mrc_m68k_schedule_power(m68k_machine *m, uint64_t at, uint64_t hold)
 
 static inline void audio_tick_if_due(m68k_machine *m)
 {
-    if (MRC_LIKELY(m->cpu.insns < m->audio_at && !m->dev21.audio_dirty)) return;
+    if (MH_LIKELY(m->cpu.insns < m->audio_at && !m->dev21.audio_dirty)) return;
     m->dev21.audio_dirty = false;
     m->audio.tick(m->cpu.insns * m->cpi, PIC2000_CPU_HZ, m->dev21, m->bus);
     // Exact next output-sample boundary. Register changes still tick on the
@@ -1421,13 +1421,13 @@ static bool idle_fast_path_allowed(const m68k_machine *m)
 static void post_slot(m68k_machine *m)
 {
     if (m->net_probe_enabled && !(m->cpu.insns & 1023u)) {
-        const uint64_t ns = mrc_m68k_elapsed_ns(m);
-        mrc_network_poll(m->net_probe_link, ns);
-        mrc_ne2000_tick(&m->net_probe_nic, ns);
+        const uint64_t ns = mh_m68k_elapsed_ns(m);
+        mh_network_poll(m->net_probe_link, ns);
+        mh_ne2000_tick(&m->net_probe_nic, ns);
     }
     if (m->magicbus.connected) m->magicbus.service(m);
     duart_tick(m);
-    if (MRC_UNLIKELY(m->dev21.compare_dirty)) {
+    if (MH_UNLIKELY(m->dev21.compare_dirty)) {
         m->dev21.compare_dirty = false;
         /*
          * Writing a new compare is how this device is serviced, and so
@@ -1455,7 +1455,7 @@ static void post_slot(m68k_machine *m)
             m->dev21.set_bit32(DEV21_PENDING, DEV21_PEN_BIT);
         }
     }
-    if (MRC_UNLIKELY(m->dev21.adc_dirty)) {
+    if (MH_UNLIKELY(m->dev21.adc_dirty)) {
         m->dev21.adc_dirty = false;
         /*
          * A conversion takes time, and completing it instantly is not a
@@ -1479,7 +1479,7 @@ static void post_slot(m68k_machine *m)
             (uint16_t)m->dev21.adc_done_bits;
         m->dev21.irq_dirty = true;
     }
-    if (MRC_UNLIKELY(m->dev21.tx_dirty)) {
+    if (MH_UNLIKELY(m->dev21.tx_dirty)) {
         m->dev21.tx_dirty = false;
         m->dev21.tx_busy = true;
         m->dev21.tx_done_at = m->cpu.insns + 64;
@@ -1488,7 +1488,7 @@ static void post_slot(m68k_machine *m)
         m->dev21.tx_busy = false;
         m->dev21.set_bit32(DEV21_PENDING, DEV21_TX_BIT);
     }
-    if (MRC_UNLIKELY(m->dev21.pen_timer_dirty)) {
+    if (MH_UNLIKELY(m->dev21.pen_timer_dirty)) {
         m->dev21.pen_timer_dirty = false;
         const uint16_t enable = m->dev21.reg[0xDE / 2];
         const uint16_t count = m->dev21.reg[0xDC / 2];
@@ -1503,11 +1503,11 @@ static void post_slot(m68k_machine *m)
                 (1000u * m->cpi);
         }
     }
-    if (MRC_UNLIKELY(m->pen_timer_armed && m->cpu.insns >= m->pen_timer_at)) {
+    if (MH_UNLIKELY(m->pen_timer_armed && m->cpu.insns >= m->pen_timer_at)) {
         m->pen_timer_armed = false;
         m->dev21.set_bit32(DEV21_PENDING, DEV21_PEN_TIMER_BIT);
     }
-    if (MRC_UNLIKELY(m->timer_armed && m->cpu.insns >= m->timer_at)) {
+    if (MH_UNLIKELY(m->timer_armed && m->cpu.insns >= m->timer_at)) {
         m->timer_armed = false;
         m->timer_fires++;
         m->dev21.set_bit32(DEV21_PENDING, DEV21_TIMER_BIT);
@@ -1553,17 +1553,17 @@ static uint64_t next_run_limit(const m68k_machine *m, uint64_t end)
  */
 static void checksum_substitute(m68k_machine *m)
 {
-    if (cpu_pc(m) != mrc_m68k_checksum_pc(m) ||
+    if (cpu_pc(m) != mh_m68k_checksum_pc(m) ||
         cpu_a(m, m->envoy_mc31?3:4) != (m->envoy_mc31?0x0040000Cu:0x0E00000Cu) ||
         cpu_d(m, 0) != m->hix_checksum_actual)
         return;
     fprintf(m->log, "68k: DEVIATION: intercepted %s checksum result at "
             "%08X (%08X -> %08X)\n", m->envoy_mc31?"Envoy mc31":"HIX-300",
-            mrc_m68k_checksum_pc(m), m->hix_checksum_actual,
+            mh_m68k_checksum_pc(m), m->hix_checksum_actual,
             m->hix_checksum_stored);
     cpu_set_d(m, 0, m->hix_checksum_stored);
     m->hix_checksum_pending = false;
-    mrc_m68k_set_stop_at(m, 0);
+    mh_m68k_set_stop_at(m, 0);
 }
 
 static bool quiet_path_allowed(m68k_machine *m)
@@ -1599,19 +1599,19 @@ static inline bool device_wants_attention(const m68k_machine *m)
 static uint32_t core_read(void *ctx, uint32_t addr, unsigned size)
 {
     auto *m = static_cast<m68k_machine *>(ctx);
-    uint32_t v = MRC_UNLIKELY(m->core.fc == mrc::M68kBus::FC_CPU_SPACE)
+    uint32_t v = MH_UNLIKELY(m->core.fc == mh::M68kBus::FC_CPU_SPACE)
                      ? m->cpu.cpu_space_read(addr, size)
                      : m->cpu.rd(addr, size);
     /* A read can change a device as surely as a write: several of these
      * registers clear a status bit when they are looked at. */
-    if (MRC_UNLIKELY(device_wants_attention(m))) m->core.yield = true;
+    if (MH_UNLIKELY(device_wants_attention(m))) m->core.yield = true;
     return v;
 }
 
 static void core_write(void *ctx, uint32_t addr, unsigned size, uint32_t value)
 {
     auto *m = static_cast<m68k_machine *>(ctx);
-    if (MRC_UNLIKELY(m->core.fc == mrc::M68kBus::FC_CPU_SPACE))
+    if (MH_UNLIKELY(m->core.fc == mh::M68kBus::FC_CPU_SPACE))
         m->cpu.cpu_space_write(addr, size, value);
     else
         m->cpu.wr(addr, size, value);
@@ -1621,7 +1621,7 @@ static void core_write(void *ctx, uint32_t addr, unsigned size, uint32_t value)
             addr < (m->cpu.mbar & 0xfffff000u)+0x7b8)
             m->dev21.irq_dirty=true;
     }
-    if (MRC_UNLIKELY(device_wants_attention(m))) m->core.yield = true;
+    if (MH_UNLIKELY(device_wants_attention(m))) m->core.yield = true;
 }
 
 /*
@@ -1664,10 +1664,10 @@ static void core_odd_fetch(m68k_machine *m)
  * give-up guard below has been given its own constant rather than being
  * derived from this one, which is what made four look necessary.
  *
- * MRC_68K_MIN_RUN overrides it, which is how the table above was made.
+ * MH_68K_MIN_RUN overrides it, which is how the table above was made.
  */
 static uint64_t CORE_MIN_RUN = []{
-    if (const char *e = std::getenv("MRC_68K_MIN_RUN")) {
+    if (const char *e = std::getenv("MH_68K_MIN_RUN")) {
         unsigned long v = std::strtoul(e, nullptr, 0);
         if (v) return (uint64_t)v;
     }
@@ -1712,7 +1712,7 @@ static uint64_t run_on_core(m68k_machine *m, uint64_t budget)
     m->core.insn_count = m->cpu.insns ? m->cpu.insns - 1 : 0;
     m->dev21.insn_src = &m->core.insn_count;
     uint64_t did;
-    if (MRC_UNLIKELY(m->core_trace)) {
+    if (MH_UNLIKELY(m->core_trace)) {
         did = 0;
         while (did < budget && m->core_trace) {
             uint32_t was = m->core.pc, sp = m->core.a[7];
@@ -1756,7 +1756,7 @@ static uint64_t run_on_core(m68k_machine *m, uint64_t budget)
     }
     m->dev21.insn_src = &m->cpu.insns;
     m->core.yield = false;
-    if (MRC_UNLIKELY(m->core.exception_count != m->core_exceptions_seen))
+    if (MH_UNLIKELY(m->core.exception_count != m->core_exceptions_seen))
         core_report_exceptions(m);
     m->core_calls++;
     m->core_ran += did;
@@ -1768,7 +1768,7 @@ static uint64_t run_on_core(m68k_machine *m, uint64_t budget)
      * engine can do. Measuring it and stopping is better than a guess
      * about which guests those are.
      */
-    if (MRC_UNLIKELY(m->core_calls == 4096)) {
+    if (MH_UNLIKELY(m->core_calls == 4096)) {
         double each = (double)m->core_ran / (double)m->core_calls;
         if (each < CORE_GIVE_UP_AVERAGE) {
             m->core_enabled = false;
@@ -1791,7 +1791,7 @@ static uint64_t run_on_core(m68k_machine *m, uint64_t budget)
 static void core_report_exceptions(m68k_machine *m)
 {
     uint64_t raised = m->core.exception_count;
-    if (MRC_LIKELY(raised == m->core_exceptions_seen)) return;
+    if (MH_LIKELY(raised == m->core_exceptions_seen)) return;
     uint64_t missed = raised - m->core_exceptions_seen - 1;
     m->core_exceptions_seen = raised;
 
@@ -1833,7 +1833,7 @@ static void core_report_exceptions(m68k_machine *m)
         fprintf(m->log, "[68k] %s at pc=%08X (vector %u)\n", name, at, vector);
 
     bool ok = true;
-    const uint16_t word = (uint16_t)mrc_bus_read(&m->bus, at, 2, &ok);
+    const uint16_t word = (uint16_t)mh_bus_read(&m->bus, at, 2, &ok);
     if (vector == M68K_VEC_LINE_F)
         fprintf(m->log, "       fetched opcode %04X at %08X%s\n", word, at,
                 ok ? "" : ", which nothing decodes -- a wild jump, not the "
@@ -1878,7 +1878,7 @@ static void core_report_exceptions(m68k_machine *m)
             m->core.last_vector_to, m->core.last_vector_sp);
     for (unsigned k = 0; k < 12; k += 2) {
         bool word_ok = true;
-        uint32_t w = mrc_bus_read(&m->bus, m->core.last_vector_sp + k, 2,
+        uint32_t w = mh_bus_read(&m->bus, m->core.last_vector_sp + k, 2,
                                   &word_ok);
         fprintf(m->log, " %04X", word_ok ? w : 0xFFFF);
     }
@@ -1903,7 +1903,7 @@ static void core_step_one(m68k_machine *m)
         m->cpu.direct_enabled ? m->cpu.direct_wr.data() : nullptr;
     m->core.exception = 0;
     m->core.yield = false;
-    if (MRC_UNLIKELY(m->irq_now != 0)) {
+    if (MH_UNLIKELY(m->irq_now != 0)) {
         m->core_irq_seen++;
         if (m68k_interrupt(&m->core, m->irq_now, m->cpu.irq_vector)) {
             m->core_interrupts++;
@@ -1914,19 +1914,19 @@ static void core_step_one(m68k_machine *m)
     }
     /* Stopped: the slot passes and the devices run, but nothing is
      * fetched. This is the idle loop, and it is most of a run. */
-    if (MRC_UNLIKELY(m->core.stopped)) return;
+    if (MH_UNLIKELY(m->core.stopped)) return;
     /* Arriving on an odd address faults in this slot, and so does landing
      * on one: the part checks the next fetch address as part of the
      * instruction that produced it, not as the following instruction. */
-    if (MRC_UNLIKELY(m->core.pc & 1)) { core_odd_fetch(m); return; }
+    if (MH_UNLIKELY(m->core.pc & 1)) { core_odd_fetch(m); return; }
     m68k_step(&m->core);
-    if (MRC_UNLIKELY(m->core.pc & 1)) core_odd_fetch(m);
+    if (MH_UNLIKELY(m->core.pc & 1)) core_odd_fetch(m);
     m->core.yield = false;
-    if (MRC_UNLIKELY(m->core.exception_count != m->core_exceptions_seen))
+    if (MH_UNLIKELY(m->core.exception_count != m->core_exceptions_seen))
         core_report_exceptions(m);
 }
 
-uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
+uint64_t mh_m68k_run(m68k_machine *m, uint64_t insns)
 {
     // Host keyboard edges can arrive while the CPU is in LPSTOP.
     if (m->magicbus.connected) dev21_irq(m);
@@ -1935,11 +1935,11 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
      * advances the same machine instruction count.
      */
     uint64_t n = 0;
-    while (n < insns && MRC_LIKELY(!m->cpu.stopped)) {
+    while (n < insns && MH_LIKELY(!m->cpu.stopped)) {
         /* LPSTOP does not retire instructions. Advance the slot clock in one
          * jump, stopping one slot before the next modeled event so the normal
          * loop below performs the wakeup and all side effects in order. */
-        if (MRC_UNLIKELY(idle_fast_path_allowed(m))) {
+        if (MH_UNLIKELY(idle_fast_path_allowed(m))) {
             const uint64_t now = m->cpu.insns;
             const uint64_t end = now + (insns - n);
             const uint64_t deadline = next_idle_deadline(m);
@@ -1954,21 +1954,21 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
         /* Running core, nothing to observe: execute straight through to the
          * slot before the next deadline, handling device-written flags the
          * moment they appear, exactly as the full body below would. */
-        if (MRC_LIKELY(quiet_path_allowed(m))) {
+        if (MH_LIKELY(quiet_path_allowed(m))) {
             uint64_t limit = next_run_limit(m, m->cpu.insns + (insns - n));
-            while (m->cpu.insns < limit && MRC_LIKELY(!m->cpu.stopped)) {
+            while (m->cpu.insns < limit && MH_LIKELY(!m->cpu.stopped)) {
                 /*
                  * Hand a stretch to the block engine when there is a
                  * stretch to run as a block. Interrupts are handled at
                  * block boundaries so the block engine cannot run past
                  * one that becomes due.
                  */
-                if (MRC_UNLIKELY(m->core_enabled) &&
+                if (MH_UNLIKELY(m->core_enabled) &&
                     limit - m->cpu.insns < CORE_MIN_RUN) {
                     m->core_skipped_short++;
                     if (interrupt_waiting(m)) m->core_skipped_irq++;
                 }
-                if (MRC_UNLIKELY(m->core_enabled) &&
+                if (MH_UNLIKELY(m->core_enabled) &&
                     limit - m->cpu.insns >= CORE_MIN_RUN &&
                     !(cpu_pc(m) & 1)) {
                     /* Deliver pending interrupts at each block boundary. */
@@ -1976,26 +1976,26 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
                     if (did) {
                         n += did;
                         m->cpu.insns += did;
-                        if (MRC_UNLIKELY(m->core.pc & 1)) {
+                        if (MH_UNLIKELY(m->core.pc & 1)) {
                             core_odd_fetch(m);
                             /* Named now rather than at the end of the next
                              * stretch: by then its handler has run and the
                              * frame it built is under a different stack. */
                             core_report_exceptions(m);
                         }
-                        if (MRC_UNLIKELY(device_wants_attention(m))) {
+                        if (MH_UNLIKELY(device_wants_attention(m))) {
                             post_slot(m);
                             if (m->dev21.power_off) break;
                             limit = next_run_limit(m, m->cpu.insns + (insns - n));
                         }
-                        if (n >= insns || MRC_UNLIKELY(cpu_part_stopped(m)))
+                        if (n >= insns || MH_UNLIKELY(cpu_part_stopped(m)))
                             break;
                         continue;
                     }
                     /* The interpreter below handles a slot the block
                      * engine declined or could not start. */
                 }
-                if (MRC_UNLIKELY(m->core_trace)) {
+                if (MH_UNLIKELY(m->core_trace)) {
                     fprintf(m->log, "[68k] %08X sp=%08X\n", cpu_pc(m),
                             cpu_a(m, 7));
                     m->core_trace--;
@@ -2005,14 +2005,14 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
                  * watched address, having retired nothing. The slow path
                  * below performs the watched instruction itself.
                  */
-                if (MRC_UNLIKELY(m->hix_checksum_pending)) {
+                if (MH_UNLIKELY(m->hix_checksum_pending)) {
                     checksum_substitute(m);
                     if (!m->hix_checksum_pending) continue;
                 }
                 core_step_one(m);
                 n++;
                 m->cpu.insns++;
-                if (MRC_UNLIKELY(m->dev21.compare_dirty || m->dev21.adc_dirty ||
+                if (MH_UNLIKELY(m->dev21.compare_dirty || m->dev21.adc_dirty ||
                                  m->dev21.tx_dirty || m->dev21.pen_timer_dirty ||
                                  m->dev21.audio_dirty || m->dev21.irq_dirty ||
                                  m->dev21.power_off)) {
@@ -2020,26 +2020,26 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
                     if (m->dev21.power_off) break;
                     limit = next_run_limit(m, m->cpu.insns + (insns - n));
                 }
-                if (MRC_UNLIKELY(cpu_part_stopped(m))) break;
+                if (MH_UNLIKELY(cpu_part_stopped(m))) break;
             }
             if (n >= insns || m->cpu.stopped) break;
         }
-        if (MRC_UNLIKELY(m->boot_release_at && m->cpu.insns >= m->boot_release_at)) {
+        if (MH_UNLIKELY(m->boot_release_at && m->cpu.insns >= m->boot_release_at)) {
             m->boot_release_at = 0;
-            mrc_m68k_power_button(m, false);
+            mh_m68k_power_button(m, false);
         }
-        if (MRC_UNLIKELY(m->power_scheduled && m->cpu.insns >= m->power_at)) {
-            mrc_m68k_power_button(m, m->cpu.insns < m->power_release_at);
+        if (MH_UNLIKELY(m->power_scheduled && m->cpu.insns >= m->power_at)) {
+            mh_m68k_power_button(m, m->cpu.insns < m->power_release_at);
             if (m->cpu.insns >= m->power_release_at)
                 m->power_scheduled = false;
         }
-        if (MRC_UNLIKELY(m->dev21.power_off)) {
+        if (MH_UNLIKELY(m->dev21.power_off)) {
             n++;
             m->cpu.insns++;
             audio_tick_if_due(m);
             continue;
         }
-        if (MRC_UNLIKELY(m->hix_checksum_pending)) checksum_substitute(m);
+        if (MH_UNLIKELY(m->hix_checksum_pending)) checksum_substitute(m);
         if (m->cpu.trace_after_armed &&
             cpu_pc(m) == m->cpu.trace_after_pc &&
             ++m->cpu.trace_after_seen == m->cpu.trace_after_hit) {
@@ -2053,7 +2053,7 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
         /* The same line from the slow body, so that a trace taken with the
          * block engine on covers every instruction the machine runs and not
          * only the ones one of the two loops ran. */
-        if (MRC_UNLIKELY(m->core_trace)) {
+        if (MH_UNLIKELY(m->core_trace)) {
             m->core_trace--;
             fprintf(m->log, "[68k] %08X sp=%08X\n", cpu_pc(m), cpu_a(m, 7));
         }
@@ -2099,7 +2099,7 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
                     fprintf(m->log, "         stack at %08X:", sp);
                     for (unsigned k = 0; k < 8; k++) {
                         bool ok = true;
-                        uint32_t v = mrc_bus_read(&m->bus, sp + k * 4, 4, &ok);
+                        uint32_t v = mh_bus_read(&m->bus, sp + k * 4, 4, &ok);
                         fprintf(m->log, " %08X", ok ? v : 0);
                     }
                     fprintf(m->log, "\n");
@@ -2120,7 +2120,7 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
             m->cpu.pc_pages[m->cpu.prev_pc & ~0xFFFFu]++;
             m->cpu.sample_next = n + m->cpu.sample_every;
         }
-        if (MRC_UNLIKELY(m->cpu.insnheat))
+        if (MH_UNLIKELY(m->cpu.insnheat))
             cpu_state::count_insn_heat(m, current_pc);
         core_step_one(m);
         n++;
@@ -2131,28 +2131,28 @@ uint64_t mrc_m68k_run(m68k_machine *m, uint64_t insns)
     return n;
 }
 
-bool mrc_m68k_stopped(const m68k_machine *m) { return m->cpu.stopped; }
-void mrc_m68k_audio_divider(m68k_machine *m, bool enabled)
+bool mh_m68k_stopped(const m68k_machine *m) { return m->cpu.stopped; }
+void mh_m68k_audio_divider(m68k_machine *m, bool enabled)
 {
     m->audio_at = 0;
     m->audio.experimental_divider = enabled;
     if (enabled) fprintf(m->log, "68k: DEVIATION: experimental audio divider; unknown rates inferred from modulo-16 counter hypothesis\n");
 }
 
-void mrc_m68k_audio_approx(m68k_machine *m, bool enabled)
+void mh_m68k_audio_approx(m68k_machine *m, bool enabled)
 {
     m->audio.approximate_output = enabled;
     m->audio.filter1 = m->audio.filter2 = 0;
 }
-unsigned mrc_m68k_audio_rate(const m68k_machine *) { return Pic2000Audio::output_rate; }
-void mrc_m68k_audio_sink(m68k_machine *m, void (*sink)(void *, int16_t), void *ctx)
+unsigned mh_m68k_audio_rate(const m68k_machine *) { return Pic2000Audio::output_rate; }
+void mh_m68k_audio_sink(m68k_machine *m, void (*sink)(void *, int16_t), void *ctx)
 { m->audio.sink = sink; m->audio.ctx = ctx; }
-void mrc_m68k_trace(m68k_machine *m, uint64_t n) { m->cpu.trace_left = n; }
-void mrc_m68k_trace_after(m68k_machine *m, uint32_t pc, uint64_t n)
+void mh_m68k_trace(m68k_machine *m, uint64_t n) { m->cpu.trace_left = n; }
+void mh_m68k_trace_after(m68k_machine *m, uint32_t pc, uint64_t n)
 {
-    mrc_m68k_trace_after_hit(m, pc, 1, n);
+    mh_m68k_trace_after_hit(m, pc, 1, n);
 }
-void mrc_m68k_trace_after_hit(m68k_machine *m, uint32_t pc, uint64_t hit,
+void mh_m68k_trace_after_hit(m68k_machine *m, uint32_t pc, uint64_t hit,
                               uint64_t n)
 {
     m->cpu.trace_after_pc = pc;
@@ -2161,24 +2161,24 @@ void mrc_m68k_trace_after_hit(m68k_machine *m, uint32_t pc, uint64_t hit,
     m->cpu.trace_after_seen = 0;
     m->cpu.trace_after_armed = hit != 0 && n != 0;
 }
-void mrc_m68k_sample(m68k_machine *m, uint64_t every)
+void mh_m68k_sample(m68k_machine *m, uint64_t every)
 {
     m->cpu.sample_every = every;
 }
 
-void mrc_m68k_heat(m68k_machine *m, bool on) { m->cpu.heat = on; }
-void mrc_m68k_readheat(m68k_machine *m, bool on) { m->cpu.readheat = on; }
-void mrc_m68k_insnheat(m68k_machine *m, bool on) { m->cpu.insnheat = on; }
-void mrc_m68k_watch_write(m68k_machine *m, uint32_t lo, uint32_t hi)
+void mh_m68k_heat(m68k_machine *m, bool on) { m->cpu.heat = on; }
+void mh_m68k_readheat(m68k_machine *m, bool on) { m->cpu.readheat = on; }
+void mh_m68k_insnheat(m68k_machine *m, bool on) { m->cpu.insnheat = on; }
+void mh_m68k_watch_write(m68k_machine *m, uint32_t lo, uint32_t hi)
 {
     m->cpu.watch_write_lo = lo;
     m->cpu.watch_write_hi = hi;
 }
-void mrc_m68k_watch_read(m68k_machine *m, uint32_t addr)
+void mh_m68k_watch_read(m68k_machine *m, uint32_t addr)
 {
     m->cpu.watch_read = addr;
 }
-void mrc_m68k_cover(m68k_machine *m, const char *path)
+void mh_m68k_cover(m68k_machine *m, const char *path)
 {
     m->cpu.cover = true;
     m->cover_path = path;
@@ -2193,22 +2193,22 @@ void mrc_m68k_cover(m68k_machine *m, const char *path)
  * image, so it cannot be read statically; it has to be taken from a machine
  * that has run.
  */
-void mrc_m68k_dump(m68k_machine *m, uint32_t addr, uint32_t len,
+void mh_m68k_dump(m68k_machine *m, uint32_t addr, uint32_t len,
                    const char *path)
 {
     FILE *f = fopen(path, "wb");
     if (!f) { fprintf(m->log, "68k: cannot write %s\n", path); return; }
     for (uint32_t offset = 0; offset < len; offset++) {
         bool ok = true;
-        uint32_t v = mrc_bus_read(&m->bus, addr + offset, 1, &ok);
+        uint32_t v = mh_bus_read(&m->bus, addr + offset, 1, &ok);
         fputc(ok ? (int)(v & 0xFF) : 0xFF, f);
     }
     fclose(f);
     fprintf(m->log, "68k: dumped %u bytes from %08X to %s\n", len, addr, path);
 }
-void mrc_m68k_watch(m68k_machine *m, uint32_t pc) { m->cpu.watch[pc] = 0; }
-void mrc_m68k_watch_log(m68k_machine *m, unsigned n) { m->cpu.watch_log = n; }
-void mrc_m68k_log_unknown(m68k_machine *m, bool on)
+void mh_m68k_watch(m68k_machine *m, uint32_t pc) { m->cpu.watch[pc] = 0; }
+void mh_m68k_watch_log(m68k_machine *m, unsigned n) { m->cpu.watch_log = n; }
+void mh_m68k_log_unknown(m68k_machine *m, bool on)
 {
     m->cpu.log_unknown = on;
     /*
@@ -2221,7 +2221,7 @@ void mrc_m68k_log_unknown(m68k_machine *m, bool on)
     m->bus.log_unmapped = on;
 }
 
-void mrc_m68k_report(const m68k_machine *m)
+void mh_m68k_report(const m68k_machine *m)
 {
     fprintf(m->log, "68k: power %s%s\n", m->dev21.power_off ? "off" : "on",
             m->envoy ? (m->dev21.adapter_attached ? ", AC attached" : ", AC disconnected") : "");
@@ -2231,7 +2231,7 @@ void mrc_m68k_report(const m68k_machine *m)
                 (unsigned long long)m->battery_ram.written_bits);
     for (unsigned slot = 0; slot < 2; slot++)
         if (m->card[slot].kind)
-            mrc_pccard_report(&m->card[slot]);
+            mh_pccard_report(&m->card[slot]);
     const Cpu &c = m->cpu;
     fprintf(m->log, "\n---\n");
     /*
@@ -2255,7 +2255,7 @@ void mrc_m68k_report(const m68k_machine *m)
         };
         for (auto &w : want) {
             bool ok = true;
-            uint32_t h = mrc_bus_read(const_cast<mrc_bus *>(&m->bus),
+            uint32_t h = mh_bus_read(const_cast<mh_bus *>(&m->bus),
                                       vbr + w.v * 4, 4, &ok);
             if (ok)
                 fprintf(m->log, "       %-14s vector %2d -> %08X\n",
@@ -2292,7 +2292,7 @@ void mrc_m68k_report(const m68k_machine *m)
              * extension words were: what those hold changes the operands
              * and not the form, and the form is all this prints.
              */
-            uint8_t code[MRC_JIT_M68K_MAX_BYTES];
+            uint8_t code[MH_JIT_M68K_MAX_BYTES];
             code[0] = (uint8_t)(e.first >> 8);
             code[1] = (uint8_t)e.first;
             for (unsigned k = 2; k < sizeof code; k++) code[k] = (uint8_t)(k * 7);
@@ -2372,7 +2372,7 @@ void mrc_m68k_report(const m68k_machine *m)
             std::map<std::string, uint64_t> declined;
             uint64_t ran = 0, called = 0;
             for (const auto &e : m->cpu.insn_heat_counts) {
-                uint8_t code[MRC_JIT_M68K_MAX_BYTES];
+                uint8_t code[MH_JIT_M68K_MAX_BYTES];
                 code[0] = (uint8_t)(e.first >> 8);
                 code[1] = (uint8_t)e.first;
                 for (unsigned k = 2; k < sizeof code; k++)
@@ -2419,7 +2419,7 @@ void mrc_m68k_report(const m68k_machine *m)
         uint64_t total = 0, reads_zero = 0;
         std::map<std::string, uint64_t> by_name;
         for (const auto &e : m->cpu.after_divide_counts) {
-            uint8_t code[MRC_JIT_M68K_MAX_BYTES];
+            uint8_t code[MH_JIT_M68K_MAX_BYTES];
             code[0] = (uint8_t)(e.first >> 8);
             code[1] = (uint8_t)e.first;
             for (unsigned k = 2; k < sizeof code; k++) code[k] = (uint8_t)(k * 7);
@@ -2453,7 +2453,7 @@ void mrc_m68k_report(const m68k_machine *m)
                     (unsigned long long)r.second);
         }
     }
-    if (std::getenv("MRC_68K_DIRECT_DEBUG"))
+    if (std::getenv("MH_68K_DIRECT_DEBUG"))
         fprintf(m->log, "68k: direct memory path: %llu hits, %llu misses\n",
                 (unsigned long long)m->cpu.direct_hits,
                 (unsigned long long)m->cpu.direct_misses);
@@ -2521,9 +2521,9 @@ void mrc_m68k_report(const m68k_machine *m)
                     t.at, t.who, t.pend, t.en, en);
             for (unsigned k = 0; k < t.n; k++) {
                 bool ok = true;
-                uint32_t fn = mrc_bus_read(const_cast<mrc_bus *>(&m->bus),
+                uint32_t fn = mh_bus_read(const_cast<mh_bus *>(&m->bus),
                                            t.at + k * 8, 4, &ok);
-                uint32_t arg = mrc_bus_read(const_cast<mrc_bus *>(&m->bus),
+                uint32_t arg = mh_bus_read(const_cast<mh_bus *>(&m->bus),
                                             t.at + k * 8 + 4, 4, &ok);
                 const unsigned bit = t.top - k;
                 if (ok && fn) {
@@ -2649,7 +2649,7 @@ void mrc_m68k_report(const m68k_machine *m)
 
 } /* extern "C" */
 
-void mrc_m68k_retained_regions(m68k_machine *m, mrc_m68k_region r[2])
+void mh_m68k_retained_regions(m68k_machine *m, mh_m68k_region r[2])
 {
     r[0] = {m->ram, m->ram_len};
     r[1] = {m->xram, m->xram_len};

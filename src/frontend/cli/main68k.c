@@ -27,7 +27,7 @@
 static void usage(void)
 {
     printf(
-"usage: mcap --rom <image> [options]   (68k machines)\n"
+"usage: mhat --rom <image> [options]   (68k machines)\n"
 "\n"
 "  --rom <path>          a Magic Cap 68k ROM (PIC-2000, HIX-300, Envoy;\n"
 "                        PIC-1000 recognized but not runnable).\n"
@@ -103,7 +103,7 @@ static void usage(void)
 "                        model: the run announces it.\n");
 }
 
-int mrc_pic2000_main(int argc, char **argv)
+int mh_pic2000_main(int argc, char **argv)
 {
     struct tap_option {
         unsigned long long at, len;
@@ -176,12 +176,12 @@ int mrc_pic2000_main(int argc, char **argv)
         else if (!strcmp(a, "--wav") && i + 1 < argc) wav_path = argv[++i];
         else if (!strcmp(a, "--audio-wav") && i + 1 < argc) wav_path = argv[++i];
         else if (!strcmp(a, "--dump-fb") && i + 1 < argc) dump_fb = argv[++i];
-        else if (!strcmp(a, "--audio")) mrc_gui68k_set_audio(true);
+        else if (!strcmp(a, "--audio")) mh_gui68k_set_audio(true);
         else if (!strcmp(a, "--pic-audio-approx")) audio_approx = true;
         else if (!strcmp(a, "--experimental-audio-divider")) audio_divider = true;
         else if (!strcmp(a, "--no-pic-audio-approx")) audio_approx = false;
-        else if (!strcmp(a, "--no-audio")) mrc_gui68k_set_audio(false);
-        else if (!strcmp(a, "--no-host-battery")) mrc_gui68k_set_host_battery(false);
+        else if (!strcmp(a, "--no-audio")) mh_gui68k_set_audio(false);
+        else if (!strcmp(a, "--no-host-battery")) mh_gui68k_set_host_battery(false);
         else if (!strcmp(a, "--power-at") && i + 1 < argc) {
             power_at = strtoull(argv[++i], NULL, 0); power_scheduled = true;
         }
@@ -244,16 +244,16 @@ int mrc_pic2000_main(int argc, char **argv)
         else if (!strcmp(a, "--watch-log") && i + 1 < argc)  watch_log = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(a, "--sample") && i + 1 < argc) sample = strtoull(argv[++i], NULL, 0);
         else if (!strcmp(a, "--quiet-unknown"))           quiet = true;
-        else if (!strcmp(a, "--lcd"))      mrc_gui_lcd = true;
-        else if (!strcmp(a, "--smooth"))   mrc_gui_smooth = true;
-        else if (!strcmp(a, "--integer"))  mrc_gui_integer = true;
+        else if (!strcmp(a, "--lcd"))      mh_gui_lcd = true;
+        else if (!strcmp(a, "--smooth"))   mh_gui_smooth = true;
+        else if (!strcmp(a, "--integer"))  mh_gui_integer = true;
         else if (!strcmp(a, "--tint") && i + 1 < argc) {
-            int tint = mrc_tint_by_name(argv[++i]);
+            int tint = mh_tint_by_name(argv[++i]);
             if (tint < 0) {
                 fprintf(stderr, "--tint: green|amber|grey|none\n");
                 return 2;
             }
-            mrc_gui_tint = tint;
+            mh_gui_tint = tint;
         }
         else if (!strcmp(a, "--cpu-engine") && i + 1 < argc) engine = argv[++i];
         else if (!strcmp(a, "-h") || !strcmp(a, "--help")) { usage(); return 0; }
@@ -273,66 +273,66 @@ int mrc_pic2000_main(int argc, char **argv)
         return 2;
     }
 
-    m68k_machine *m = mrc_m68k_new(rom, ram_mb, stderr);
+    m68k_machine *m = mh_m68k_new(rom, ram_mb, stderr);
     if (!m) return 1;
     for (unsigned slot = 0; slot < 2; slot++) {
-        if (sram_path[slot] && !mrc_m68k_insert_sram(m, slot, sram_path[slot],
+        if (sram_path[slot] && !mh_m68k_insert_sram(m, slot, sram_path[slot],
                                                      2u * 1024u * 1024u)) {
             fprintf(stderr, "68k: could not attach --sram%u %s\n", slot + 1,
                     sram_path[slot]);
-            mrc_m68k_free(m);
+            mh_m68k_free(m);
             return 1;
         }
     }
-    if (adapter >= 0 && !mrc_m68k_set_adapter(m, adapter != 0)) {
+    if (adapter >= 0 && !mh_m68k_set_adapter(m, adapter != 0)) {
         fprintf(stderr, "--ac-adapter is currently supported for Envoy only\n");
-        mrc_m68k_free(m); return 2;
+        mh_m68k_free(m); return 2;
     }
-    if (trace) mrc_m68k_trace(m, trace);
+    if (trace) mh_m68k_trace(m, trace);
     if (trace_after_count)
-        mrc_m68k_trace_after_hit(m, (uint32_t)trace_after_pc,
+        mh_m68k_trace_after_hit(m, (uint32_t)trace_after_pc,
                                  trace_after_hit, trace_after_count);
-    if (!mrc_m68k_set_engine(m, engine)) {
+    if (!mh_m68k_set_engine(m, engine)) {
         /* Invalid engine names have not changed machine state. */
         fprintf(stderr, "no %s engine for the 68k machines\n", engine);
-        mrc_m68k_free(m); return 2;
+        mh_m68k_free(m); return 2;
     }
-    if (cpi) mrc_m68k_set_cpi(m, cpi);
-    if (adc >= 0) mrc_m68k_set_adc(m, adc);
+    if (cpi) mh_m68k_set_cpi(m, cpi);
+    if (adc >= 0) mh_m68k_set_adc(m, adc);
     if (adcmux) {
         /* chan=value,chan=value -- channel decimal, value decimal or 0x. */
         char buf[256]; snprintf(buf, sizeof(buf), "%s", adcmux);
         for (char *t = strtok(buf, ","); t; t = strtok(NULL, ",")) {
             unsigned mx = 0, ch = 0; int v = 0;
             if (sscanf(t, "%x:%u=%i", &mx, &ch, &v) == 3)
-                mrc_m68k_set_adc_pair(m, mx, ch, v);
+                mh_m68k_set_adc_pair(m, mx, ch, v);
             else if (sscanf(t, "%u=%i", &ch, &v) == 2)
-                mrc_m68k_set_adc_chan(m, ch, v);
+                mh_m68k_set_adc_chan(m, ch, v);
             else { fprintf(stderr, "bad --adc-chan '%s'\n", t); return 2; }
         }
     }
-    if (audio_divider) mrc_m68k_audio_divider(m, true);
-    mrc_m68k_audio_approx(m, audio_approx);
+    if (audio_divider) mh_m68k_audio_divider(m, true);
+    mh_m68k_audio_approx(m, audio_approx);
     if (audio_approx)
         fprintf(stderr, "68k audio: volume curve and output filter are unverified approximations\n");
-    if (quiet) mrc_m68k_log_unknown(m, false);
-    if (sample) mrc_m68k_sample(m, sample);
-    if (irq_level) mrc_m68k_force_irq(m, irq_level, irq_at);
+    if (quiet) mh_m68k_log_unknown(m, false);
+    if (sample) mh_m68k_sample(m, sample);
+    if (irq_level) mh_m68k_force_irq(m, irq_level, irq_at);
     if (watch) {
         char buf[256]; snprintf(buf, sizeof(buf), "%s", watch);
         for (char *t = strtok(buf, ","); t; t = strtok(NULL, ","))
-            mrc_m68k_watch(m, (uint32_t)strtoul(t, NULL, 0));
+            mh_m68k_watch(m, (uint32_t)strtoul(t, NULL, 0));
     }
-    if (watch_log) mrc_m68k_watch_log(m, watch_log);
-    if (heat) mrc_m68k_heat(m, true);
-    if (cover) mrc_m68k_cover(m, cover);
-    if (readheat) mrc_m68k_readheat(m, true);
-    if (insnheat) mrc_m68k_insnheat(m, true);
-    if (wread) mrc_m68k_watch_read(m, wread);
+    if (watch_log) mh_m68k_watch_log(m, watch_log);
+    if (heat) mh_m68k_heat(m, true);
+    if (cover) mh_m68k_cover(m, cover);
+    if (readheat) mh_m68k_readheat(m, true);
+    if (insnheat) mh_m68k_insnheat(m, true);
+    if (wread) mh_m68k_watch_read(m, wread);
     if (wwrite) {
         unsigned long lo = 0, hi = 0;
         if (sscanf(wwrite, "%lx,%lx", &lo, &hi) == 2)
-            mrc_m68k_watch_write(m, (uint32_t)lo, (uint32_t)hi);
+            mh_m68k_watch_write(m, (uint32_t)lo, (uint32_t)hi);
         else fprintf(stderr, "bad --watch-write (want lo,hi)\n");
     }
 
@@ -353,15 +353,15 @@ int mrc_pic2000_main(int argc, char **argv)
      * for a run that named nothing.
      */
     bool have_device_state = !temporary && !load_state && !save_state &&
-        mrc_state_path_for(rom, device_state, sizeof(device_state));
-    if (have_device_state) mrc_state_set_path(device_state);
+        mh_state_path_for(rom, device_state, sizeof(device_state));
+    if (have_device_state) mh_state_set_path(device_state);
     /* An explicit output state is also a live UI save destination.  Without
      * registering it here the CLI would save on exit, but the 68k storage
      * button would be hidden during a GUI run. */
-    if (save_state) mrc_state_set_path(save_state);
+    if (save_state) mh_state_set_path(save_state);
     /* A GUI session restored from a state should save back to that state when
      * the storage button is pressed. An explicit --save-state still wins. */
-    else if (load_state) mrc_state_set_path(load_state);
+    else if (load_state) mh_state_set_path(load_state);
     /*
      * Whether the state about to be loaded is the device's own rather than
      * one somebody named. The two fail differently: a state a person asked
@@ -378,7 +378,7 @@ int mrc_pic2000_main(int argc, char **argv)
         }
     }
 
-    uint64_t before = mrc_m68k_insns(m);
+    uint64_t before = mh_m68k_insns(m);
     /*
      * A restored machine is already on, and must not be started.
      *
@@ -408,13 +408,13 @@ int mrc_pic2000_main(int argc, char **argv)
      * point of the run, and quietly booting something else instead would be
      * a worse answer than stopping.
      */
-    if (load_state && !mrc_m68k_load_state(m, load_state)) {
-        if (!state_is_the_device_s) { mrc_m68k_free(m); return 1; }
+    if (load_state && !mh_m68k_load_state(m, load_state)) {
+        if (!state_is_the_device_s) { mh_m68k_free(m); return 1; }
         fprintf(stderr, "68k: starting \"%s\" from its ROM instead\n", rom);
         load_state = NULL;
     }
-    if (load_state) before = mrc_m68k_insns(m);
-    else mrc_m68k_start(m);
+    if (load_state) before = mh_m68k_insns(m);
+    else mh_m68k_start(m);
     if (preset) {
         /* Apply after restore so a diagnostic input can vary between runs
          * from the same state. dev:off=value; offset/value are hex. */
@@ -423,79 +423,79 @@ int mrc_pic2000_main(int argc, char **argv)
         int end = 0;
         if (sscanf(preset, "%15[^:]:%4x=%4x%n", dev, &off, &val, &end) != 3 ||
             preset[end] || val > 0xFFFF ||
-            !mrc_m68k_probe_preset(m, dev, off, (uint16_t)val)) {
+            !mh_m68k_probe_preset(m, dev, off, (uint16_t)val)) {
             fprintf(stderr, "bad --probe-preset '%s'; want dev21:EE=00C0\n",
                     preset);
-            mrc_m68k_free(m);
+            mh_m68k_free(m);
             return 2;
         }
     }
-    if (serial_a && !mrc_m68k_open_serial_a(m)) {
-        mrc_m68k_free(m);
+    if (serial_a && !mh_m68k_open_serial_a(m)) {
+        mh_m68k_free(m);
         return 1;
     }
     if (net_pcap && !ppp_network && !ne2000_probe) {
         fprintf(stderr, "68k: --net-pcap requires --net user or ne2000\n");
-        mrc_m68k_free(m);
+        mh_m68k_free(m);
         return 2;
     }
-    if (ppp_network && !mrc_m68k_open_ppp(m, net_pcap)) {
+    if (ppp_network && !mh_m68k_open_ppp(m, net_pcap)) {
         fprintf(stderr, "68k: could not start PPP/libslirp virtual ISP\n");
-        mrc_m68k_free(m);
+        mh_m68k_free(m);
         return 1;
     }
-    if (ne2000_probe && !mrc_m68k_open_ne2000_probe(m, net_pcap)) {
+    if (ne2000_probe && !mh_m68k_open_ne2000_probe(m, net_pcap)) {
         fprintf(stderr, "68k: could not start PIC-2000 NE2000/libslirp probe\n");
-        mrc_m68k_free(m);
+        mh_m68k_free(m);
         return 1;
     }
     if (keyboard >= 0 || gui) {
-        bool supported = mrc_m68k_keyboard_connect(m, keyboard != 0);
+        bool supported = mh_m68k_keyboard_connect(m, keyboard != 0);
         if (keyboard == 1 && !supported) {
             fprintf(stderr, "68k: Magic Bus keyboard is unsupported for this ROM; "
                             "supported: PIC-2000, Envoy 1.0/pt4, HIX-300\n");
-            mrc_m68k_free(m); return 2;
+            mh_m68k_free(m); return 2;
         }
     }
-    mrc_m68k_keyboard_release(m);
+    mh_m68k_keyboard_release(m);
     /* Touch times are offsets from the machine state that actually runs.
      * Scheduling before a restore left every event behind the restored
      * instruction counter, so --tap appeared to work only from reset. */
-    if (touch_at) mrc_m68k_touch(m, before + touch_at, touch_len, trace_conv);
+    if (touch_at) mh_m68k_touch(m, before + touch_at, touch_len, trace_conv);
     for (unsigned i = 0; i < tap_count; i++)
-        if (!mrc_m68k_tap(m, before + taps[i].at, taps[i].len,
+        if (!mh_m68k_tap(m, before + taps[i].at, taps[i].len,
                           taps[i].x, taps[i].y,
                           trace_conv)) {
-            mrc_m68k_free(m); return 2;
+            mh_m68k_free(m); return 2;
         }
-    mrc_pclink *install_link = NULL;
+    mh_pclink *install_link = NULL;
     if (install_path) {
-        mrc_runtime view = mrc_pic2000_runtime(m);
+        mh_runtime view = mh_pic2000_runtime(m);
         install_link = view.ops->install ? view.ops->install(view.board, install_path) : NULL;
         if (!install_link) {
             fprintf(stderr, "68k: could not start package transfer\n");
-            mrc_m68k_free(m); return 1;
+            mh_m68k_free(m); return 1;
         }
         fprintf(stderr, "68k: PC Link waiting for the guest\n");
     }
     if (power_scheduled)
-        mrc_m68k_schedule_power(m, before + power_at, 1000000);
+        mh_m68k_schedule_power(m, before + power_at, 1000000);
     int gui_result = 0;
     if (wav_path && gui) {
         fprintf(stderr, "PIC --wav currently requires --headless\n");
-        mrc_m68k_free(m); return 2;
+        mh_m68k_free(m); return 2;
     }
-    mrc_wav *wav = wav_path ? mrc_wav_open(wav_path, mrc_m68k_audio_rate(m)) : NULL;
-    if (wav_path && !wav) { mrc_m68k_free(m); return 1; }
-    if (wav) mrc_m68k_audio_sink(m, mrc_wav_sample, wav);
+    mh_wav *wav = wav_path ? mh_wav_open(wav_path, mh_m68k_audio_rate(m)) : NULL;
+    if (wav_path && !wav) { mh_m68k_free(m); return 1; }
+    if (wav) mh_m68k_audio_sink(m, mh_wav_sample, wav);
     if (gui) {
-        if (!mrc_gui68k_available()) gui_result = 1;
-        else if (!mrc_shell_current()) {
+        if (!mh_gui68k_available()) gui_result = 1;
+        else if (!mh_shell_current()) {
             fprintf(stderr, "68k: no window was opened for this machine\n");
             gui_result = 1;
         }
-        else gui_result = mrc_gui68k_run(m, insns_set ? insns : 0,
-                                         mrc_shell_current());
+        else gui_result = mh_gui68k_run(m, insns_set ? insns : 0,
+                                         mh_shell_current());
     } else if (install_link) {
         /* A scripted transfer has an observable end. The instruction budget
          * is a timeout, not idle time to burn after receiving the final Pong.
@@ -504,13 +504,13 @@ int mrc_pic2000_main(int argc, char **argv)
         uint64_t left = insns, settle_at = 0;
         while (left) {
             const uint64_t chunk = left < 100000 ? left : 100000;
-            const uint64_t ran_chunk = mrc_m68k_run(m, chunk);
+            const uint64_t ran_chunk = mh_m68k_run(m, chunk);
             if (!ran_chunk) break;
             left -= ran_chunk < left ? ran_chunk : left;
-            const mrc_pclink_state state = mrc_pclink_state_of(install_link);
-            if (state == MRC_PCLINK_FAILED) break;
-            if (state == MRC_PCLINK_DONE) {
-                const uint64_t now = mrc_m68k_elapsed_ns(m);
+            const mh_pclink_state state = mh_pclink_state_of(install_link);
+            if (state == MH_PCLINK_FAILED) break;
+            if (state == MH_PCLINK_DONE) {
+                const uint64_t now = mh_m68k_elapsed_ns(m);
                 if (!settle_at) {
                     fprintf(stderr, "68k: transfer complete; settling for 1 guest second\n");
                     settle_at = now + 1000000000ULL;
@@ -519,14 +519,14 @@ int mrc_pic2000_main(int argc, char **argv)
             }
         }
     } else {
-        mrc_m68k_run(m, insns);
+        mh_m68k_run(m, insns);
     }
-    uint64_t ran = mrc_m68k_insns(m) - before;
-    if (wav) { mrc_m68k_audio_sink(m, NULL, NULL); mrc_wav_close(wav); }
+    uint64_t ran = mh_m68k_insns(m) - before;
+    if (wav) { mh_m68k_audio_sink(m, NULL, NULL); mh_wav_close(wav); }
     if (dump) {
         unsigned long a = 0, l = 0; char path[256] = "";
         if (sscanf(dump, "%lx,%lu,%255s", &a, &l, path) == 3)
-            mrc_m68k_dump(m, (uint32_t)a, (uint32_t)l, path);
+            mh_m68k_dump(m, (uint32_t)a, (uint32_t)l, path);
         else
             fprintf(stderr, "bad --dump (want addr,len,path)\n");
     }
@@ -535,7 +535,7 @@ int mrc_pic2000_main(int argc, char **argv)
         FILE *fb = fopen(dump_fb, "wb");
         if (!fb) perror(dump_fb);
         else {
-            mrc_m68k_lcd(m, pixels);
+            mh_m68k_lcd(m, pixels);
             fprintf(fb, "P5\n%u %u\n3\n", PIC2000_SCREEN_W, PIC2000_SCREEN_H);
             for (size_t i = 0; i < sizeof(pixels); i++)
                 fputc((int)pixels[i], fb);
@@ -544,19 +544,19 @@ int mrc_pic2000_main(int argc, char **argv)
         }
     }
     fprintf(stderr, "68k: ran %llu instructions\n", (unsigned long long)ran);
-    mrc_m68k_report(m);
-    mrc_m68k_engine_report(m);
+    mh_m68k_report(m);
+    mh_m68k_engine_report(m);
     bool saved = true;
     if (install_link) {
-        const mrc_pclink_state state = mrc_pclink_state_of(install_link);
-        fprintf(stderr, "68k: PC Link: %s\n", mrc_pclink_message(install_link));
-        if (state != MRC_PCLINK_DONE) saved = false;
+        const mh_pclink_state state = mh_pclink_state_of(install_link);
+        fprintf(stderr, "68k: PC Link: %s\n", mh_pclink_message(install_link));
+        if (state != MH_PCLINK_DONE) saved = false;
     }
-    if (save_state && !mrc_m68k_save_state(m, save_state)) saved = false;
+    if (save_state && !mh_m68k_save_state(m, save_state)) saved = false;
     /* Putting the device down saves it. There is nothing to press and
      * nothing to confirm: the next launch picks up here. */
     if (gui_result == 0 && have_device_state &&
-        !mrc_m68k_save_state(m, device_state)) saved = false;
-    mrc_m68k_free(m);
+        !mh_m68k_save_state(m, device_state)) saved = false;
+    mh_m68k_free(m);
     return saved ? 0 : 1;
 }

@@ -157,7 +157,7 @@ static void ucb_refresh_irq(ucb1100 *u)
 #define UCB_AUX_MAIN_BATTERY_DEFAULT    900u
 #define UCB_AUX_BACKUP_BATTERY_DEFAULT  900u
 
-void mrc_ucb_init(ucb1100 *u)
+void mh_ucb_init(ucb1100 *u)
 {
     u->aux[2] = UCB_AUX_MAIN_BATTERY_DEFAULT;
     u->aux[3] = UCB_AUX_BACKUP_BATTERY_DEFAULT;
@@ -174,7 +174,7 @@ void mrc_ucb_init(ucb1100 *u)
  */
 static uint16_t g_gpio_in;
 
-void mrc_ucb_set_gpio_in(ucb1100 *u, uint16_t level)
+void mh_ucb_set_gpio_in(ucb1100 *u, uint16_t level)
 {
     uint16_t changed = (uint16_t)(g_gpio_in ^ level);
 
@@ -188,7 +188,7 @@ void mrc_ucb_set_gpio_in(ucb1100 *u, uint16_t level)
     ucb_refresh_irq(u);
 }
 
-void mrc_ucb_set_pen(ucb1100 *u, bool down, uint16_t x, uint16_t y)
+void mh_ucb_set_pen(ucb1100 *u, bool down, uint16_t x, uint16_t y)
 {
     u->pen_down = down;
     if (down) {
@@ -321,7 +321,7 @@ static uint16_t adc_sample(const ucb1100 *u)
     }
 }
 
-uint16_t mrc_ucb_read(ucb1100 *u, unsigned reg)
+uint16_t mh_ucb_read(ucb1100 *u, unsigned reg)
 {
     reg &= 0xF;
 
@@ -344,7 +344,7 @@ uint16_t mrc_ucb_read(ucb1100 *u, unsigned reg)
     }
 }
 
-void mrc_ucb_write(ucb1100 *u, unsigned reg, uint16_t val)
+void mh_ucb_write(ucb1100 *u, unsigned reg, uint16_t val)
 {
     reg &= 0xF;
 
@@ -367,7 +367,7 @@ void mrc_ucb_write(ucb1100 *u, unsigned reg, uint16_t val)
     }
 }
 
-void mrc_panel_px_to_raw(unsigned px, unsigned py, uint16_t *rx, uint16_t *ry)
+void mh_panel_px_to_raw(unsigned px, unsigned py, uint16_t *rx, uint16_t *ry)
 {
     if (px >= PANEL_SCREEN_W)
         px = PANEL_SCREEN_W - 1;

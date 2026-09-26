@@ -16,13 +16,13 @@
  * while a picker it does not own is on top of it, and collects the path when
  * one arrives.
  */
-#ifndef MRC_HOST_IMPORT_H
-#define MRC_HOST_IMPORT_H
+#ifndef MH_HOST_IMPORT_H
+#define MH_HOST_IMPORT_H
 
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef enum { MRC_IMPORT_ROM = 0, MRC_IMPORT_PACKAGE = 1, MRC_IMPORT_CARD = 2 } mrc_import_kind;
+typedef enum { MH_IMPORT_ROM = 0, MH_IMPORT_PACKAGE = 1, MH_IMPORT_CARD = 2 } mh_import_kind;
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,26 +33,26 @@ extern "C" {
  * the emulator's own file list is the better answer and this would only add
  * a dialog in front of it.
  */
-bool mrc_import_available(void);
+bool mh_import_available(void);
 
 /*
  * Ask for a ROM, package, or SRAM card copy. Returns immediately; false if
  * another request is still finishing. The person may cancel at any time.
  */
-bool mrc_import_request(mrc_import_kind kind);
+bool mh_import_request(mh_import_kind kind);
 
 /* True between the request and an answer, so a list can say what it is
  * waiting for rather than looking broken. */
-bool mrc_import_pending(mrc_import_kind kind);
+bool mh_import_pending(mh_import_kind kind);
 
 /* Completed request, including cancellation (both buffers empty) or error.
  * Callers own the copied buffers. A result can only be taken by its owner. */
-bool mrc_import_result(mrc_import_kind kind, char *path, size_t path_size,
+bool mh_import_result(mh_import_kind kind, char *path, size_t path_size,
                        char *error, size_t error_size);
 /* Discard a late result when its menu/session was closed. */
-void mrc_import_cancel(mrc_import_kind kind);
+void mh_import_cancel(mh_import_kind kind);
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* MRC_HOST_IMPORT_H */
+#endif /* MH_HOST_IMPORT_H */

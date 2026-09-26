@@ -33,7 +33,7 @@ typedef struct entry_s {
     uint16_t used;             /* for choosing which way to replace        */
     uint16_t translated;       /* how many of them the emitter itself runs */
     uint32_t entries;          /* how often it has been run                */
-#ifdef MRC_M68K_BLOCK_PROFILE
+#ifdef MH_M68K_BLOCK_PROFILE
     uint64_t hits;
 #endif
     bool     self_guarded;     /* the emitted form checks its own bytes    */
@@ -65,7 +65,7 @@ typedef struct entry_s {
     uint8_t *link;
     const uint8_t *link_exec, *chain;
     uint32_t linked;
-    uint8_t  source[M68K_BLOCK_MAX * MRC_JIT_M68K_MAX_BYTES];
+    uint8_t  source[M68K_BLOCK_MAX * MH_JIT_M68K_MAX_BYTES];
     m68k_insn insn[M68K_BLOCK_MAX];
 } entry;
 
@@ -73,7 +73,7 @@ struct m68k_blocks {
     entry slot[SETS * WAYS];
     uint16_t clock;
     m68k_block_stats stats;
-    mrc_code_arena arena;
+    mh_code_arena arena;
     bool emitting;
 };
 
@@ -82,18 +82,18 @@ m68k_blocks *m68k_blocks_create(void)
     m68k_blocks *blocks = calloc(1, sizeof(m68k_blocks));
     if (!blocks) return NULL;
     /* Native code is an optimisation, so a host that will not give out
-     * executable memory loses speed and nothing else. MRC_M68K_EMIT=0
+     * executable memory loses speed and nothing else. MH_M68K_EMIT=0
      * turns it off for an exact comparison against the same run without. */
-    const char *want = getenv("MRC_M68K_EMIT");
+    const char *want = getenv("MH_M68K_EMIT");
     blocks->emitting = !(want && !strcmp(want, "0")) && m68k_emit_supported() &&
-                       mrc_code_arena_open(&blocks->arena, 16u << 20);
+                       mh_code_arena_open(&blocks->arena, 16u << 20);
     return blocks;
 }
 
 void m68k_blocks_free(m68k_blocks *blocks)
 {
     if (!blocks) return;
-    if (blocks->emitting) mrc_code_arena_close(&blocks->arena);
+    if (blocks->emitting) mh_code_arena_close(&blocks->arena);
     free(blocks);
 }
 
@@ -127,7 +127,7 @@ static void compile(m68k *c, m68k_blocks *blocks, entry *e)
     const uint8_t *guest = NULL;
     static int self_guard = -1;
     if (self_guard < 0) {
-        const char *v = getenv("MRC_M68K_SELFGUARD");
+        const char *v = getenv("MH_M68K_SELFGUARD");
         self_guard = !(v && !strcmp(v, "0"));
     }
     if (self_guard && c->bus.read_pages) {
@@ -164,7 +164,7 @@ static void compile(m68k *c, m68k_blocks *blocks, entry *e)
     const size_t insns_size = (size_t)e->count * sizeof e->insn[0];
     const size_t data = (insns_size + e->bytes + 15u) & ~(size_t)15u;
     uint8_t *exec = NULL;
-    uint8_t *out = mrc_code_arena_reserve(&blocks->arena, data + cap, &exec);
+    uint8_t *out = mh_code_arena_reserve(&blocks->arena, data + cap, &exec);
     if (!out) {
         /* Genuinely full: drop everything, because every pointer into the
          * arena is about to stop meaning anything. */
@@ -174,9 +174,9 @@ static void compile(m68k *c, m68k_blocks *blocks, entry *e)
             blocks->slot[k].linked = 0;
             if (&blocks->slot[k] != e) blocks->slot[k].count = 0;
         }
-        mrc_code_arena_reset(&blocks->arena);
+        mh_code_arena_reset(&blocks->arena);
         blocks->stats.arena_resets++;
-        out = mrc_code_arena_reserve(&blocks->arena, data + cap, &exec);
+        out = mh_code_arena_reserve(&blocks->arena, data + cap, &exec);
         if (!out) return;
     }
     memcpy(out, e->insn, insns_size);
@@ -191,7 +191,7 @@ static void compile(m68k *c, m68k_blocks *blocks, entry *e)
     /* No code for this block is an ordinary outcome, not an arena
      * problem: it runs interpreted and nothing is thrown away for it. */
     if (!bytes) return;
-    mrc_code_arena_commit(&blocks->arena, out, data + bytes);
+    mh_code_arena_commit(&blocks->arena, out, data + bytes);
     e->code = (m68k_code)(exec + data);
     e->translated = (uint16_t)translated;
     e->self_guarded = guest != NULL;
@@ -221,7 +221,7 @@ void m68k_blocks_flush(m68k_blocks *blocks)
      * state in which none of it points at anything.
      */
     if (blocks->emitting) {
-        mrc_code_arena_reset(&blocks->arena);
+        mh_code_arena_reset(&blocks->arena);
         blocks->stats.arena_resets++;
     }
 }
@@ -229,8 +229,8 @@ void m68k_blocks_flush(m68k_blocks *blocks)
 void m68k_blocks_report(const m68k_blocks *blocks, m68k_block_stats *out)
 {
     *out = blocks->stats;
-#ifdef MRC_M68K_BLOCK_PROFILE
-    if (getenv("MRC_M68K_BLOCK_PROFILE")) {
+#ifdef MH_M68K_BLOCK_PROFILE
+    if (getenv("MH_M68K_BLOCK_PROFILE")) {
         const entry *top[12] = {0};
         for (unsigned k = 0; k < SETS * WAYS; k++) {
             const entry *e = &blocks->slot[k];
@@ -319,7 +319,7 @@ static void build(m68k *c, uint32_t va, entry *e)
         unsigned have = 0;
         m68k_insn insn;
         bool decoded = false;
-        while (have < MRC_JIT_M68K_MAX_BYTES &&
+        while (have < MH_JIT_M68K_MAX_BYTES &&
                at + have + 2 <= sizeof e->source) {
             uint32_t w = c->bus.read(c->bus.ctx, va + at + have, 2);
             e->source[at + have] = (uint8_t)(w >> 8);
@@ -394,7 +394,7 @@ uint64_t m68k_run_blocks(m68k *c, uint64_t budget, m68k_blocks *blocks)
         if (c->stopped) return done;
         /* The address the owner asked to be stopped in front of. It has
          * not run, and the owner is the one that decides what does. */
-        if (MRC_UNLIKELY(c->stop_pc != 0) && c->pc == c->stop_pc) return done;
+        if (MH_UNLIKELY(c->stop_pc != 0) && c->pc == c->stop_pc) return done;
         if (c->pc & 1) {                      /* the interpreter's business */
             /* An odd program counter is an address error, and a machine
              * has its own frame format for one. Hand it over. */
@@ -506,7 +506,7 @@ uint64_t m68k_run_blocks(m68k *c, uint64_t budget, m68k_blocks *blocks)
          * is whoever runs next. Never while the owner is watching for an
          * address, because a chain jumps straight past the check for it.
          */
-        if (MRC_UNLIKELY(c->link_request != NULL)) {
+        if (MH_UNLIKELY(c->link_request != NULL)) {
             entry *from = (entry *)c->link_request;
             c->link_request = NULL;
             /*
@@ -518,18 +518,18 @@ uint64_t m68k_run_blocks(m68k *c, uint64_t budget, m68k_blocks *blocks)
              * hypothetical: without it a PIC-2000 diverges within twenty
              * million instructions, in those very bytes.
              */
-            /* MRC_M68K_LINK=0 keeps every block returning here, for an
+            /* MH_M68K_LINK=0 keeps every block returning here, for an
              * exact comparison against the same run without chaining. */
             static int linking = -1;
             if (linking < 0) {
-                const char *v = getenv("MRC_M68K_LINK");
+                const char *v = getenv("MH_M68K_LINK");
                 linking = !(v && !strcmp(v, "0"));
             }
             if (linking && chosen->code && chosen->self_guarded &&
                 from->link && !c->stop_pc &&
-                mrc_code_arena_unlock(&blocks->arena, from->link, 4)) {
+                mh_code_arena_unlock(&blocks->arena, from->link, 4)) {
                 m68k_patch_link(from->link, from->link_exec, chosen->chain);
-                mrc_code_arena_relock(&blocks->arena, from->link, 4);
+                mh_code_arena_relock(&blocks->arena, from->link, 4);
                 if (from->linked) blocks->stats.relinked++;
                 else blocks->stats.chained++;
                 from->linked = chosen->va;
@@ -538,7 +538,7 @@ uint64_t m68k_run_blocks(m68k *c, uint64_t budget, m68k_blocks *blocks)
         prev = chosen;
         chosen->used = ++blocks->clock;
         blocks->stats.entered++;
-#ifdef MRC_M68K_BLOCK_PROFILE
+#ifdef MH_M68K_BLOCK_PROFILE
         chosen->hits++;
 #endif
         if (++chosen->entries == COMPILE_AFTER) compile(c, blocks, chosen);
@@ -547,7 +547,7 @@ uint64_t m68k_run_blocks(m68k *c, uint64_t budget, m68k_blocks *blocks)
          * entered when the budget can cover the whole of it. */
         if (chosen->code && budget - done >= chosen->count) {
             static int paranoid = -1;
-            if (paranoid < 0) paranoid = getenv("MRC_M68K_PARANOID") != NULL;
+            if (paranoid < 0) paranoid = getenv("MH_M68K_PARANOID") != NULL;
             if (paranoid) {
                 uint8_t live[sizeof chosen->source];
                 read_bytes(c, chosen->va, chosen->bytes, live);

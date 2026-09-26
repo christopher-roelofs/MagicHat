@@ -1,4 +1,4 @@
-package org.magicrecomp.app;
+package org.magichat.app;
 
 import android.content.Intent;
 import android.database.Cursor;
@@ -40,7 +40,7 @@ public class EmulatorActivity extends SDLActivity {
     /* The emulator calls this back with the imported image, or null. */
     private static native void imported(String path, String error);
     private static final int PICK_FILE = 100;
-    @Override protected String[] getLibraries() { return new String[]{"SDL2", "mcap"}; }
+    @Override protected String[] getLibraries() { return new String[]{"SDL2", "mhat"}; }
     @Override protected String[] getArguments() {
         ArrayList<String> args = new ArrayList<>();
         /*

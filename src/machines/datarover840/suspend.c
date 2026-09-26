@@ -25,11 +25,11 @@ static uint64_t hash(const uint8_t *p, size_t n)
     while (n--) h = (h ^ *p++) * UINT64_C(1099511628211);
     return h;
 }
-static unsigned card_type(const mrc_pccard *c)
+static unsigned card_type(const mh_pccard *c)
 {
-    if (c->kind == &mrc_pccard_memory) return 1;
-    if (c->kind == &mrc_pccard_sram) return 2;
-    if (c->kind == &mrc_pccard_ne2000) return 3;
+    if (c->kind == &mh_pccard_memory) return 1;
+    if (c->kind == &mh_pccard_sram) return 2;
+    if (c->kind == &mh_pccard_ne2000) return 3;
     return 0;
 }
 
@@ -84,7 +84,7 @@ static size_t hardware(machine *m, uint8_t *data, bool load)
     return at;
 }
 
-bool mrc_suspend_save(machine *m, uint8_t **data, uint32_t *size)
+bool mh_suspend_save(machine *m, uint8_t **data, uint32_t *size)
 {
     *data = NULL; *size = 0;
     /* A running/failed session is a RAM checkpoint, not a suspended device. */
@@ -101,7 +101,7 @@ bool mrc_suspend_save(machine *m, uint8_t **data, uint32_t *size)
         h.card_hash[i] = hash(m->card[i].image, m->card[i].image_len);
     }
     if (m->soc.mbus_port && m->soc.mbus_port != &m->keyboard.port) return false;
-    size_t keyboard_size = h.version == 2 ? MRC_DR_KEYBOARD_STATE_SIZE : 0;
+    size_t keyboard_size = h.version == 2 ? MH_DR_KEYBOARD_STATE_SIZE : 0;
     size_t total = sizeof(h) + h.hardware_size + (size_t)h.patches * 5 + keyboard_size;
     if (total > 64u * 1024 * 1024) return false;
     uint8_t *p = malloc(total);
@@ -115,12 +115,12 @@ bool mrc_suspend_save(machine *m, uint8_t **data, uint32_t *size)
         if (m->rom[i] == m->rom_original[i]) continue;
         memcpy(p + at, &i, 4); p[at + 4] = m->rom[i]; at += 5;
     }
-    if (keyboard_size) mrc_dr_keyboard_encode(&m->keyboard,p+at);
+    if (keyboard_size) mh_dr_keyboard_encode(&m->keyboard,p+at);
     *data = p; *size = (uint32_t)total;
     return true;
 }
 
-bool mrc_suspend_load(machine *m, const uint8_t *data, uint32_t size)
+bool mh_suspend_load(machine *m, const uint8_t *data, uint32_t size)
 {
     header h;
     if (size < sizeof(h)) goto invalid;
@@ -130,7 +130,7 @@ bool mrc_suspend_load(machine *m, const uint8_t *data, uint32_t size)
         h.ram_size != m->ram_size || h.rom_size != m->rom_size ||
         h.firmware != hash(m->rom_original, m->rom_size) ||
         sizeof(h) + (uint64_t)h.hardware_size + (uint64_t)h.patches * 5 +
-        (h.version == 2 ? MRC_DR_KEYBOARD_STATE_SIZE : 0) != size)
+        (h.version == 2 ? MH_DR_KEYBOARD_STATE_SIZE : 0) != size)
         goto invalid;
     size_t start = sizeof(h) + h.hardware_size;
     uint32_t previous = 0;
@@ -150,19 +150,19 @@ bool mrc_suspend_load(machine *m, const uint8_t *data, uint32_t size)
         copy->card[0].nic.tx_len > 1518 || copy->card[1].nic.tx_len > 1518) {
         free(copy); goto invalid;
     }
-    uint8_t empty_keyboard[MRC_DR_KEYBOARD_STATE_SIZE] = {1};
+    uint8_t empty_keyboard[MH_DR_KEYBOARD_STATE_SIZE] = {1};
     const uint8_t *keyboard_data = h.version == 2
         ? data + start + (size_t)h.patches * 5 : empty_keyboard;
     copy->soc.mbus.soc = &copy->soc;
-    mrc_dr_keyboard_init(&copy->keyboard,&copy->soc.mbus);
-    bool keyboard_ok = mrc_dr_keyboard_decode(&copy->keyboard,keyboard_data);
+    mh_dr_keyboard_init(&copy->keyboard,&copy->soc.mbus);
+    bool keyboard_ok = mh_dr_keyboard_decode(&copy->keyboard,keyboard_data);
     free(copy);
     if (!keyboard_ok) goto invalid;
     /* Validation is complete before modifying live CPU/devices or firmware. */
     for (unsigned i = 0; i < 2; i++) {
         if (h.card_type[i] > 3) goto invalid;
     }
-    mrc_pccard configured[2] = { m->card[0], m->card[1] };
+    mh_pccard configured[2] = { m->card[0], m->card[1] };
     hardware(m, (uint8_t *)data + sizeof(h), true);
     for (uint32_t i = 0; i < h.patches; i++) {
         uint32_t offset; memcpy(&offset, data + start + (size_t)i * 5, 4);
@@ -176,11 +176,11 @@ bool mrc_suspend_load(machine *m, const uint8_t *data, uint32_t size)
              * controller generates removal, then the normal insertion path
              * presents this session's configured card. */
             m->card[i] = configured[i];
-            mrc_glacier_set_present(&m->pcmcia[i], false);
+            mh_glacier_set_present(&m->pcmcia[i], false);
             m->card_in[i] = false;
         }
     }
-    mrc_dr_keyboard_decode(&m->keyboard,keyboard_data);
+    mh_dr_keyboard_decode(&m->keyboard,keyboard_data);
     m->input_epoch_set = false;
     fprintf(stderr, "suspend: restored suspended CPU at %08X (%u retained firmware bytes)\n",
             m->cpu.pc, h.patches);

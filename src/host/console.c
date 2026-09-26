@@ -9,17 +9,17 @@
  * and --gui is the better way in there anyway.
  */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-#  define MRC_CONSOLE_POSIX 1
+#  define MH_CONSOLE_POSIX 1
 #  include <termios.h>
 #  include <unistd.h>
 #  include <fcntl.h>
 #endif
 
-#ifdef MRC_CONSOLE_POSIX
+#ifdef MH_CONSOLE_POSIX
 static struct termios saved_termios;
 #endif
 
-void mrc_console_init(console *c, bool read_stdin, const char *scripted,
+void mh_console_init(console *c, bool read_stdin, const char *scripted,
                       uint64_t start_after)
 {
     memset(c, 0, sizeof(*c));
@@ -27,7 +27,7 @@ void mrc_console_init(console *c, bool read_stdin, const char *scripted,
     c->read_stdin = read_stdin;
     c->start_after = start_after;
 
-#ifdef MRC_CONSOLE_POSIX
+#ifdef MH_CONSOLE_POSIX
     if (!read_stdin || !isatty(STDIN_FILENO))
         return;
 
@@ -52,9 +52,9 @@ void mrc_console_init(console *c, bool read_stdin, const char *scripted,
 #endif
 }
 
-void mrc_console_shutdown(console *c)
+void mh_console_shutdown(console *c)
 {
-#ifdef MRC_CONSOLE_POSIX
+#ifdef MH_CONSOLE_POSIX
     if (c->raw_stdin) {
         tcsetattr(STDIN_FILENO, TCSANOW, &saved_termios);
         c->raw_stdin = false;
@@ -64,7 +64,7 @@ void mrc_console_shutdown(console *c)
 #endif
 }
 
-bool mrc_console_poll(console *c, uint64_t cycle, uint8_t *byte)
+bool mh_console_poll(console *c, uint64_t cycle, uint8_t *byte)
 {
     if (cycle < c->start_after)
         return false;
@@ -77,7 +77,7 @@ bool mrc_console_poll(console *c, uint64_t cycle, uint8_t *byte)
     if (!c->read_stdin)
         return false;
 
-#ifdef MRC_CONSOLE_POSIX
+#ifdef MH_CONSOLE_POSIX
     unsigned char b;
     if (read(STDIN_FILENO, &b, 1) == 1) {
         *byte = b;

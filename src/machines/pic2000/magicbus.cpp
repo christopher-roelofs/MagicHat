@@ -19,7 +19,7 @@ static unsigned information(uint8_t *p, uint32_t id) {
     put32(p,0x24,16); put32(p,0x28,16);
     put32(p,0x2c,10000000); put32(p,0x30,10000000); p[0x40]=16;
     unsigned at=0x50;
-    for (const char *s : {"Emulated AT keyboard","Keyboard","magicrecomp"}) {
+    for (const char *s : {"Emulated AT keyboard","Keyboard","MagicHat"}) {
         unsigned n=unsigned(std::strlen(s)); p[at++]=uint8_t(n);
         std::memcpy(p+at,s,n); at+=n;
     }
@@ -36,7 +36,7 @@ void PicMagicBus::line(m68k_machine *m, bool high) {
 }
 void PicMagicBus::command(m68k_machine *m, uint16_t word) {
     ++commands;
-    if (std::getenv("MRC_PIC_MBUS_TRACE"))
+    if (std::getenv("MH_PIC_MBUS_TRACE"))
         fprintf(m->log,"[pic-mbus] command %04X pc=%08X\n",word,m->core.pc);
     for(unsigned a=0;a<8;++a) for(unsigned op=1;op<33;++op) {
         if ((codes[op]^addresses[a])!=word) continue;
@@ -113,18 +113,18 @@ void PicMagicBus::service(m68k_machine *m) {
     }
     if(pending_read && src==0x21000092) {
         uint8_t data[256]={}; unsigned n=0;
-        mrc_mb_keyboard after=keys;
+        mh_mb_keyboard after=keys;
         bool request=pending_read==1, scan=false;
         if(request) { data[1]=keys.count?0xe:0; n=2; }
-        else if(selection==12) { put32(data,0,m->hix?0x41544b42:MRC_MBKEY_ID); n=4; }
+        else if(selection==12) { put32(data,0,m->hix?0x41544b42:MH_MBKEY_ID); n=4; }
         else if(selection==13) {
-            n=information(data,m->hix?0x41544b42:MRC_MBKEY_ID)-2;
+            n=information(data,m->hix?0x41544b42:MH_MBKEY_ID)-2;
             /* The 16-bit PIC transport starts with the length; TX39's
              * longword transport has a leading zero halfword. */
             std::memmove(data,data+2,n);
         }
         else if(!selection) {
-            n=unsigned(mrc_mb_keyboard_read(&after,data,std::min(16u,count)));
+            n=unsigned(mh_mb_keyboard_read(&after,data,std::min(16u,count)));
             scan=true;
         }
         else { ++errors; pending_read=0; return; }
@@ -136,8 +136,8 @@ void PicMagicBus::service(m68k_machine *m) {
             bool ok;
             /* Never turn a malformed peripheral DMA target into recursive
              * controller accesses. This connection transfers to RAM. */
-            ok=mrc_bus_page_host(&m->bus,dst+i,true)!=nullptr;
-            if(ok) mrc_bus_write(&m->bus,dst+i,2,
+            ok=mh_bus_page_host(&m->bus,dst+i,true)!=nullptr;
+            if(ok) mh_bus_write(&m->bus,dst+i,2,
                 uint16_t(unsigned(data[i])<<8|data[i+1]),&ok);
             if(!ok) {
                 sim32(m,0x7b0,dst+i); sim32(m,0x7b4,count-i);
@@ -155,7 +155,7 @@ void PicMagicBus::service(m68k_machine *m) {
         /* Allow the guest to arm/acknowledge its end-command interrupt
          * after enabling receive DMA (0E082D28..0E082D36). */
         r.tx_busy=true; r.tx_done_at=m->cpu.insns+64;
-        if(std::getenv("MRC_PIC_MBUS_TRACE"))
+        if(std::getenv("MH_PIC_MBUS_TRACE"))
             fprintf(m->log,"[pic-mbus] RX %u/%u @%08X pc=%08X\n",n,count,dst,m->core.pc);
     } else if(selection==5 && dst==0x21000098) {
         if(count>8-write_size || src>UINT32_MAX-count ||
@@ -163,8 +163,8 @@ void PicMagicBus::service(m68k_machine *m) {
         for(unsigned i=0;i<count;i+=2) {
             bool ok;
             uint32_t span=0;
-            ok=mrc_bus_read_span(&m->bus,src+i,&span)!=nullptr && span>=2;
-            uint16_t v=ok?uint16_t(mrc_bus_read(&m->bus,src+i,2,&ok)):0;
+            ok=mh_bus_read_span(&m->bus,src+i,&span)!=nullptr && span>=2;
+            uint16_t v=ok?uint16_t(mh_bus_read(&m->bus,src+i,2,&ok)):0;
             if(!ok) {
                 sim32(m,0x7ac,src+i); sim32(m,0x7b4,count-i);
                 ++errors; dma_status(m,0x20); return;
@@ -173,7 +173,7 @@ void PicMagicBus::service(m68k_machine *m) {
         }
         sim32(m,0x7ac,src+count); sim32(m,0x7b4,0); ctl&=~1u;
         dma_status(m,0x40);
-        if(std::getenv("MRC_PIC_MBUS_TRACE")) {
+        if(std::getenv("MH_PIC_MBUS_TRACE")) {
             fprintf(m->log,"[pic-mbus] TX:");
             for(unsigned i=0;i<write_size;++i) fprintf(m->log," %02X",write_data[i]);
             fprintf(m->log,"\n");
@@ -187,7 +187,7 @@ void PicMagicBus::service(m68k_machine *m) {
             packet[0]='K';
             packet[1]=packet[2]==0xff?1:packet[2]==0xed?2:packet[2]==0xf3?3:0;
         }
-        if(write_size==8 && mrc_mb_keyboard_write(&keys,packet,8)) ++writes;
+        if(write_size==8 && mh_mb_keyboard_write(&keys,packet,8)) ++writes;
         else ++errors;
         selection=0; write_size=0;
         if(!keys.count) notified=false;
@@ -199,7 +199,7 @@ void PicMagicBus::service(m68k_machine *m) {
 
 bool PicMagicBus::host_key(m68k_machine *m,unsigned usage,bool down,bool repeat) {
     uint8_t code; bool extended;
-    if(!connected || usage>=256 || !mrc_mb_keyboard_usage(usage,&code,&extended)) return false;
+    if(!connected || usage>=256 || !mh_mb_keyboard_usage(usage,&code,&extended)) return false;
     unsigned at=usage/8; uint8_t mask=uint8_t(1u<<(usage&7));
     if(!down) {
         if(held[at]&mask) { held[at]&=uint8_t(~mask); release[at]|=mask; }
@@ -208,7 +208,7 @@ bool PicMagicBus::host_key(m68k_machine *m,unsigned usage,bool down,bool repeat)
     if(release[at]&mask) return false;
     if((held[at]&mask) && !repeat) return true;
     if(repeat && !(held[at]&mask)) return true;
-    if(!mrc_mb_keyboard_key(&keys,code,extended,true)) return false;
+    if(!mh_mb_keyboard_key(&keys,code,extended,true)) return false;
     held[at]|=mask;
     if(assigned) line(m,keys.count && !notified);
     return true;
@@ -222,9 +222,9 @@ void PicMagicBus::retry_releases(m68k_machine *m) {
         unsigned at=u/8; uint8_t mask=uint8_t(1u<<(u&7));
         if(!(release[at]&mask)) continue;
         uint8_t code; bool ext;
-        if(!mrc_mb_keyboard_usage(u,&code,&ext)) { release[at]&=uint8_t(~mask); continue; }
-        if(keys.count+(ext?3u:2u)>MRC_MBKEY_CAPACITY) break;
-        if(mrc_mb_keyboard_key(&keys,code,ext,false)) release[at]&=uint8_t(~mask);
+        if(!mh_mb_keyboard_usage(u,&code,&ext)) { release[at]&=uint8_t(~mask); continue; }
+        if(keys.count+(ext?3u:2u)>MH_MBKEY_CAPACITY) break;
+        if(mh_mb_keyboard_key(&keys,code,ext,false)) release[at]&=uint8_t(~mask);
     }
     if(assigned) line(m,keys.count && !notified);
 }
@@ -235,7 +235,7 @@ void PicMagicBus::encode(uint8_t *d) const {
     d[8]=selection; d[9]=pending_read; d[10]=uint8_t(write_size);
     d[11]=keys.leds; d[12]=keys.repeat;
     d[14]=uint8_t(keys.count>>8); d[15]=uint8_t(keys.count);
-    for(unsigned i=0;i<keys.count;++i) d[16+i]=keys.queue[(keys.head+i)%MRC_MBKEY_CAPACITY];
+    for(unsigned i=0;i<keys.count;++i) d[16+i]=keys.queue[(keys.head+i)%MH_MBKEY_CAPACITY];
     std::memcpy(d+272,write_data,8);
     std::memcpy(d+280,held,32); std::memcpy(d+312,release,32);
 }
@@ -244,11 +244,11 @@ bool PicMagicBus::decode(const uint8_t *d) {
     if(d[0]!=1 || d[1]>1 || d[2]>1 || d[3]>1 || d[4]>1 || d[5]>1 ||
        d[7]>6 || (d[8]!=0 && d[8]!=5 && d[8]!=12 && d[8]!=13) ||
        d[9]>2 || d[10]>8 || (d[10]&1) || d[11]>7 || d[12]>127 ||
-       count>MRC_MBKEY_CAPACITY) return false;
+       count>MH_MBKEY_CAPACITY) return false;
     for(unsigned u=0;u<256;++u) {
         uint8_t code; bool ext;
         if(((d[280+u/8]|d[312+u/8])&(1u<<(u&7))) &&
-           !mrc_mb_keyboard_usage(u,&code,&ext)) return false;
+           !mh_mb_keyboard_usage(u,&code,&ext)) return false;
     }
     *this={};
     connected=d[1]; input_high=d[2]; assigned=d[3]; notified=d[4];
@@ -264,7 +264,7 @@ bool PicMagicBus::supported(const m68k_machine *m) {
     return m && (m->dev0c.magicbus_empty_input ||
                  (m->envoy && !m->envoy_mc31) || m->hix);
 }
-extern "C" bool mrc_m68k_keyboard_connect(m68k_machine *m,bool connected) {
+extern "C" bool mh_m68k_keyboard_connect(m68k_machine *m,bool connected) {
     if(!PicMagicBus::supported(m)) return false;
     auto &k=m->magicbus;
     if(k.connected==connected) return true;
@@ -273,10 +273,10 @@ extern "C" bool mrc_m68k_keyboard_connect(m68k_machine *m,bool connected) {
     k.line(m,!connected);
     return true;
 }
-extern "C" bool mrc_m68k_keyboard_key(m68k_machine *m,unsigned usage,bool down,bool repeat) {
+extern "C" bool mh_m68k_keyboard_key(m68k_machine *m,unsigned usage,bool down,bool repeat) {
     return m && m->magicbus.host_key(m,usage,down,repeat);
 }
-extern "C" void mrc_m68k_keyboard_release(m68k_machine *m) {
+extern "C" void mh_m68k_keyboard_release(m68k_machine *m) {
     if(m && m->magicbus.connected) m->magicbus.release_keys(m);
 }
 uint32_t pic2000_dev21_read(void *ctx,uint32_t off,unsigned size) {

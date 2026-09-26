@@ -164,7 +164,7 @@ static const double attenuation[24] = {
     0.00035481338923357532, /* -69 dB */
 };
 
-int16_t mrc_ucb_audio_decode(uint16_t serial)
+int16_t mh_ucb_audio_decode(uint16_t serial)
 {
     /* Left-justified signed 12-bit serial data; low four bits are ignored.
      * Keep the host PCM full-scale convention without signed right shifts. */
@@ -173,7 +173,7 @@ int16_t mrc_ucb_audio_decode(uint16_t serial)
     return (int16_t)value;
 }
 
-double mrc_ucb_audio_gain(uint16_t control_b)
+double mh_ucb_audio_gain(uint16_t control_b)
 {
     unsigned step = control_b & UCB_AUDIO_ATT_MASK;
     /* The preliminary sheet specifies 24 steps/69 dB but a five-bit field
@@ -182,7 +182,7 @@ double mrc_ucb_audio_gain(uint16_t control_b)
     return attenuation[step];
 }
 
-void mrc_ucb_audio_sample(ucb1100_audio *a, uint16_t control_b,
+void mh_ucb_audio_sample(ucb1100_audio *a, uint16_t control_b,
                          uint16_t serial, int16_t output[2])
 {
     if (!(control_b & UCB_AUDIO_OUT_ENA)) {
@@ -190,12 +190,12 @@ void mrc_ucb_audio_sample(ucb1100_audio *a, uint16_t control_b,
         output[0] = output[1] = 0;
         return;
     }
-    double x = mrc_ucb_audio_decode(serial);
+    double x = mh_ucb_audio_decode(serial);
     /* Unity Nyquist gain DC blocker. Pole chosen to stay within the
      * published 0.5 dB passband at 0.00016*Fs; not a recovered chip pole. */
     a->highpass = 0.999875 * (x - a->previous_input) + 0.99975 * a->highpass;
     a->previous_input = x;
-    double gain = mrc_ucb_audio_gain(control_b);
+    double gain = mh_ucb_audio_gain(control_b);
     for (unsigned phase = 0; phase < 2; phase++) {
         a->history[a->cursor] = phase ? 0 : a->highpass;
         double y = 0;

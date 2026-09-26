@@ -1,6 +1,6 @@
 #!/bin/sh
 # Drive the PIC-2000 Storeroom computer, transfer a 68k app, and save artifacts.
-# Usage matches install-package: <package.pkg> <outdir> [tag] [mcap options...]
+# Usage matches install-package: <package.pkg> <outdir> [tag] [mhat options...]
 # STATE must show the Storeroom with its computer at (44,157).
 set -eu
 cd "$(dirname "$0")/.."
@@ -9,11 +9,12 @@ OUT=${2:?usage: install-package-68k package.pkg outdir [tag]}
 shift 2
 TAG=${1:-install}
 if [ "$#" -gt 0 ]; then shift; fi
-STATE=${STATE:-out/pic-68k-install/storeroom.state}
+STATE=${STATE:-states/pic2000-storeroom.state}
 INSNS=${INSNS:-2000000000}
-MCAP=${MCAP:-build/mcap}
+MHAT=${MHAT:-build/mhat}
+ROM=${ROM:-roms/PIC-2000.rom}
 mkdir -p "$OUT"
-"$MCAP" --device pic2000 --rom 'roms/Sony PIC 2000/PIC-2000.rom' \
+"$MHAT" --device pic2000 --rom "$ROM" \
   --headless --no-host-battery --load-state "$STATE" \
   --tap 5000000,1000000,44,157 --install "$PKG" -n "$INSNS" \
   --dump-fb "$OUT/$TAG.pgm" --save-state "$OUT/$TAG.state" \

@@ -29,10 +29,9 @@ That establishes product support, not that KeySync uses the same wire protocol
 as the built-in Magic Bus AT keyboard driver. No KeySync-specific driver has
 been identified in our downloaded packages.
 
-The local Rosemary SDK has a separate, built-in path suitable for emulation:
+The Rosemary SDK has a separate, built-in path suitable for emulation:
 
-- `MagicBusATKeyboard.cdef` in the original Magic Developer SDK (kept outside
-  this emulator repository)
+- `MagicBusATKeyboard.cdef` in the Magic Developer SDK
 - The adjacent `MagicBusClient.cdef` and `MagicBus.cdef` describe peripheral
   discovery, requests and read/write operations.
 - `Interfaces/PlatformDefines.h` enables `MAGICBUSKEYBOARD` for the relevant
@@ -114,8 +113,8 @@ Additional ROM traces establish the following starting points:
 
 The controller connection API is `tx39_mbus_port` in
 `src/soc/tx39/tx39_mbus.h`; board wiring is per machine, not global.
-`mrc_mbus_receive_word` writes payload data or DMA memory, while
-`mrc_mbus_receive_command` latches command-detect. Physical request-line edges
+`mh_mbus_receive_word` writes payload data or DMA memory, while
+`mh_mbus_receive_command` latches command-detect. Physical request-line edges
 are separate from command-detect. Incoming events do not reassert after W1C
 acknowledgement; TX empty/available retain the existing level behavior.
 DMA bounds and bus faults are checked. The receive count matches the ROM's
@@ -165,18 +164,12 @@ queue wrap/overflow, control packets and reset. Controller tests check command
 reception, non-DMA reads, DMA endianness/count/bounds, transmit, request-line
 edges, W1C acknowledgement and DMA bus faults.
 
-The reproducible fresh-ROM experiment is checked in separately:
-
-```sh
-cmake -S . -B build
-cmake --build build --target magicbus_keyboard_probe -j6
-./build/magicbus_keyboard_probe 'roms/Data Rover 840/DataRover-840-USA.image'
-```
-
-It reads the ROM only, creates no BRAM/state files, and never alters ROM
-instructions, guest variables or OS callbacks. ROM-specific PC observations
-check attachment, request dispatch and decoded characters, then terminate the experiment. They are diagnostic only.
-The harness implements one peripheral's reconstructed discovery responses:
+Discovery was first worked out with a standalone fresh-ROM probe, which is not
+part of this repository. It read the ROM only, created no BRAM/state files,
+and never altered ROM instructions, guest variables or OS callbacks.
+ROM-specific PC observations checked attachment, request dispatch and decoded
+characters. The probe implemented one peripheral's reconstructed discovery
+responses:
 broadcast 31 drives the request line high, assignment 24 selects address zero,
 and command 21 leaves the line low because there is no next device. ID command
 12 selects MBKB; command 2 returns it through the controller. Command 13 then
@@ -232,29 +225,16 @@ arriving while a request is outstanding, DMA LED writes, invalid writes, reset,
 and receive bus faults. Autonomous typematic and precise wire timing remain
 unimplemented.
 
-Logs/disassembly: `out/datarover-keyboard/attachment.log`, `discovery.log`,
-`info-probe.log` and the observational disassembly files in that directory.
+## SDL integration
 
-## SDL integration proof
+SDL input was verified from a stock guest at a blank Notebook page with the
+keyboard attached. A probe pushed SDL key events, then a window focus-loss
+event while Shift was held, then another ordinary key. It ran the normal SDL
+event loop and board runtime, not direct scan-code injection.
 
-```sh
-cmake --build build --target magicbus_keyboard_sdl_probe -j6
-SDL_VIDEODRIVER=dummy ./build/magicbus_keyboard_sdl_probe \
-  'roms/Data Rover 840/DataRover-840-USA.image' \
-  out/datarover-keyboard/note.state out/datarover-keyboard/typed.pgm
-```
-
-The input snapshot is a stock guest at a blank Notebook page with the keyboard
-attached. The probe pushes SDL key events, followed by a window focus-loss event
-while Shift is held, then another ordinary key. It runs the normal SDL event
-loop and board runtime, not direct scan-code injection. `dummy` is only for this
-automated test; normal desktop launches require no SDL driver setting.
-
-The observed Notebook displays `aBc`. ROM key-map observations show `61`, `42`,
-`63`, and the test checks three decoded keys, zero UART bytes, no held/release
-keys and no unknown commands or receive errors. Output is in
-`out/datarover-keyboard/sdl-probe.log` and `typed.pgm`/`typed.png`. The device
-unit test additionally covers overflow-safe focus release and state validation;
+The Notebook displayed `aBc`. ROM key-map observations showed `61`, `42` and
+`63`, with three decoded keys, zero UART bytes, no held/release keys and no
+unknown commands or receive errors. The device unit test additionally covers overflow-safe focus release and state validation;
 BRAM/CLI tests cover GUI defaults, monitor selection, explicit disable,
 snapshot and standby restore, truncated trailers and invalid queue counts.
 

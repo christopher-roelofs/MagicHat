@@ -14,8 +14,8 @@
  * would have seen on its own. Holding state in registers is a later
  * optimisation and a separate argument; correctness first.
  */
-#ifndef MRC_M68K_EMIT_H
-#define MRC_M68K_EMIT_H
+#ifndef MH_M68K_EMIT_H
+#define MH_M68K_EMIT_H
 
 #include "cpu/m68k/core/m68k.h"
 #include <stddef.h>
@@ -27,9 +27,9 @@
  * byte reversal in the generated loads and stores assumes it is not.
  */
 #if defined(__x86_64__)
-#define MRC_M68K_EMIT_X86 1
+#define MH_M68K_EMIT_X86 1
 #elif defined(__aarch64__) && !defined(__AARCH64EB__)
-#define MRC_M68K_EMIT_A64 1
+#define MH_M68K_EMIT_A64 1
 #endif
 
 /*
@@ -116,4 +116,4 @@ size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
 void m68k_patch_link(uint8_t *site, const uint8_t *site_exec,
                      const uint8_t *target);
 
-#endif /* MRC_M68K_EMIT_H */
+#endif /* MH_M68K_EMIT_H */

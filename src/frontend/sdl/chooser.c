@@ -1,9 +1,9 @@
 #include "frontend/sdl/chooser.h"
 
-#ifndef MRC_HAVE_SDL
+#ifndef MH_HAVE_SDL
 
-bool mrc_chooser_available(void) { return false; }
-bool mrc_chooser_run(struct mrc_shell *sh) { (void)sh; return false; }
+bool mh_chooser_available(void) { return false; }
+bool mh_chooser_run(struct mh_shell *sh) { (void)sh; return false; }
 
 #else
 
@@ -19,7 +19,7 @@ bool mrc_chooser_run(struct mrc_shell *sh) { (void)sh; return false; }
 #include "frontend/sdl/ui.h"
 #include "host/state.h"
 
-bool mrc_chooser_available(void) { return true; }
+bool mh_chooser_available(void) { return true; }
 
 /*
  * The dark panel behind the rail.
@@ -32,9 +32,9 @@ bool mrc_chooser_available(void) { return true; }
 #define CHOOSER_W 480u
 #define CHOOSER_H 320u
 
-bool mrc_chooser_run(struct mrc_shell *sh)
+bool mh_chooser_run(struct mh_shell *sh)
 {
-    if (!mrc_shell_is_open(sh)) return false;
+    if (!mh_shell_is_open(sh)) return false;
     /*
      * The window is already open and already the right shape; nothing is
      * created here. A device chosen in a moment attaches to this same one.
@@ -45,42 +45,42 @@ bool mrc_chooser_run(struct mrc_shell *sh)
      * filling a fixed number of pixels into whatever the last machine left
      * behind is exactly the kind of thing that works until it does not.
      */
-    if (!mrc_shell_attach(sh, "mcap", CHOOSER_W, CHOOSER_H)) return false;
-    mrc_sdl_display *display = mrc_shell_display(sh);
-    mrc_ui *ui = mrc_shell_ui(sh);
+    if (!mh_shell_attach(sh, "MagicHat", CHOOSER_W, CHOOSER_H)) return false;
+    mh_sdl_display *display = mh_shell_display(sh);
+    mh_ui *ui = mh_shell_ui(sh);
     if (!ui) {
         fprintf(stderr, "no control rail: nothing here can be chosen\n");
         return false;
     }
     /* Only the button that does something here. */
-    mrc_ui_set_buttons(ui, 1u << MRC_UI_ICON_ROMS);
+    mh_ui_set_buttons(ui, 1u << MH_UI_ICON_ROMS);
 
     /* Open on the list, because it is the only reason to be here. */
-    mrc_devices_panel_open(ui, NULL);
+    mh_devices_panel_open(ui, NULL);
 
     bool chose = false, running = true;
-    while (running && !mrc_state_device_requested()) {
+    while (running && !mh_state_device_requested()) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (mrc_ui_event(ui, &event)) {
-                int action = mrc_ui_take_action(ui);
-                if (action == MRC_UI_ICON_ROMS) {
+            if (mh_ui_event(ui, &event)) {
+                int action = mh_ui_take_action(ui);
+                if (action == MH_UI_ICON_ROMS) {
                     /* The one button reopens the list rather than closing it:
                      * there is nothing behind it to look at. */
-                    if (!mrc_devices_panel_showing())
-                        mrc_devices_panel_open(ui, NULL);
+                    if (!mh_devices_panel_showing())
+                        mh_devices_panel_open(ui, NULL);
                 }
-                int row = mrc_ui_take_row(ui);
-                if (row == MRC_UI_ROW_DISMISS) {
-                    mrc_devices_panel_close(ui);
-                    mrc_devices_panel_open(ui, NULL);
+                int row = mh_ui_take_row(ui);
+                if (row == MH_UI_ROW_DISMISS) {
+                    mh_devices_panel_close(ui);
+                    mh_devices_panel_open(ui, NULL);
                     continue;
                 }
-                if (row == MRC_UI_ROW_BACK) {
-                    if (!mrc_devices_panel_back(ui)) running = false;
+                if (row == MH_UI_ROW_BACK) {
+                    if (!mh_devices_panel_back(ui)) running = false;
                     continue;
                 }
-                mrc_devices_panel_row(ui, row);
+                mh_devices_panel_row(ui, row);
                 continue;
             }
             if (event.type == SDL_QUIT) { running = false; break; }
@@ -96,28 +96,28 @@ bool mrc_chooser_run(struct mrc_shell *sh)
          * Tapping the panel away would leave nothing at all, so it comes
          * straight back. This window is the list.
          */
-        if (running && !mrc_devices_panel_showing() &&
-            !mrc_state_device_requested())
-            mrc_devices_panel_open(ui, NULL);
+        if (running && !mh_devices_panel_showing() &&
+            !mh_state_device_requested())
+            mh_devices_panel_open(ui, NULL);
 
         /* Anything the system's picker has produced since the last frame. */
-        mrc_devices_panel_tick(ui);
+        mh_devices_panel_tick(ui);
 
         /* Blank, and then the rail over it. */
         for (unsigned i = 0; i < CHOOSER_W * CHOOSER_H; i++)
             display->pixels[i] = 0xFF000000u;
-        if (!mrc_sdl_display_present(display, CHOOSER_W, CHOOSER_H, false)) {
+        if (!mh_sdl_display_present(display, CHOOSER_W, CHOOSER_H, false)) {
             fprintf(stderr, "SDL present: %s\n", SDL_GetError());
             running = false;
         }
         SDL_Delay(16);
     }
-    chose = mrc_state_device_requested();
+    chose = mh_state_device_requested();
 
     /* The panel goes; the window stays, because something is about to run
      * in it. */
-    mrc_devices_panel_close(ui);
+    mh_devices_panel_close(ui);
     return chose;
 }
 
-#endif /* MRC_HAVE_SDL */
+#endif /* MH_HAVE_SDL */

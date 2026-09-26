@@ -8,7 +8,7 @@
  */
 #include "soc/tx39/tx39.h"
 
-void mrc_icu_update(tx39_icu *icu)
+void mh_icu_update(tx39_icu *icu)
 {
     tx39 *s = icu->soc;
     bool normal = false, high = false;
@@ -19,11 +19,11 @@ void mrc_icu_update(tx39_icu *icu)
     if (icu->status[5] & icu->enable[5])
         high = true;
 
-    mrc_cpu_set_irq(s->cpu, TX39_IP_NORMAL, normal);
-    mrc_cpu_set_irq(s->cpu, TX39_IP_HIGH, high);
+    mh_cpu_set_irq(s->cpu, TX39_IP_NORMAL, normal);
+    mh_cpu_set_irq(s->cpu, TX39_IP_HIGH, high);
 }
 
-bool mrc_icu_pending(const tx39_icu *icu)
+bool mh_icu_pending(const tx39_icu *icu)
 {
     for (unsigned b = 0; b < TX39_ICU_NBANK; b++)
         if (icu->status[b] & icu->enable[b])
@@ -31,7 +31,7 @@ bool mrc_icu_pending(const tx39_icu *icu)
     return false;
 }
 
-void mrc_icu_raise(tx39_icu *icu, unsigned bank, uint32_t bits)
+void mh_icu_raise(tx39_icu *icu, unsigned bank, uint32_t bits)
 {
     if (bank < 1 || bank > TX39_ICU_NBANK)
         return;
@@ -42,10 +42,10 @@ void mrc_icu_raise(tx39_icu *icu, unsigned bank, uint32_t bits)
 
     *st |= bits;
 
-    mrc_icu_update(icu);
+    mh_icu_update(icu);
 }
 
-uint32_t mrc_icu_read(tx39_icu *icu, uint32_t off, bool *decoded)
+uint32_t mh_icu_read(tx39_icu *icu, uint32_t off, bool *decoded)
 {
     *decoded = true;
 
@@ -65,7 +65,7 @@ uint32_t mrc_icu_read(tx39_icu *icu, uint32_t off, bool *decoded)
          * table behind PRIORITYMASK, which has not been decoded.
          */
         uint32_t v = icu->status[5];
-        if (mrc_icu_pending(icu))
+        if (mh_icu_pending(icu))
             v |= INT6_IRQLOW;
         return v;
     }
@@ -79,11 +79,11 @@ uint32_t mrc_icu_read(tx39_icu *icu, uint32_t off, bool *decoded)
     return 0;
 }
 
-bool mrc_icu_write(tx39_icu *icu, uint32_t off, uint32_t val)
+bool mh_icu_write(tx39_icu *icu, uint32_t off, uint32_t val)
 {
     if (off >= 0x100 && off <= 0x110 && ((off - 0x100) % 4) == 0) {
         icu->status[(off - 0x100) / 4] &= ~val;         /* INTRCLEAR1..5 */
-        mrc_icu_update(icu);
+        mh_icu_update(icu);
         return true;
     }
     if (off == 0x114)
@@ -91,7 +91,7 @@ bool mrc_icu_write(tx39_icu *icu, uint32_t off, uint32_t val)
 
     if (off >= 0x118 && off <= 0x12C && ((off - 0x118) % 4) == 0) {
         icu->enable[(off - 0x118) / 4] = val;
-        mrc_icu_update(icu);
+        mh_icu_update(icu);
         return true;
     }
     return false;

@@ -1,5 +1,5 @@
-#ifndef MRC_TX39_MBUS_H
-#define MRC_TX39_MBUS_H
+#ifndef MH_TX39_MBUS_H
+#define MH_TX39_MBUS_H
 #include <stdbool.h>
 #include <stdint.h>
 /* Board-owned connection to a physical peripheral. Never stored in snapshots.

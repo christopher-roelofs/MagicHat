@@ -1232,7 +1232,7 @@ bool m68k_step(m68k *c)
      * end of a short instruction can be device registers, and reading a
      * device register has consequences whether or not the value is used.
      */
-    uint8_t code[MRC_JIT_M68K_MAX_BYTES];
+    uint8_t code[MH_JIT_M68K_MAX_BYTES];
     m68k_insn insn;
     unsigned have = 0;
     do {

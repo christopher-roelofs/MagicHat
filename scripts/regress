@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 
 ROM=roms/MagicCap-USA.image
 GOLDEN=tests/golden/milestones.txt
-MCAP=${MCAP:-./build/mcap}
+MHAT=${MHAT:-./build/mhat}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -30,8 +30,8 @@ if [ ! -f "$ROM" ]; then
     echo "SKIP: $ROM not present (ROMs are not in the repository)"
     exit 0
 fi
-if [ ! -x "$MCAP" ]; then
-    echo "FAIL: $MCAP not built"
+if [ ! -x "$MHAT" ]; then
+    echo "FAIL: $MHAT not built"
     exit 1
 fi
 
@@ -68,7 +68,7 @@ fbhash() {
 
 if [ "$MODE" != quick ]; then
     echo "monitor prompt"
-    $MCAP --temporary --fresh --rom $ROM --headless --monitor -n 820000000 \
+    $MHAT --temporary --fresh --rom $ROM --headless --monitor -n 820000000 \
         --save-state "$WORK/monitor.state" >"$WORK/mon.out" 2>"$WORK/mon.err"
     # The monitor measures the hardware and prints what it found, so these
     # lines check the DRAM sizing, the cache sizes and PRId all at once.
@@ -85,7 +85,7 @@ if [ "$MODE" != quick ]; then
     check monitor.tlb "$(grep -c 'TLB was NOT used' "$WORK/mon.err")"
 
     echo "boot screen"
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/monitor.state" --input 'go -c\n' \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state "$WORK/monitor.state" --input 'go -c\n' \
         -n 1500000000 --save-state "$WORK/boot.state" \
         --dump-fb "$WORK/boot.pgm" >/dev/null 2>"$WORK/boot.err"
     check bootscreen.fb "$(fbhash "$WORK/boot.pgm")"
@@ -101,7 +101,7 @@ if [ "$MODE" != quick ]; then
     fi
 
     echo "automatic cold boot (no state, input, or reset override)"
-    $MCAP --temporary --fresh --rom $ROM --headless -n 2000000000 \
+    $MHAT --temporary --fresh --rom $ROM --headless -n 2000000000 \
         --dump-fb "$WORK/auto.pgm" >"$WORK/auto.out" 2>"$WORK/auto.err"
     if [ -s "$WORK/auto.pgm" ] && cmp -s "$WORK/auto.pgm" "$WORK/boot.pgm"; then
         echo "  ok      automatic boot reaches the same startup screen"
@@ -111,14 +111,14 @@ if [ "$MODE" != quick ]; then
     fi
 
     echo "touchscreen calibration"
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/boot.state" \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state "$WORK/boot.state" \
         --tap 500 500 5000000 --tap-hold 20000000 -n 400000000 \
         --save-state "$WORK/cal.state" --dump-fb "$WORK/cal.pgm" \
         >/dev/null 2>"$WORK/cal.err"
     check calibrate.fb "$(fbhash "$WORK/cal.pgm")"
 
     echo "desk"
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/cal.state" \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state "$WORK/cal.state" \
         --taps "120,120,20000000;800,740,140000000;460,430,260000000" \
         --tap-hold 45000000 -n 450000000 --dump-fb "$WORK/desk.pgm" \
         >/dev/null 2>"$WORK/desk.err"
@@ -129,7 +129,7 @@ else
         exit 0
     fi
     echo "desk (from banked state)"
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/desk.state -n 1000 \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/desk.state -n 1000 \
         --dump-fb "$WORK/desk.pgm" >/dev/null 2>&1
     check desk.fb "$(fbhash "$WORK/desk.pgm")"
 fi

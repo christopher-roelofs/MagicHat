@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-bool mrc_state_path_for(const char *rom, char *out, size_t cap)
+bool mh_state_path_for(const char *rom, char *out, size_t cap)
 {
     if (!rom || !out || !cap) return false;
     size_t n = strlen(rom), stem = n;
@@ -14,7 +14,7 @@ bool mrc_state_path_for(const char *rom, char *out, size_t cap)
      * is not one, and neither is a leading dot: "roms/PIC-2000.rom" has an
      * extension and ".hidden" does not.
      */
-    const char *slash = mrc_path_last_separator(rom), *dot = strrchr(rom, '.');
+    const char *slash = mh_path_last_separator(rom), *dot = strrchr(rom, '.');
     if (dot && (!slash || dot > slash + 1) && dot != rom) stem = (size_t)(dot - rom);
     if (stem + sizeof(".state") > cap) return false;
     memcpy(out, rom, stem);
@@ -35,14 +35,14 @@ bool mrc_state_path_for(const char *rom, char *out, size_t cap)
 static char path[4096];
 static bool have_path;
 
-void mrc_state_set_path(const char *p)
+void mh_state_set_path(const char *p)
 {
     if (!p || strlen(p) >= sizeof(path)) { have_path = false; return; }
     memcpy(path, p, strlen(p) + 1);
     have_path = true;
 }
 
-const char *mrc_state_path(void)
+const char *mh_state_path(void)
 {
     return have_path ? path : NULL;
 }
@@ -52,18 +52,18 @@ static char wanted_id[128];
 static bool wanted;
 static bool stop_requested;
 
-void mrc_state_set_device_id(const char *id)
+void mh_state_set_device_id(const char *id)
 {
     if (!id || strlen(id) >= sizeof(device_id)) { device_id[0] = 0; return; }
     memcpy(device_id, id, strlen(id) + 1);
 }
 
-const char *mrc_state_device_id(void)
+const char *mh_state_device_id(void)
 {
     return device_id[0] ? device_id : NULL;
 }
 
-void mrc_state_request_device(const char *id)
+void mh_state_request_device(const char *id)
 {
     if (!id || strlen(id) >= sizeof(wanted_id)) return;
     memcpy(wanted_id, id, strlen(id) + 1);
@@ -71,25 +71,25 @@ void mrc_state_request_device(const char *id)
     stop_requested = false;
 }
 
-bool mrc_state_device_requested(void)
+bool mh_state_device_requested(void)
 {
     return wanted || stop_requested;
 }
 
-void mrc_state_request_stop(void)
+void mh_state_request_stop(void)
 {
     wanted = false;
     stop_requested = true;
 }
 
-bool mrc_state_take_stop(void)
+bool mh_state_take_stop(void)
 {
     bool stop = stop_requested;
     stop_requested = false;
     return stop;
 }
 
-const char *mrc_state_take_requested_device(void)
+const char *mh_state_take_requested_device(void)
 {
     if (!wanted) return NULL;
     wanted = false;
@@ -104,13 +104,13 @@ const char *mrc_state_take_requested_device(void)
  * replaces these in its own entry point, where the intent and the activity
  * result live.
  */
-bool mrc_import_available(void) { return false; }
-bool mrc_import_request(mrc_import_kind kind) { (void)kind; return false; }
-bool mrc_import_pending(mrc_import_kind kind) { (void)kind; return false; }
-bool mrc_import_result(mrc_import_kind kind, char *path, size_t path_size,
+bool mh_import_available(void) { return false; }
+bool mh_import_request(mh_import_kind kind) { (void)kind; return false; }
+bool mh_import_pending(mh_import_kind kind) { (void)kind; return false; }
+bool mh_import_result(mh_import_kind kind, char *path, size_t path_size,
                        char *error, size_t error_size) {
     (void)kind; (void)path; (void)path_size; (void)error; (void)error_size;
     return false;
 }
-void mrc_import_cancel(mrc_import_kind kind) { (void)kind; }
+void mh_import_cancel(mh_import_kind kind) { (void)kind; }
 #endif

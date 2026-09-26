@@ -7,9 +7,9 @@
  * 13C34288 probes A, 13C32A78 reads the storage header from B, and
  * 13C32074..13C32094 measures capacity by testing common-memory aliases.
  * The CIS is card identification, not a prebuilt Magic Cap filesystem. */
-void mrc_pccard_sram_init(mrc_pccard *c, unsigned slot, uint8_t *data, uint32_t size)
+void mh_pccard_sram_init(mh_pccard *c, unsigned slot, uint8_t *data, uint32_t size)
 {
-    mrc_pccard_init(c, slot, &mrc_pccard_sram);
+    mh_pccard_init(c, slot, &mh_pccard_sram);
     c->image = data;
     c->image_len = size;
     unsigned unit = 0, units = size / 512;
@@ -28,13 +28,13 @@ void mrc_pccard_sram_init(mrc_pccard *c, unsigned slot, uint8_t *data, uint32_t 
     c->cis_len = sizeof(cis);
 }
 
-static bool read_sram(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+static bool read_sram(mh_pccard *c, mh_pccard_window w, uint32_t off,
                       unsigned size, uint32_t *out)
 {
     uint32_t v = 0;
     for (unsigned j = 0; j < size; j++) {
         uint32_t a = off + j;
-        uint8_t b = w == MRC_PCCARD_WINDOW_A ?
+        uint8_t b = w == MH_PCCARD_WINDOW_A ?
             (!(a & 1) && a / 2 < c->cis_len ? c->cis[a / 2] : 0xff) :
             c->image[a % c->image_len];
         v = (v << 8) | b;
@@ -43,15 +43,15 @@ static bool read_sram(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
     return true;
 }
 
-static bool write_sram(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+static bool write_sram(mh_pccard *c, mh_pccard_window w, uint32_t off,
                        unsigned size, uint32_t val)
 {
-    if (w != MRC_PCCARD_WINDOW_B) return false;
+    if (w != MH_PCCARD_WINDOW_B) return false;
     for (unsigned j = 0; j < size; j++)
         c->image[(off + j) % c->image_len] = (uint8_t)(val >> ((size - j - 1) * 8));
     return true;
 }
 
-const mrc_pccard_kind mrc_pccard_sram = {
+const mh_pccard_kind mh_pccard_sram = {
     .name = "sram", .read = read_sram, .write = write_sram
 };

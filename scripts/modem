@@ -18,7 +18,7 @@ after that are PPP -- which the ROM also has, with its own configuration UI
 ("Enter your PPP dialup account name:"). Actual guest connectivity still
 requires a model of one of the supported hardware interfaces.
 
-Usage:  mcap --serial a           # prints a pty path
+Usage:  mhat --serial a           # prints a pty path
         scripts/modem <pty>       # answer as a modem on it
 
 68k: --serial a is an opt-in MC68349 channel-A probe. PIC-2000 exchanges
@@ -195,7 +195,7 @@ class Modem:
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('port', help='pty printed by mcap --serial')
+    ap.add_argument('port', help='pty printed by mhat --serial')
     ap.add_argument('--quiet', action='store_true')
     ap.add_argument('--seconds', type=float, default=0,
                     help='give up after this long with nothing heard')

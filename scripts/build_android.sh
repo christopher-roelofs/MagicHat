@@ -18,5 +18,5 @@ cp android/deps/SDL2-2.32.10/LICENSE.txt android/app/src/main/assets/licenses/SD
 cp assets/licenses/FontAwesome.txt assets/licenses/DejaVuSansMono.txt \
    android/app/src/main/assets/licenses/
 ./android/gradlew -p android --max-workers=4 assembleDebug
-cp android/app/build/outputs/apk/debug/app-debug.apk out/android/magiccap-arm64-debug.apk
-printf 'APK: %s/out/android/magiccap-arm64-debug.apk\n' "$root"
+cp android/app/build/outputs/apk/debug/app-debug.apk out/android/magichat-arm64-debug.apk
+printf 'APK: %s/out/android/magichat-arm64-debug.apk\n' "$root"

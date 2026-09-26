@@ -6,14 +6,14 @@
 /* Replay host pen events on the guest clock. SDL can deliver an entire drag
  * in one poll batch. Preserve edges and advance toward the latest target
  * along a bounded trajectory instead of replaying stale motion history. */
-typedef struct mrc_pen_event {
+typedef struct mh_pen_event {
     uint64_t at;
     unsigned x, y;
     bool down, press;
-    struct mrc_pen_event *next;
-} mrc_pen_event;
+    struct mh_pen_event *next;
+} mh_pen_event;
 typedef struct {
-    mrc_pen_event *head, *tail;
+    mh_pen_event *head, *tail;
     uint64_t press_slot;
     uint64_t last_slot;
     uint32_t last_tick;
@@ -22,14 +22,14 @@ typedef struct {
     unsigned delivered_x, delivered_y;
     uint64_t delivered_at, contact_at, min_hold;
     bool contact;
-} mrc_pen_queue;
+} mh_pen_queue;
 
-static inline bool mrc_pen_enqueue(mrc_pen_queue *q, uint64_t now,
+static inline bool mh_pen_enqueue(mh_pen_queue *q, uint64_t now,
         uint64_t hz, uint64_t min_hold, uint32_t tick, bool press,
         bool down, unsigned x, unsigned y)
 {
     q->min_hold = min_hold;
-    mrc_pen_event *e = (mrc_pen_event *)malloc(sizeof(*e));
+    mh_pen_event *e = (mh_pen_event *)malloc(sizeof(*e));
     if (!e) return false;
     /* Modular subtraction handles timestamp wrap; stale events must not
      * schedule input weeks into the future. */
@@ -64,14 +64,14 @@ static inline bool mrc_pen_enqueue(mrc_pen_queue *q, uint64_t now,
         return true;
     }
     q->last_slot=at;
-    *e = (mrc_pen_event){at,x,y,down,press,NULL};
+    *e = (mh_pen_event){at,x,y,down,press,NULL};
     if (q->tail) q->tail->next=e; else q->head=e;
     q->tail=e;
     return true;
 }
-static inline void mrc_pen_pop(mrc_pen_queue *q)
+static inline void mh_pen_pop(mh_pen_queue *q)
 {
-    mrc_pen_event *e=q->head;
+    mh_pen_event *e=q->head;
     if (!e) return;
     q->head=e->next;
     if (!q->head) q->tail=NULL;
@@ -81,10 +81,10 @@ static inline void mrc_pen_pop(mrc_pen_queue *q)
  * 16 panel pixels per axis per 1/120 guest second. This bounds a full-width
  * traversal to about 250 ms, without accumulating a history of mouse moves.
  * It is not an analog digitizer model or a change to guest sampling clocks. */
-static inline bool mrc_pen_deliver(mrc_pen_queue *q, uint64_t now,
-        uint64_t hz, mrc_pen_event *out)
+static inline bool mh_pen_deliver(mh_pen_queue *q, uint64_t now,
+        uint64_t hz, mh_pen_event *out)
 {
-    mrc_pen_event *e = q->head;
+    mh_pen_event *e = q->head;
     if (!e || e->at > now) return false;
     const uint64_t interval = hz / 120 ? hz / 120 : 1;
     const uint64_t settle = hz / 60 ? hz / 60 : 1;
@@ -118,10 +118,10 @@ static inline bool mrc_pen_deliver(mrc_pen_queue *q, uint64_t now,
     q->contact = out->down;
     q->delivered_at = now;
     if (out->down) { q->delivered_x = out->x; q->delivered_y = out->y; }
-    if (reached) mrc_pen_pop(q);
+    if (reached) mh_pen_pop(q);
     return true;
 }
-static inline void mrc_pen_clear(mrc_pen_queue *q)
+static inline void mh_pen_clear(mh_pen_queue *q)
 {
-    while(q->head) mrc_pen_pop(q);
+    while(q->head) mh_pen_pop(q);
 }

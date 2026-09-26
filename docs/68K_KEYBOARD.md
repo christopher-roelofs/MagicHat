@@ -62,17 +62,9 @@ The five supported images in the table passed ten fresh-boot core probes
 (JIT and interpreter for each) and five SDL probes. Each core probe decoded
 `61,42,63`, serviced four keyboard requests, and completed a Caps Lock LED
 write with no controller errors. Each SDL probe decoded three characters and
-released Shift on focus loss.
-The complete rebuilt CTest suite also passed: **40/40 tests**, including the
-CPU emitter comparison and MIPS keyboard regressions.
-
-```
-cmake --build build --target pic_keyboard_probe pic_keyboard_sdl_probe test_pic_magicbus -j8
-./build/pic_keyboard_probe 'roms/Motorola Envoy/envoy-1.0.rom'
-PIC_PROBE_ENGINE=interpreter ./build/pic_keyboard_probe 'roms/Sony HIX 300/hix300-mc19-c2.rom'
-SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software ./build/pic_keyboard_sdl_probe 'roms/Sony HIX 300/hix300-mc19-c2.rom'
-ctest --test-dir build -R 'pic_magicbus|rom_detection' --output-on-failure
-```
+released Shift on focus loss. In this repository, `ctest -R
+'pic_magicbus|rom_detection'` runs the keyboard device and ROM detection
+tests.
 
 The synthetic device test covers each supported board's pin and IRQ routing,
 ID/descriptor, DMA, legacy header isolation, queue pressure, held-key release,
@@ -93,9 +85,9 @@ and delayed-attachment runs failed before recovery. Fresh JIT and interpreter
 runs with the bypass each reached 220 million slots, attached once, and
 serviced zero keyboard requests with no decoded characters. The checksum
 assertion disappeared, but the delivery failure remained. mc31 therefore
-stays keyboard-gated. `PIC_PROBE_MC31=1` explicitly allows
-experimental attachment in the standalone core probe, without changing
-production keyboard gating or injecting guest keyboard events.
+stays keyboard-gated. The experimental attachment runs used a standalone
+probe, without changing production keyboard gating or injecting guest
+keyboard events.
 
 Further investigation isolated the worker shutdown to power state, not a
 failed keyboard DMA transaction. On a fresh battery-only mc31 boot, the ROM
@@ -111,34 +103,24 @@ zero at the worker check and both JIT and interpreter probes pass all three char
 requests and zero bus errors. This changes neither guest code nor bus logic.
 The three keyboard regression tests (`pic_magicbus`, `magicbus_keyboard`,
 and `datarover_keyboard`) also pass.
-Reproduce with:
 
-```sh
-PIC_PROBE_MC31=1 PIC_PROBE_ADAPTER=1 build/pic_keyboard_probe \
-  'roms/Motorola Envoy/envoy-1.0-mc31-b10.rom'
-```
-
-`PIC_PROBE_WATCH` accepts comma-separated hexadecimal ROM PCs for optional
-execution tracing. Follow-up battery tracing confirms the low-power decision:
+Follow-up battery tracing confirms the low-power decision:
 the main battery update returns `00010000` (1% in 16.16 fixed point) at
 `00464AB8`. The check at `00464AE2` compares it with a 1% threshold and
 continues; `00464AF8` compares it with `000A0000` (10%) and selects warning
 state 2. That dispatch reaches `004653E4`, which broadcasts event 4 and
-disables bus servicing. Setting channel 2 to 1023 through
-`PIC_PROBE_MAIN_ADC=1023` does not change the outcome or boot instruction
-counts. Envoy's pack accounting is not simply the PIC ADC percentage; see
-the battery-model limitations documented in the original research workspace.
+disables bus servicing. Forcing channel 2 to 1023 does not change the outcome or boot instruction
+counts. Envoy's pack accounting is not simply the PIC ADC percentage.
 
-`PIC_PROBE_AC_AT=120000000` connects the existing physical AC input after
-enumeration and worker shutdown. This battery-first experiment still has
+Connecting the physical AC input at 120 million instructions, after
+enumeration and worker shutdown, does not recover it either. This
+battery-first experiment still has
 zero keyboard requests at 220 million instructions. At exit, pending word
 `B8=0020` contains the adapter edge, but enable word `C0=0B0E` masks it;
 the adapter handler `0046C3EC` was never reached. The emulator therefore
 correctly leaves IRQ6 deasserted for this source. Why the ROM leaves that
 source masked at this boot stage remains open; cold AC success does not
-establish hot-plug recovery. `PIC_PROBE_ADC_TRACE=1` enables the existing
-converter trace, and the probe prints pending/enabled power interrupt banks.
-Battery-only operation, AC transitions, and Android delivery need validation
+establish hot-plug recovery. Battery-only operation, AC transitions, and Android delivery need validation
 before lifting the production mc31 gate. No battery contents or ROM policy
 are patched by these diagnostics.
 
@@ -168,9 +150,6 @@ AC mask writes also predate the low-power notification. mc31 initializes
 these cold-boot probes. Thus the observed mask is not a mc31-only reaction
 to low battery. The adapter-event mapping and later enable lifecycle need
 independent validation; do not force the interrupt through the guest mask.
-`PIC_PROBE_POWER_WRITES=1` records writes to `210000C0..C1`, and
-`PIC_PROBE_SLOTS` permits shorter or longer diagnostic runs (default remains
-220 million). Probe success still requires the full keyboard sequence.
 
 ### mc31 delayed battery recovery
 
@@ -193,21 +172,9 @@ recovery is therefore insufficient to undo the early low-power shutdown
 in this replay; the next unresolved path is the ROM's low-power exit and
 its notification/adapter lifecycle, not a missed DMA transfer.
 
-Reproduce without changing ROM bytes, saved states, battery contents, or
-the emulated clock rate:
-
-```sh
-PIC_PROBE_MC31=1 PIC_PROBE_SLOTS=1600000000 PIC_PROBE_PROGRESS=1 \
-PIC_PROBE_WATCH=45c706,45c710,45d784,463636,461f2c \
-  build/pic_keyboard_probe 'roms/Motorola Envoy/envoy-1.0-mc31-b10.rom'
-```
-
-`PIC_PROBE_PROGRESS=1` prints each 100-million-slot milestone, the 128 Hz
-hardware counter, current PC, and keyboard-test stage. These long traces
-used JIT; interpreter recovery beyond the deadline has not been checked.
+These runs changed no ROM bytes, saved states, battery contents, or the
+emulated clock rate. The long traces used JIT; interpreter recovery beyond the deadline has not been checked.
 
 Android/AArch64 delivery still needs on-device validation. Exact wire timing,
 full FIFO/error behavior, bus power/wake, multi-accessory chains, autonomous
-typematic, and Pause/Print Screen remain outside the verified profile. PIC
-controller details and PIC-1000 recovery are documented in the original
-research workspace.
+typematic, and Pause/Print Screen remain outside the verified profile.

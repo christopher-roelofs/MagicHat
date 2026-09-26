@@ -39,8 +39,8 @@
  * their existing MPkg streams. A completed transfer still needs guest-side
  * installation and launch verification.
  */
-#ifndef MRC_HOST_PCLINK_H
-#define MRC_HOST_PCLINK_H
+#ifndef MH_HOST_PCLINK_H
+#define MH_HOST_PCLINK_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,7 +49,7 @@
 extern "C" {
 #endif
 
-typedef struct mrc_pclink mrc_pclink;
+typedef struct mh_pclink mh_pclink;
 
 /*
  * How far the link has got. A window shows this; a command line prints it.
@@ -58,34 +58,34 @@ typedef struct mrc_pclink mrc_pclink;
  * told to link before anything at all happens.
  */
 typedef enum {
-    MRC_PCLINK_WAITING,    /* the guest has not linked yet */
-    MRC_PCLINK_CONNECTED,  /* linked, package offered */
-    MRC_PCLINK_SENDING,    /* bytes on the wire */
-    MRC_PCLINK_DONE,       /* the guest took it */
-    MRC_PCLINK_FAILED,     /* see mrc_pclink_message */
-} mrc_pclink_state;
+    MH_PCLINK_WAITING,    /* the guest has not linked yet */
+    MH_PCLINK_CONNECTED,  /* linked, package offered */
+    MH_PCLINK_SENDING,    /* bytes on the wire */
+    MH_PCLINK_DONE,       /* the guest took it */
+    MH_PCLINK_FAILED,     /* see mh_pclink_message */
+} mh_pclink_state;
 
 /*
  * Open the link with a package to offer. The file is read now, so it can be
  * moved or deleted immediately afterwards and a failure to read it is
  * reported before any of the guest's time is spent.
  */
-mrc_pclink *mrc_pclink_open(const char *package_path);
-void mrc_pclink_close(mrc_pclink *link);
+mh_pclink *mh_pclink_open(const char *package_path);
+void mh_pclink_close(mh_pclink *link);
 
 /* The wire. `from_guest` takes a transmitted byte; `to_guest` offers the next
  * byte to receive and returns false when there is nothing to send. */
-void mrc_pclink_from_guest(mrc_pclink *link, uint8_t byte);
-bool mrc_pclink_to_guest(mrc_pclink *link, uint8_t *byte);
+void mh_pclink_from_guest(mh_pclink *link, uint8_t byte);
+bool mh_pclink_to_guest(mh_pclink *link, uint8_t *byte);
 
-mrc_pclink_state mrc_pclink_state_of(const mrc_pclink *link);
+mh_pclink_state mh_pclink_state_of(const mh_pclink *link);
 /* What happened, in words for a person. Never NULL. */
-const char *mrc_pclink_message(const mrc_pclink *link);
+const char *mh_pclink_message(const mh_pclink *link);
 /* Progress, for something to draw. Total is the package's own size. */
-uint32_t mrc_pclink_sent(const mrc_pclink *link);
-uint32_t mrc_pclink_total(const mrc_pclink *link);
+uint32_t mh_pclink_sent(const mh_pclink *link);
+uint32_t mh_pclink_total(const mh_pclink *link);
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* MRC_HOST_PCLINK_H */
+#endif /* MH_HOST_PCLINK_H */

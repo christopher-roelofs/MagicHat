@@ -14,21 +14,21 @@
  * would be wrong, so each emitter's translate() ends with a default that
  * cannot be reached silently: the two are meant to be edited together.
  */
-#ifndef MRC_M68K_EMIT_POLICY_H
-#define MRC_M68K_EMIT_POLICY_H
+#ifndef MH_M68K_EMIT_POLICY_H
+#define MH_M68K_EMIT_POLICY_H
 
 #include "cpu/m68k/core/m68k_decode.h"
 #include <stdlib.h>
 #include <string.h>
 
-/* MRC_M68K_TRANSLATE=0 leaves every instruction to the interpreter while
+/* MH_M68K_TRANSLATE=0 leaves every instruction to the interpreter while
  * keeping the block structure, which separates an emitter bug from a core
  * one without changing anything else. */
 static inline bool m68k_translate_none(void)
 {
     static int off = -1;
     if (off < 0) {
-        const char *v = getenv("MRC_M68K_TRANSLATE");
+        const char *v = getenv("MH_M68K_TRANSLATE");
         off = v && !strcmp(v, "0");
     }
     return off != 0;
@@ -245,4 +245,4 @@ static inline bool m68k_sets_own_pc(const m68k_insn *insn)
            insn->op == M68K_OP_RTS;
 }
 
-#endif /* MRC_M68K_EMIT_POLICY_H */
+#endif /* MH_M68K_EMIT_POLICY_H */

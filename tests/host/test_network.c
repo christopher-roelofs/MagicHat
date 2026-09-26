@@ -51,7 +51,7 @@ static unsigned sum(const uint8_t *p, size_t len)
     return s;
 }
 static unsigned checksum(unsigned s) { while (s >> 16) s = (s & 65535) + (s >> 16); return (~s) & 65535; }
-static void tcp(mrc_network *n, unsigned port, uint32_t seq, uint32_t ack, unsigned flags, const char *body, unsigned mss, unsigned window)
+static void tcp(mh_network *n, unsigned port, uint32_t seq, uint32_t ack, unsigned flags, const char *body, unsigned mss, unsigned window)
 {
     uint8_t f[1600] = {0}; size_t len = body ? strlen(body) : 0;
     unsigned thlen = (flags & 2) && mss ? 24 : 20;
@@ -66,12 +66,12 @@ static void tcp(mrc_network *n, unsigned port, uint32_t seq, uint32_t ack, unsig
     if (thlen == 24) { t[20]=2; t[21]=4; be16(t+22,mss); }
     if (len) memcpy(t+thlen, body, len);
     be16(t+16, checksum(sum(ip+12, 8)+6+thlen+len+sum(t,thlen+len)));
-    CHECK(mrc_network_send(n, f, 34+thlen+len));
+    CHECK(mh_network_send(n, f, 34+thlen+len));
 }
 /* An asynchronous host connect must retain the peer's SYN MSS. Exercise
  * a small receive window and a temporary zero window, like the guest's
  * large-download confirmation dialog. Check every byte, not just a marker. */
-static void http_transfer(mrc_network *n, unsigned mss, unsigned window)
+static void http_transfer(mh_network *n, unsigned mss, unsigned window)
 {
     sock server = socket(AF_INET,SOCK_STREAM,0); CHECK(SOCK_VALID(server));
     struct sockaddr_in addr={.sin_family=AF_INET,.sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
@@ -91,7 +91,7 @@ static void http_transfer(mrc_network *n, unsigned mss, unsigned window)
     size_t written=0;
     static uint64_t clock_ms;
     for(unsigned ms=1;ms<2000 && got<length;ms++) {
-        mrc_network_poll(n,++clock_ms*1000000);
+        mh_network_poll(n,++clock_ms*1000000);
         if(!SOCK_VALID(client)) { client=accept(server,NULL,NULL); if(SOCK_VALID(client)) nonblocking(client); }
         while(qhead!=qtail) {
             uint8_t f[1600]; size_t flen=queue[qhead%64].len;
@@ -143,25 +143,25 @@ int main(void)
 #ifdef _WIN32
     WSADATA wsa; CHECK(WSAStartup(MAKEWORD(2,2),&wsa)==0);
 #endif
-    mrc_network *n = mrc_network_open(receive, NULL, NULL); CHECK(n);
+    mh_network *n = mh_network_open(receive, NULL, NULL); CHECK(n);
     uint8_t arp[60] = {0}; memset(arp,255,6); memcpy(arp+6,mac,6); be16(arp+12,0x806);
     be16(arp+14,1); be16(arp+16,0x800); arp[18]=6; arp[19]=4; be16(arp+20,1);
     memcpy(arp+22,mac,6); const uint8_t guest[4]={10,0,2,15}, host[4]={10,0,2,2};
     memcpy(arp+28,guest,4); memcpy(arp+38,host,4);
-    CHECK(mrc_network_send(n,arp,sizeof(arp)));
+    CHECK(mh_network_send(n,arp,sizeof(arp)));
     CHECK(received && last[21]==2 && !memcmp(last+28,host,4));
     unsigned count = received;
-    memcpy(arp+38,guest,4); CHECK(mrc_network_send(n,arp,sizeof(arp)));
+    memcpy(arp+38,guest,4); CHECK(mh_network_send(n,arp,sizeof(arp)));
     CHECK(received == count); /* never answer the guest's duplicate-address probe */
     const uint8_t remote[4] = {192,0,2,1}; memcpy(arp+38,remote,4);
-    CHECK(mrc_network_send(n,arp,sizeof(arp)));
+    CHECK(mh_network_send(n,arp,sizeof(arp)));
     CHECK(received == count+1 && last[21] == 2 && !memcmp(last+28,remote,4));
     arp[38] = 224; count = received;
-    CHECK(mrc_network_send(n,arp,sizeof(arp))); CHECK(received == count);
+    CHECK(mh_network_send(n,arp,sizeof(arp))); CHECK(received == count);
     http_transfer(n,536,720);
     http_transfer(n,256,720);
     http_transfer(n,1200,2400);
     http_transfer(n,0,4096); /* no MSS option retains the normal default */
-    mrc_network_close(n);
+    mh_network_close(n);
     puts("libslirp ARP, MSS negotiation and small-window HTTP transfers passed"); return 0;
 }

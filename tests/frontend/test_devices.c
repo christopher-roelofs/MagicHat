@@ -74,7 +74,7 @@ static bool exists(const char *path)
 
 /* Find a row by the label it would be drawn with. The picker's ids are its
  * own business, so the test goes through what a person would see. */
-static int row_with(const mrc_ui_row *rows, unsigned count, const char *label)
+static int row_with(const mh_ui_row *rows, unsigned count, const char *label)
 {
     for (unsigned i = 0; i < count; i++)
         if (rows[i].label && !strcmp(rows[i].label, label)) return rows[i].id;
@@ -83,14 +83,14 @@ static int row_with(const mrc_ui_row *rows, unsigned count, const char *label)
 
 /* Like row_with, but the row's own index rather than its id -- needed to
  * reach a row's action buttons, which are not visible through the id alone. */
-static int row_index_with(const mrc_ui_row *rows, unsigned count, const char *label)
+static int row_index_with(const mh_ui_row *rows, unsigned count, const char *label)
 {
     for (unsigned i = 0; i < count; i++)
         if (rows[i].label && !strcmp(rows[i].label, label)) return (int)i;
     return -1;
 }
 
-static int row_labelled_like(const mrc_ui_row *rows, unsigned count,
+static int row_labelled_like(const mh_ui_row *rows, unsigned count,
                              const char *fragment)
 {
     for (unsigned i = 0; i < count; i++)
@@ -101,16 +101,16 @@ static int row_labelled_like(const mrc_ui_row *rows, unsigned count,
 int main(void)
 {
     char scratch[512];
-    snprintf(scratch, sizeof(scratch), "%s/mrc-devices-XXXXXX", mrc_temp_dir());
-    if (!mrc_mkdtemp(scratch)) { perror("mkdtemp"); return 1; }
+    snprintf(scratch, sizeof(scratch), "%s/mh-devices-XXXXXX", mh_temp_dir());
+    if (!mh_mkdtemp(scratch)) { perror("mkdtemp"); return 1; }
 
     char roms[512], nested[512], store[512];
     snprintf(roms, sizeof(roms), "%s/roms", scratch);
     snprintf(nested, sizeof(nested), "%s/roms/inner", scratch);
     snprintf(store, sizeof(store), "%s/devices", scratch);
-    mrc_mkdir(roms);
-    mrc_mkdir(nested);
-    mrc_setenv("MRC_DEVICES_DIR", store);
+    mh_mkdir(roms);
+    mh_mkdir(nested);
+    mh_setenv("MH_DEVICES_DIR", store);
 
     char pic[512], notes[512], inner[512];
     snprintf(pic, sizeof(pic), "%s/PIC-2000.rom", roms);
@@ -126,13 +126,13 @@ int main(void)
     CHECK(window != NULL);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     CHECK(renderer != NULL);
-    mrc_ui *ui = NULL;
-    CHECK(mrc_ui_open(&ui, renderer, window));
+    mh_ui *ui = NULL;
+    CHECK(mh_ui_open(&ui, renderer, window));
     if (!ui) return 1;
-    mrc_ui_set_buttons(ui, 1u << MRC_UI_ICON_ROMS);
+    mh_ui_set_buttons(ui, 1u << MH_UI_ICON_ROMS);
 
     static const char *const kinds[] = { ".rom", ".image" };
-    mrc_picker *p = mrc_picker_open(ui, "Choose firmware", roms, kinds, 2);
+    mh_picker *p = mh_picker_open(ui, "Choose firmware", roms, kinds, 2);
     CHECK(p != NULL);
     if (!p) return 1;
 
@@ -141,8 +141,8 @@ int main(void)
      * file. Matching ignores case, or an image named .IMAGE would be
      * invisible for no reason a person could see.
      */
-    const mrc_ui_row *rows = mrc_ui_panel_rows(ui);
-    unsigned count = mrc_ui_panel_row_count(ui);
+    const mh_ui_row *rows = mh_ui_panel_rows(ui);
+    unsigned count = mh_ui_panel_row_count(ui);
     CHECK(row_with(rows, count, "inner") >= 0);
     CHECK(row_with(rows, count, "PIC-2000.rom") >= 0);
     CHECK(row_with(rows, count, "readme.txt") < 0);
@@ -150,37 +150,37 @@ int main(void)
     CHECK(rows[count - 1].label && !strcmp(rows[count - 1].label, "PIC-2000.rom"));
 
     /* Down into a directory, and the case-insensitive match proves itself. */
-    CHECK(mrc_picker_row(p, row_with(rows, count, "inner")));
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
+    CHECK(mh_picker_row(p, row_with(rows, count, "inner")));
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
     CHECK(row_with(rows, count, "Envoy.IMAGE") >= 0);
-    CHECK(!mrc_picker_taken(p));          /* a directory is not a choice */
+    CHECK(!mh_picker_taken(p));          /* a directory is not a choice */
 
     /* And back out again: the first row is always the way out, and its
      * label carries the path so you can see where you are. */
-    const char *before_up = mrc_picker_directory(p);
+    const char *before_up = mh_picker_directory(p);
     CHECK(before_up && strstr(before_up, "inner"));
-    CHECK(mrc_picker_row(p, rows[0].id)); /* the first row is the way out */
-    CHECK(!strcmp(mrc_picker_directory(p), roms));
+    CHECK(mh_picker_row(p, rows[0].id)); /* the first row is the way out */
+    CHECK(!strcmp(mh_picker_directory(p), roms));
 
     /* Choosing a file hands back its whole path, once. */
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
-    CHECK(mrc_picker_row(p, row_with(rows, count, "PIC-2000.rom")));
-    const char *chosen = mrc_picker_taken(p);
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
+    CHECK(mh_picker_row(p, row_with(rows, count, "PIC-2000.rom")));
+    const char *chosen = mh_picker_taken(p);
     CHECK(chosen && !strcmp(chosen, pic));
-    CHECK(!mrc_picker_taken(p));          /* taking it clears it */
+    CHECK(!mh_picker_taken(p));          /* taking it clears it */
 
     /* A row that is not the picker's is not the picker's to answer for. */
-    CHECK(!mrc_picker_row(p, 3));
+    CHECK(!mh_picker_row(p, 3));
 
     char keep[512];
     snprintf(keep, sizeof(keep), "%s", pic);
-    mrc_picker_close(p);
+    mh_picker_close(p);
 
     /* Now the device. */
-    mrc_device made;
-    CHECK(mrc_device_create(keep, NULL, &made));
+    mh_device made;
+    CHECK(mh_device_create(keep, NULL, &made));
     /*
      * Named after the machine, not after the file. "Sony PIC-2000" is what
      * someone owns; the filename is often a download with a version or a
@@ -192,7 +192,7 @@ int main(void)
     CHECK(!made.has_state);                   /* never run */
 
     char rom_copy[4096], state[4096];
-    CHECK(mrc_device_paths(&made, rom_copy, sizeof(rom_copy),
+    CHECK(mh_device_paths(&made, rom_copy, sizeof(rom_copy),
                            state, sizeof(state)));
     CHECK(exists(rom_copy));
     CHECK(!exists(state));
@@ -200,54 +200,54 @@ int main(void)
     /* The point of the copy: the original can go and the device remains. */
     CHECK(unlink(keep) == 0);
     CHECK(exists(rom_copy));
-    mrc_device again;
-    CHECK(mrc_device_by_id("sony-pic-2000", &again));
+    mh_device again;
+    CHECK(mh_device_by_id("sony-pic-2000", &again));
     CHECK(!strcmp(again.name, "Sony PIC-2000"));
 
     /* A name given by hand is taken as given, refusal included: choosing a
      * name already in use is a mistake worth being told about. */
     put_firmware(keep, false);
-    CHECK(!mrc_device_create(keep, "Sony PIC-2000", NULL));
+    CHECK(!mh_device_create(keep, "Sony PIC-2000", NULL));
 
     /*
      * Left to itself it counts up instead. Owning two of the same machine is
      * ordinary, and refusing the second would be refusing the ordinary case.
      */
-    mrc_device twin;
-    CHECK(mrc_device_create(keep, NULL, &twin));
+    mh_device twin;
+    CHECK(mh_device_create(keep, NULL, &twin));
     CHECK(!strcmp(twin.name, "Sony PIC-2000 (2)"));
-    CHECK(mrc_device_delete(&twin));
+    CHECK(mh_device_delete(&twin));
 
     /* An image nothing recognises is refused rather than filed as a device
      * that cannot start. */
-    CHECK(!mrc_device_create(notes, "Mystery", NULL));
+    CHECK(!mh_device_create(notes, "Mystery", NULL));
 
     /* Running it writes a state, and the listing then says so. */
     put_file(state, "pretend machine");
-    mrc_device listed[MRC_DEVICE_MAX];
-    unsigned n = mrc_devices_list(listed, MRC_DEVICE_MAX);
+    mh_device listed[MH_DEVICE_MAX];
+    unsigned n = mh_devices_list(listed, MH_DEVICE_MAX);
     CHECK(n == 1);
     CHECK(n && listed[0].has_state);
 
     /* Renaming keeps the device; only what it is called changes. */
-    CHECK(mrc_device_rename(&made, "Sony Magic Link"));
-    CHECK(mrc_device_by_id("sony-pic-2000", &again));
+    CHECK(mh_device_rename(&made, "Sony Magic Link"));
+    CHECK(mh_device_by_id("sony-pic-2000", &again));
     CHECK(!strcmp(again.name, "Sony Magic Link"));
 
     /* A second device, of another kind, and both are listed together --
      * devices are not filed by machine, they are labelled with it. */
-    mrc_device second;
-    CHECK(mrc_device_create(inner, "Spare", &second));
+    mh_device second;
+    CHECK(mh_device_create(inner, "Spare", &second));
     CHECK(!strcmp(second.machine, "envoy"));
-    CHECK(mrc_devices_list(listed, MRC_DEVICE_MAX) == 2);
-    CHECK(mrc_device_by_id("spare", &again) && !strcmp(again.machine, "envoy"));
+    CHECK(mh_devices_list(listed, MH_DEVICE_MAX) == 2);
+    CHECK(mh_device_by_id("spare", &again) && !strcmp(again.machine, "envoy"));
 
     /* Deleting takes the whole thing: machine, firmware and history. */
-    CHECK(mrc_device_delete(&second));
-    CHECK(!mrc_device_by_id(second.id, &again));
-    CHECK(mrc_devices_list(listed, MRC_DEVICE_MAX) == 1);
-    CHECK(mrc_device_delete(&made));
-    CHECK(mrc_devices_list(listed, MRC_DEVICE_MAX) == 0);
+    CHECK(mh_device_delete(&second));
+    CHECK(!mh_device_by_id(second.id, &again));
+    CHECK(mh_devices_list(listed, MH_DEVICE_MAX) == 1);
+    CHECK(mh_device_delete(&made));
+    CHECK(mh_devices_list(listed, MH_DEVICE_MAX) == 0);
 
     /*
      * And the same thing through the panel the rail actually opens, driven by
@@ -261,30 +261,30 @@ int main(void)
     /* The picker opens where a person was last looking, and on a first run
      * that is home. Putting the firmware there is how this drives the real
      * default rather than a path handed in for the test. */
-    mrc_setenv("HOME", roms);
+    mh_setenv("HOME", roms);
 
-    mrc_devices_panel_open(ui, NULL);
-    CHECK(mrc_devices_panel_showing());
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
+    mh_devices_panel_open(ui, NULL);
+    CHECK(mh_devices_panel_showing());
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
     /* Nothing yet, so a heading saying so and the one way forward. */
     CHECK(count == 2);
-    CHECK(rows[0].kind == MRC_UI_ROW_HEADING);
+    CHECK(rows[0].kind == MH_UI_ROW_HEADING);
     int new_row = row_with(rows, count, "New device\xe2\x80\xa6");
     CHECK(new_row >= 0);
 
     /* Pressing it turns the sheet into a file picker. */
-    CHECK(mrc_devices_panel_row(ui, new_row));
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
+    CHECK(mh_devices_panel_row(ui, new_row));
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
     int rom_row = row_with(rows, count, "PIC-2000.rom");
     CHECK(rom_row >= 0);
     CHECK(row_with(rows, count, "readme.txt") < 0);
 
     /* Choosing firmware makes the device and puts the list back, with it on. */
-    CHECK(mrc_devices_panel_row(ui, rom_row));
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
+    CHECK(mh_devices_panel_row(ui, rom_row));
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
     CHECK(count == 2);                       /* the device, and New device */
     CHECK(row_with(rows, count, "Sony PIC-2000") >= 0);
     /* Labelled with what kind of machine it is and that it has not run. */
@@ -298,38 +298,38 @@ int main(void)
      * same firmware would once have collided with the first and been refused.
      * It counts up instead, and both are in the list afterwards.
      */
-    CHECK(mrc_devices_panel_row(ui, new_row));    /* the picker again */
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
+    CHECK(mh_devices_panel_row(ui, new_row));    /* the picker again */
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
     CHECK(row_with(rows, count, "readme.txt") < 0);   /* filtered out */
     int same = row_with(rows, count, "PIC-2000.rom");
     CHECK(same >= 0);
-    CHECK(mrc_devices_panel_row(ui, same));
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
-    CHECK(rows[0].kind != MRC_UI_ROW_HEADING);        /* nothing went wrong */
+    CHECK(mh_devices_panel_row(ui, same));
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
+    CHECK(rows[0].kind != MH_UI_ROW_HEADING);        /* nothing went wrong */
     CHECK(row_with(rows, count, "Sony PIC-2000") >= 0);
     CHECK(row_with(rows, count, "Sony PIC-2000 (2)") >= 0);
 
     /* Reopening is a fresh look rather than a stale warning. */
-    mrc_devices_panel_close(ui);
-    mrc_devices_panel_open(ui, NULL);
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
-    CHECK(rows[0].kind != MRC_UI_ROW_HEADING);
+    mh_devices_panel_close(ui);
+    mh_devices_panel_open(ui, NULL);
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
+    CHECK(rows[0].kind != MH_UI_ROW_HEADING);
 
     /* Choosing it asks for a switch, which is the frontend's to carry out. */
-    CHECK(!mrc_state_device_requested());
-    CHECK(mrc_devices_panel_row(ui, rows[0].id));
-    CHECK(mrc_state_device_requested());
-    CHECK(!strcmp(mrc_state_take_requested_device(), "sony-pic-2000"));
-    CHECK(!mrc_state_device_requested());
+    CHECK(!mh_state_device_requested());
+    CHECK(mh_devices_panel_row(ui, rows[0].id));
+    CHECK(mh_state_device_requested());
+    CHECK(!strcmp(mh_state_take_requested_device(), "sony-pic-2000"));
+    CHECK(!mh_state_device_requested());
 
     /* The one already running is not offered as somewhere to go. */
-    mrc_devices_panel_open(ui, "sony-pic-2000");
-    rows = mrc_ui_panel_rows(ui);
-    CHECK(mrc_devices_panel_row(ui, rows[0].id));
-    CHECK(!mrc_state_device_requested());
+    mh_devices_panel_open(ui, "sony-pic-2000");
+    rows = mh_ui_panel_rows(ui);
+    CHECK(mh_devices_panel_row(ui, rows[0].id));
+    CHECK(!mh_state_device_requested());
     CHECK(rows[0].value && strstr(rows[0].value, "in use"));
 
     /*
@@ -338,43 +338,43 @@ int main(void)
      * row does -- same id, same guard against the device already running --
      * so only the trash can is new behaviour to prove.
      */
-    rows = mrc_ui_panel_rows(ui);
-    count = mrc_ui_panel_row_count(ui);
+    rows = mh_ui_panel_rows(ui);
+    count = mh_ui_panel_row_count(ui);
     int spare = row_index_with(rows, count, "Sony PIC-2000 (2)");
     int current = row_index_with(rows, count, "Sony PIC-2000");
     CHECK(spare >= 0 && current >= 0);
     if (spare >= 0 && current >= 0) {
         CHECK(rows[spare].action_count == 2);
-        CHECK(rows[spare].action_icon[0] == MRC_UI_ICON_PLAY);
+        CHECK(rows[spare].action_icon[0] == MH_UI_ICON_PLAY);
         CHECK(rows[spare].action_id[0] == rows[spare].id);   /* same as the row */
-        CHECK(rows[spare].action_icon[1] == MRC_UI_ICON_TRASH);
+        CHECK(rows[spare].action_icon[1] == MH_UI_ICON_TRASH);
         int trash = rows[spare].action_id[1];
-        CHECK(rows[current].action_icon[0] == MRC_UI_ICON_STOP);
+        CHECK(rows[current].action_icon[0] == MH_UI_ICON_STOP);
         int current_body = rows[current].id;
 
         /*
          * Deleting is not undoable, so a first tap only asks. Nothing is
          * gone yet, and the question names the device by name.
          */
-        CHECK(mrc_devices_panel_row(ui, trash));
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        CHECK(mh_devices_panel_row(ui, trash));
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         CHECK(row_labelled_like(rows, count, "Delete \"Sony PIC-2000 (2)\"") >= 0);
-        mrc_device still[MRC_DEVICE_MAX];
-        CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 2);
+        mh_device still[MH_DEVICE_MAX];
+        CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 2);
 
         /*
          * Tapping anything else -- here, the other device's body, which is a
          * no-op because it is the one already running -- cancels the
          * question rather than answering it.
          */
-        CHECK(mrc_devices_panel_row(ui, current_body));
-        CHECK(!mrc_state_device_requested());       /* the no-op fired, not a switch */
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        CHECK(mh_devices_panel_row(ui, current_body));
+        CHECK(!mh_state_device_requested());       /* the no-op fired, not a switch */
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         CHECK(row_labelled_like(rows, count, "Delete \"") < 0);   /* the question is gone */
         CHECK(row_with(rows, count, "Sony PIC-2000 (2)") >= 0);   /* the device is not */
-        CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 2);
+        CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 2);
 
         /*
          * -1 is what an ordinary hover reports too, not only a completed tap
@@ -384,17 +384,17 @@ int main(void)
          * anything, or a delete could never survive the pointer moving at
          * all on the way to confirming it.
          */
-        CHECK(mrc_devices_panel_row(ui, trash));
-        CHECK(!mrc_devices_panel_row(ui, -1));
-        CHECK(!mrc_devices_panel_row(ui, -1));
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        CHECK(mh_devices_panel_row(ui, trash));
+        CHECK(!mh_devices_panel_row(ui, -1));
+        CHECK(!mh_devices_panel_row(ui, -1));
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         CHECK(row_labelled_like(rows, count, "Delete \"Sony PIC-2000 (2)\"") >= 0);
-        CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 2);   /* still armed */
-        CHECK(mrc_devices_panel_row(ui, trash));                /* now confirm it */
-        CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 1);
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 2);   /* still armed */
+        CHECK(mh_devices_panel_row(ui, trash));                /* now confirm it */
+        CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 1);
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         CHECK(row_with(rows, count, "Sony PIC-2000 (2)") < 0);
         CHECK(row_with(rows, count, "Sony PIC-2000") >= 0);   /* untouched */
 
@@ -407,40 +407,40 @@ int main(void)
         char again_source[512];
         snprintf(again_source, sizeof(again_source), "%s/again.rom", roms);
         put_firmware(again_source, false);
-        mrc_device recreated;
-        CHECK(mrc_device_create(again_source, "Sony PIC-2000 (2)", &recreated));
+        mh_device recreated;
+        CHECK(mh_device_create(again_source, "Sony PIC-2000 (2)", &recreated));
         /* Made directly against the store rather than through the panel, so
          * the panel's own idea of the list is stale until it looks again. */
-        mrc_devices_panel_open(ui, "sony-pic-2000");
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        mh_devices_panel_open(ui, "sony-pic-2000");
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         spare = row_index_with(rows, count, "Sony PIC-2000 (2)");
         CHECK(spare >= 0);
         if (spare >= 0) {
             trash = rows[spare].action_id[1];
-            CHECK(mrc_devices_panel_row(ui, trash));
-            rows = mrc_ui_panel_rows(ui);
-            count = mrc_ui_panel_row_count(ui);
+            CHECK(mh_devices_panel_row(ui, trash));
+            rows = mh_ui_panel_rows(ui);
+            count = mh_ui_panel_row_count(ui);
             int confirm_row = row_labelled_like(rows, count, "Delete \"Sony PIC-2000 (2)\"");
             CHECK(confirm_row >= 0);
             if (confirm_row >= 0) {
                 CHECK(rows[confirm_row].id >= 0);   /* a real id, not -1 */
-                CHECK(mrc_devices_panel_row(ui, rows[confirm_row].id));
+                CHECK(mh_devices_panel_row(ui, rows[confirm_row].id));
             }
-            rows = mrc_ui_panel_rows(ui);
-            count = mrc_ui_panel_row_count(ui);
+            rows = mh_ui_panel_rows(ui);
+            count = mh_ui_panel_row_count(ui);
             CHECK(row_labelled_like(rows, count, "Delete \"") < 0);   /* cancelled */
             CHECK(row_with(rows, count, "Sony PIC-2000 (2)") >= 0);   /* not deleted */
-            CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 2);
+            CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 2);
         }
 
         /* Arming it again and tapping the same trash can a second time is
          * what actually deletes it. */
-        CHECK(mrc_devices_panel_row(ui, trash));
-        CHECK(mrc_devices_panel_row(ui, trash));
-        CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 1);
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        CHECK(mh_devices_panel_row(ui, trash));
+        CHECK(mh_devices_panel_row(ui, trash));
+        CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 1);
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         CHECK(row_with(rows, count, "Sony PIC-2000 (2)") < 0);
         CHECK(row_with(rows, count, "Sony PIC-2000") >= 0);   /* untouched */
 
@@ -449,62 +449,62 @@ int main(void)
          * are open under the running machine -- rather than arming a delete
          * that would pull them out from under it.
          */
-        rows = mrc_ui_panel_rows(ui);
-        count = mrc_ui_panel_row_count(ui);
+        rows = mh_ui_panel_rows(ui);
+        count = mh_ui_panel_row_count(ui);
         current = row_index_with(rows, count, "Sony PIC-2000");
         CHECK(current >= 0);
         if (current >= 0) {
-            CHECK(mrc_devices_panel_row(ui, rows[current].action_id[1]));
-            rows = mrc_ui_panel_rows(ui);
-            count = mrc_ui_panel_row_count(ui);
-            CHECK(rows[0].kind == MRC_UI_ROW_HEADING);
+            CHECK(mh_devices_panel_row(ui, rows[current].action_id[1]));
+            rows = mh_ui_panel_rows(ui);
+            count = mh_ui_panel_row_count(ui);
+            CHECK(rows[0].kind == MH_UI_ROW_HEADING);
             CHECK(rows[0].label && strstr(rows[0].label, "Press Stop"));
             CHECK(row_labelled_like(rows, count, "Delete \"") < 0);  /* not armed */
-            CHECK(mrc_devices_list(still, MRC_DEVICE_MAX) == 1);     /* not deleted */
+            CHECK(mh_devices_list(still, MH_DEVICE_MAX) == 1);     /* not deleted */
         }
     }
 
     /* The last, previously running device can stop without being deleted,
      * then be resumed or deleted from the unloaded chooser. */
-    mrc_devices_panel_open(ui, "sony-pic-2000");
-    rows = mrc_ui_panel_rows(ui);
-    CHECK(rows[0].action_icon[0] == MRC_UI_ICON_STOP);
-    CHECK(mrc_devices_panel_row(ui, rows[0].action_id[0]));
-    CHECK(mrc_state_device_requested());
-    CHECK(mrc_state_take_requested_device() == NULL);
-    CHECK(mrc_state_take_stop());
-    CHECK(!mrc_state_take_stop());
-    CHECK(!mrc_state_device_requested());
-    CHECK(mrc_devices_list(listed, MRC_DEVICE_MAX) == 1);
-    mrc_devices_panel_close(ui);
-    mrc_devices_panel_open(ui, NULL); /* launcher does this after teardown */
-    rows = mrc_ui_panel_rows(ui);
-    CHECK(rows[0].action_icon[0] == MRC_UI_ICON_PLAY);
-    CHECK(mrc_devices_panel_row(ui, rows[0].action_id[0]));
-    CHECK(!strcmp(mrc_state_take_requested_device(), "sony-pic-2000"));
+    mh_devices_panel_open(ui, "sony-pic-2000");
+    rows = mh_ui_panel_rows(ui);
+    CHECK(rows[0].action_icon[0] == MH_UI_ICON_STOP);
+    CHECK(mh_devices_panel_row(ui, rows[0].action_id[0]));
+    CHECK(mh_state_device_requested());
+    CHECK(mh_state_take_requested_device() == NULL);
+    CHECK(mh_state_take_stop());
+    CHECK(!mh_state_take_stop());
+    CHECK(!mh_state_device_requested());
+    CHECK(mh_devices_list(listed, MH_DEVICE_MAX) == 1);
+    mh_devices_panel_close(ui);
+    mh_devices_panel_open(ui, NULL); /* launcher does this after teardown */
+    rows = mh_ui_panel_rows(ui);
+    CHECK(rows[0].action_icon[0] == MH_UI_ICON_PLAY);
+    CHECK(mh_devices_panel_row(ui, rows[0].action_id[0]));
+    CHECK(!strcmp(mh_state_take_requested_device(), "sony-pic-2000"));
     int last_trash = rows[0].action_id[1];
-    CHECK(mrc_devices_panel_row(ui, last_trash));
-    CHECK(mrc_devices_list(listed, MRC_DEVICE_MAX) == 1);
-    CHECK(mrc_devices_panel_row(ui, last_trash));
-    CHECK(mrc_devices_list(listed, MRC_DEVICE_MAX) == 0);
-    CHECK(row_with(mrc_ui_panel_rows(ui), mrc_ui_panel_row_count(ui), "no devices yet") >= 0);
-    mrc_state_request_stop();
-    mrc_state_request_device("replacement");
-    CHECK(!mrc_state_take_stop());
-    CHECK(!strcmp(mrc_state_take_requested_device(), "replacement"));
-    mrc_state_request_device("replacement");
-    mrc_state_request_stop();
-    CHECK(mrc_state_take_requested_device() == NULL);
-    CHECK(mrc_state_take_stop());
-    mrc_devices_panel_close(ui);
-    CHECK(!mrc_devices_panel_showing());
+    CHECK(mh_devices_panel_row(ui, last_trash));
+    CHECK(mh_devices_list(listed, MH_DEVICE_MAX) == 1);
+    CHECK(mh_devices_panel_row(ui, last_trash));
+    CHECK(mh_devices_list(listed, MH_DEVICE_MAX) == 0);
+    CHECK(row_with(mh_ui_panel_rows(ui), mh_ui_panel_row_count(ui), "no devices yet") >= 0);
+    mh_state_request_stop();
+    mh_state_request_device("replacement");
+    CHECK(!mh_state_take_stop());
+    CHECK(!strcmp(mh_state_take_requested_device(), "replacement"));
+    mh_state_request_device("replacement");
+    mh_state_request_stop();
+    CHECK(mh_state_take_requested_device() == NULL);
+    CHECK(mh_state_take_stop());
+    mh_devices_panel_close(ui);
+    CHECK(!mh_devices_panel_showing());
     {
-        mrc_device leftover[MRC_DEVICE_MAX];
-        unsigned k = mrc_devices_list(leftover, MRC_DEVICE_MAX);
-        for (unsigned i = 0; i < k; i++) mrc_device_delete(&leftover[i]);
+        mh_device leftover[MH_DEVICE_MAX];
+        unsigned k = mh_devices_list(leftover, MH_DEVICE_MAX);
+        for (unsigned i = 0; i < k; i++) mh_device_delete(&leftover[i]);
     }
 
-    mrc_ui_close(ui);
+    mh_ui_close(ui);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

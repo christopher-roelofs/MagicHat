@@ -17,14 +17,14 @@
  * Windows has no pseudo-terminals. A named pipe or a com0com pair could
  * stand in; until then only the in-process link is available here.
  */
-bool mrc_serial_open_pty(mrc_serial *s)
+bool mh_serial_open_pty(mh_serial *s)
 {
-    *s = (mrc_serial){ .fd = -1 };
+    *s = (mh_serial){ .fd = -1 };
     fprintf(stderr, "serial: a pty port is not available on Windows\n");
     return false;
 }
 #else
-bool mrc_serial_open_pty(mrc_serial *s)
+bool mh_serial_open_pty(mh_serial *s)
 {
     memset(s, 0, sizeof(*s));
     s->fd = posix_openpt(O_RDWR | O_NOCTTY);
@@ -60,29 +60,29 @@ bool mrc_serial_open_pty(mrc_serial *s)
 }
 #endif
 
-void mrc_serial_close(mrc_serial *s)
+void mh_serial_close(mh_serial *s)
 {
     if (s->fd >= 0)
         close(s->fd);
     s->fd = -1;
 }
 
-void mrc_serial_attach(mrc_serial *s, mrc_pclink *peer)
+void mh_serial_attach(mh_serial *s, mh_pclink *peer)
 {
-    *s = (mrc_serial){ .fd = -1, .peer = peer };
+    *s = (mh_serial){ .fd = -1, .peer = peer };
 }
 
-bool mrc_serial_read(mrc_serial *s, uint8_t *byte)
+bool mh_serial_read(mh_serial *s, uint8_t *byte)
 {
-    if (s->peer) return mrc_pclink_to_guest(s->peer, byte);
+    if (s->peer) return mh_pclink_to_guest(s->peer, byte);
     if (s->fd < 0)
         return false;
     return read(s->fd, byte, 1) == 1;
 }
 
-void mrc_serial_write(mrc_serial *s, uint8_t byte)
+void mh_serial_write(mh_serial *s, uint8_t byte)
 {
-    if (s->peer) { mrc_pclink_from_guest(s->peer, byte); return; }
+    if (s->peer) { mh_pclink_from_guest(s->peer, byte); return; }
     if (s->fd < 0)
         return;
     ssize_t n = write(s->fd, &byte, 1);

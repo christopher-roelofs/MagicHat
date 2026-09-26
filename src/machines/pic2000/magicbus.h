@@ -14,7 +14,7 @@ struct PicMagicBus {
     uint8_t command_high = 0, address = 6, selection = 0, pending_read = 0;
     uint8_t write_data[8] = {};
     unsigned write_size = 0;
-    mrc_mb_keyboard keys = {};
+    mh_mb_keyboard keys = {};
     uint8_t held[32] = {}, release[32] = {};
     uint64_t commands = 0, reads = 0, writes = 0, errors = 0;
     void write(m68k_machine *, unsigned off, unsigned size, uint32_t value);

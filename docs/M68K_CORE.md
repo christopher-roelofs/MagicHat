@@ -90,7 +90,7 @@ instructions, the register-list and peripheral moves, the control and
 alternate-space moves, and exceptions with their frames.
 
 **It covers 100% of what the three ROMs execute.** That is measured rather
-than claimed: `mcap --insn-heat` decodes every opcode the machine ran
+than claimed: `mhat --insn-heat` decodes every opcode the machine ran
 through the new core and asks it whether it implements it, weighted by how
 often it ran. The core is the only thing that knows what it implements, so
 it is the only thing that answers; a second list kept in a test would drift
@@ -202,7 +202,7 @@ compares that flag inverted for divides and counts the cases, so that the
 day the reference is fixed the test says so rather than quietly passing.
 
 **Whether it matters to these machines was measured rather than argued.**
-`mcap --insn-heat` now also reports what runs immediately after a
+`mhat --insn-heat` now also reports what runs immediately after a
 divide, which is where a wrong zero flag would be read if anywhere:
 
 | ROM | Instructions after a divide | Of those, reading the zero flag |
@@ -219,7 +219,7 @@ something observed to be broken.
 
 ## What the machines actually execute
 
-`mcap --insn-heat` counts executed instructions by opcode and reports
+`mhat --insn-heat` counts executed instructions by opcode and reports
 them at exit through the project core's instruction metadata. This is
 the 68k equivalent of the MIPS engine's helper histogram, and it exists for
 the same reason: the order to implement things in should be measured, not
@@ -591,7 +591,7 @@ its recorded bytes matched memory, checked immediately before entry. Yet
 the emitted check refuses three entries in a run of nine million, and
 without it those three ran code belonging to somewhere else.
 
-So the check stays, and so does this paragraph. `MRC_M68K_PARANOID=1`
+So the check stays, and so does this paragraph. `MH_M68K_PARANOID=1`
 re-runs the C-side version of it on every entry, for whoever picks this up
 next.
 
@@ -767,11 +767,11 @@ bisecting a divergence.
 ### Switches, for when the two disagree
 
 `--cpu-engine interpreter` puts the reference back, which is the first
-thing to try when a machine misbehaves. `MRC_M68K_EMIT=0` keeps the block
+thing to try when a machine misbehaves. `MH_M68K_EMIT=0` keeps the block
 layer and drops the native code, which separates an emitter bug from a
 core one in a single run.
 
-`MRC_68K_CORE_TRACE=<n>` prints the first n instructions with their stack
+`MH_68K_CORE_TRACE=<n>` prints the first n instructions with their stack
 pointer, from whichever engine ran each one, so a trace taken on the block
 engine can be diffed line for line against one taken on the reference.
 `--trace` cannot do this: the loop that prints is the one the engine
@@ -884,7 +884,7 @@ A block now has a *chain entry* — the program counter, the budget and the
 guard — and ends with a jump that starts out going to a stub and is
 redirected at whichever block followed it. The frame and the retired count
 belong to whichever block was called, so a chain returns one count for all
-of them. `MRC_M68K_LINK=0` turns it off for an exact comparison.
+of them. `MH_M68K_LINK=0` turns it off for an exact comparison.
 
 Four things have to be right, and three of them were found by being wrong:
 
@@ -968,7 +968,7 @@ would have retired the guard. The guard has its own constant now —
 `CORE_GIVE_UP_AVERAGE` — because the two say different things: the gate is
 how short a stretch is worth offering, and the guard is how badly the
 engine has to be doing before the machine stops offering at all.
-`MRC_68K_MIN_RUN` overrides the gate, which is how that table was made.
+`MH_68K_MIN_RUN` overrides the gate, which is how that table was made.
 
 The old profile note about time spent in the reference core's virtual memory
 API is obsolete. The current emulator has no reference-core dependency.

@@ -16,8 +16,8 @@ and Android Gradle Plugin 8.5.2 are pinned. The build script downloads SDL
 ./scripts/build_android.sh
 # Or set ANDROID_HOME explicitly.
 adb devices -l
-adb -s DEVICE_SERIAL install -r out/android/magiccap-arm64-debug.apk
-adb -s DEVICE_SERIAL shell am start -n org.magicrecomp.app/.LauncherActivity
+adb -s DEVICE_SERIAL install -r out/android/magichat-arm64-debug.apk
+adb -s DEVICE_SERIAL shell am start -n org.magichat.app/.LauncherActivity
 ```
 
 For wireless debugging, pair using the address/port and code from **Pair
@@ -69,7 +69,7 @@ Each new session uses a separate native process to reset existing CLI globals.
 Select **View session log** in the ROM list to inspect startup/errors. The
 last 64 KiB of `session.log` are displayed; the full file is app-private.
 For debug builds, files can also be inspected using `adb shell run-as
-org.magicrecomp.app`.
+org.magichat.app`.
 
 ## CPU engine
 
@@ -81,7 +81,7 @@ the option without changing behavior. On the SM-P610 (Android API 36) the
 native engine's code arena uses the dual `memfd` mapping, so no page is ever
 writable and executable; a device whose policy refuses an executable file
 mapping falls back to one anonymous mapping whose window is made writable
-only while a block is emitted. `MRC_JIT_SINGLE_MAP=1` selects that fallback
+only while a block is emitted. `MH_JIT_SINGLE_MAP=1` selects that fallback
 on a host that does not need it.
 
 DataRover on the SM-P610 went from 0.724x real time (interpreter, before)
@@ -130,5 +130,4 @@ the other supported 68k ROMs on this tablet:
   are aligned to 16 KiB. The physical tablet uses 4-KiB pages; execution on a
   16-KiB-page device has not yet been tested.
 
-The final test leaves DataRover running at the Desk. Build/test logs and
-screenshots are in `out/android/`; these are local artifacts, not app assets.
+The final test leaves DataRover running at the Desk.

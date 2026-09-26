@@ -25,7 +25,7 @@ cd "$(dirname "$0")/.."
 
 ROM=roms/MagicCap-USA.image
 GOLDEN=tests/golden/ostest.txt
-MCAP=${MCAP:-./build/mcap}
+MHAT=${MHAT:-./build/mhat}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -f "$ROM" ] || { echo "SKIP: $ROM not present"; exit 0; }
-[ -x "$MCAP" ] || { echo "FAIL: $MCAP not built"; exit 1; }
+[ -x "$MHAT" ] || { echo "FAIL: $MHAT not built"; exit 1; }
 [ -n "$COVDIR" ] && mkdir -p "$COVDIR"
 
 fails=0
@@ -104,7 +104,7 @@ fbhash() { sha256sum "$1" | cut -c1-16; }
 # ---------------------------------------------------------------------------
 
 mon() {   # mon <name> <command>
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/monitor.state --input "$2\n" \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/monitor.state --input "$2\n" \
         -n 40000000 $(cov_args "$1") >"$WORK/$1.out" 2>"$WORK/$1.err" || true
 }
 
@@ -146,7 +146,7 @@ fi
 
 desk_run() {   # desk_run <name> <extra args...>
     name=$1; shift
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 150000000 \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 150000000 \
         --dump-fb "$WORK/$name.pgm" $(cov_args "$name") "$@" \
         >"$WORK/$name.out" 2>"$WORK/$name.err" || true
 }
@@ -192,12 +192,12 @@ fi
 
 if want_test keyboard; then
     echo "on-screen keyboard"
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
         -n 700000000 --tap-hold 20000000 \
         --taps-px "435,160,60000000;$(scripts/type --at 150000000 HELLO)" \
         --dump-fb "$WORK/kbd.typed.pgm" $(cov_args kbd.typed) \
         >/dev/null 2>&1 || true
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
         -n 700000000 --tap-hold 20000000 \
         --taps-px "435,160,60000000;365,298,150000000" \
         --dump-fb "$WORK/kbd.blank.pgm" >/dev/null 2>&1 || true
@@ -228,7 +228,7 @@ fi
 if want_test battery; then
     echo "battery gauge"
     bat_run() {   # bat_run <name> <ad2>
-        $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+        $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
             -n 600000000 --aux-adc 0,0,$2,900 --dump-fb "$WORK/$1.pgm" \
             $(cov_args "$1") >/dev/null 2>&1 || true
     }
@@ -251,7 +251,7 @@ if want_test battery; then
     # The default has to be a healthy battery, or every headless run starts
     # with Magic Cap complaining about power.
     bat_run bat.default_check 900
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state \
         -n 600000000 --dump-fb "$WORK/bat.default.pgm" >/dev/null 2>&1 || true
     [ "$(fbhash "$WORK/bat.default.pgm")" = "$(fbhash "$WORK/bat.full.pgm")" ] \
         && r=yes || r=no
@@ -346,12 +346,12 @@ if want_test gui; then
     echo "GUI input path"
     gui_tap() {   # gui_tap <name> <at_frame> [extra args]
         n=$1; at=$2; shift 2
-        SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy MRC_GUI_AUTOTAP=240,160,4,$at \
-            $MCAP --temporary --fresh --rom $ROM --load-state states/cleandesk.state --gui \
+        SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy MH_GUI_AUTOTAP=240,160,4,$at \
+            $MHAT --temporary --fresh --rom $ROM --load-state states/cleandesk.state --gui \
             --no-host-battery --dump-fb "$WORK/$n.pgm" $(cov_args "$n") "$@" \
             >"$WORK/$n.out" 2>"$WORK/$n.err" || true
         SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-            $MCAP --temporary --fresh --rom $ROM --load-state states/cleandesk.state --gui \
+            $MHAT --temporary --fresh --rom $ROM --load-state states/cleandesk.state --gui \
             --no-host-battery -n $(( (at + 274) * 614400 )) \
             --dump-fb "$WORK/$n.base.pgm" \
             >/dev/null 2>&1 || true
@@ -382,11 +382,11 @@ if want_test snapshot; then
 
     # Save with --coverage, then load without it. The coverage pointer used to
     # survive the round trip, and every such load died in the coverage write.
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 20000000 \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 20000000 \
         --coverage "$WORK/snap.cov" --save-state "$WORK/snap.state" \
         >/dev/null 2>&1 || true
     if [ -f "$WORK/snap.state" ]; then
-        if $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/snap.state" -n 20000000 \
+        if $MHAT --temporary --fresh --rom $ROM --headless --load-state "$WORK/snap.state" -n 20000000 \
                 --dump-fb "$WORK/snap.pgm" >/dev/null 2>&1 &&
            [ -f "$WORK/snap.pgm" ]; then r=yes; else r=no; fi
         claim snapshot.reload_after_coverage "$r" \
@@ -396,11 +396,11 @@ if want_test snapshot; then
     fi
 
     # The same shape with the audio sink, which is a function pointer.
-    $MCAP --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 20000000 \
+    $MHAT --temporary --fresh --rom $ROM --headless --load-state states/cleandesk.state -n 20000000 \
         --audio-wav "$WORK/snap.wav" --save-state "$WORK/snapa.state" \
         >/dev/null 2>&1 || true
     if [ -f "$WORK/snapa.state" ]; then
-        if $MCAP --temporary --fresh --rom $ROM --headless --load-state "$WORK/snapa.state" -n 20000000 \
+        if $MHAT --temporary --fresh --rom $ROM --headless --load-state "$WORK/snapa.state" -n 20000000 \
                 --dump-fb "$WORK/snapa.pgm" >/dev/null 2>&1 &&
            [ -f "$WORK/snapa.pgm" ]; then r=yes; else r=no; fi
         claim snapshot.reload_after_audio "$r" \

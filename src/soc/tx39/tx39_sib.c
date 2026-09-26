@@ -49,16 +49,16 @@
  */
 #define SIB_SND_FRAME_SCLKS 128u
 
-uint32_t mrc_sib_snd_rate_hz(const tx39_sib *sib)
+uint32_t mh_sib_snd_rate_hz(const tx39_sib *sib)
 {
     unsigned div = (sib->ctrl >> SIBCTRL_SNDFSDIV_SHIFT) & SIBCTRL_SNDFSDIV_MASK;
     uint32_t hz = (uint32_t)(3686400ull * 10 / ((div + 1) * SIB_SND_FRAME_SCLKS));
     return hz ? hz : 11025u;
 }
 
-uint32_t mrc_sib_output_rate_hz(const tx39_sib *sib)
+uint32_t mh_sib_output_rate_hz(const tx39_sib *sib)
 {
-    return 2 * mrc_sib_snd_rate_hz(sib);
+    return 2 * mh_sib_snd_rate_hz(sib);
 }
 
 static uint32_t snd_ring_bytes(const tx39_sib *sib)
@@ -78,13 +78,13 @@ static uint32_t snd_ring_bytes(const tx39_sib *sib)
     return (blocks + 1) * 4u;
 }
 
-void mrc_sib_set_audio_sink(tx39_sib *sib, mrc_audio_sink fn, void *ctx)
+void mh_sib_set_audio_sink(tx39_sib *sib, mh_audio_sink fn, void *ctx)
 {
     sib->audio_sink = fn;
     sib->audio_ctx = ctx;
 }
 
-void mrc_sib_pump_audio(tx39_sib *sib)
+void mh_sib_pump_audio(tx39_sib *sib)
 {
     tx39 *s = sib->soc;
 
@@ -113,7 +113,7 @@ void mrc_sib_pump_audio(tx39_sib *sib)
         base -= TX39_KUSEG_DRAM_BANK0;
 
     uint64_t elapsed = s->cpu->cycle_count - sib->snd_cycle_ref;
-    uint32_t rate = mrc_sib_snd_rate_hz(sib);
+    uint32_t rate = mh_sib_snd_rate_hz(sib);
     uint64_t owed = elapsed * rate / s->cpu_hz;
     if (owed == 0)
         return;
@@ -126,11 +126,11 @@ void mrc_sib_pump_audio(tx39_sib *sib)
 
     for (uint64_t i = 0; i < owed; i++) {
         bool ok;
-        uint32_t v = mrc_bus_read(s->cpu->bus, base + sib->snd_read_off, 2, &ok);
+        uint32_t v = mh_bus_read(s->cpu->bus, base + sib->snd_read_off, 2, &ok);
         /* The codec runs even without a speaker attached. Host PCM is 2x
          * the DMA rate for reconstruction; guest DMA timing is unchanged. */
         int16_t output[2];
-        mrc_ucb_audio_sample(&s->audio, sib->codec.reg[8], ok ? v : 0, output);
+        mh_ucb_audio_sample(&s->audio, sib->codec.reg[8], ok ? v : 0, output);
         if (sib->audio_sink) {
             sib->audio_sink(sib->audio_ctx, output[0]);
             sib->audio_sink(sib->audio_ctx, output[1]);
@@ -147,10 +147,10 @@ void mrc_sib_pump_audio(tx39_sib *sib)
          * showed before this was added: periodic at 16384 samples, forever.
          */
         if (prev < half && sib->snd_read_off >= half)
-            mrc_icu_raise(&s->icu, 1, INT1_SND0_5INT);
+            mh_icu_raise(&s->icu, 1, INT1_SND0_5INT);
         if (sib->snd_read_off >= bytes) {
             sib->snd_read_off = 0;
-            mrc_icu_raise(&s->icu, 1, INT1_SND1_0INT | INT1_SNDDMACNTINT);
+            mh_icu_raise(&s->icu, 1, INT1_SND1_0INT | INT1_SNDDMACNTINT);
         }
     }
 }
@@ -170,14 +170,14 @@ static void sf0_transact(tx39_sib *sib, uint32_t cmd)
         sib->log_codec--;
         fprintf(sib->soc->log, "[codec] %s %-9s %04X @%08X ra=%08X\n",
                 write ? "W" : "R", rname[reg & 0xF],
-                write ? data : mrc_ucb_read(&sib->codec, reg),
+                write ? data : mh_ucb_read(&sib->codec, reg),
                 sib->soc->pc_hint ? *sib->soc->pc_hint : 0,
                 sib->soc->cpu ? sib->soc->cpu->r[31] : 0);
     }
 
     if (write) {
         sib->codec_writes[reg & 0xF]++;
-        mrc_ucb_write(&sib->codec, reg, data);
+        mh_ucb_write(&sib->codec, reg, data);
         /* Power-off may happen after DMA has stopped, so reset the filter
          * here too; waiting for a disabled sample could retain stale audio. */
         if (reg == 8 && !(data & UCB_AUDIO_OUT_ENA))
@@ -187,13 +187,13 @@ static void sf0_transact(tx39_sib *sib, uint32_t cmd)
                        data;
     } else {
         sib->codec_reads[reg & 0xF]++;
-        uint16_t v = mrc_ucb_read(&sib->codec, reg);
+        uint16_t v = mh_ucb_read(&sib->codec, reg);
         sib->sf0stat = ((uint32_t)reg << SIBSF_REGADDR_SHIFT) | v;
     }
 
     /*
      * The result becomes available at the next frame boundary, not here —
-     * see mrc_sib_update() for why that distinction matters.
+     * see mh_sib_update() for why that distinction matters.
      */
 }
 
@@ -220,7 +220,7 @@ static void sf0_transact(tx39_sib *sib, uint32_t cmd)
  * That is faster than the real 
  * bus and is recorded in docs/OPEN_QUESTIONS.md.
  */
-void mrc_sib_update(tx39_sib *sib)
+void mh_sib_update(tx39_sib *sib)
 {
     uint32_t bits = 0;
 
@@ -244,7 +244,7 @@ void mrc_sib_update(tx39_sib *sib)
 
     if (!(sib->ctrl & SIBCTRL_ENSIB)) {
         if (bits)
-            mrc_icu_raise(&sib->soc->icu, 1, bits);
+            mh_icu_raise(&sib->soc->icu, 1, bits);
         return;
     }
     if (sib->ctrl & SIBCTRL_ENSF0)
@@ -282,10 +282,10 @@ void mrc_sib_update(tx39_sib *sib)
      * INTRSTATUS1's SIBIRQPOSINT / SIBIRQNEGINT. This is how a touch reaches
      * the OS.
      */
-    mrc_icu_raise(&sib->soc->icu, 1, bits);
+    mh_icu_raise(&sib->soc->icu, 1, bits);
 }
 
-uint32_t mrc_sib_read(tx39_sib *sib, uint32_t off, bool *decoded)
+uint32_t mh_sib_read(tx39_sib *sib, uint32_t off, bool *decoded)
 {
     *decoded = true;
 
@@ -323,7 +323,7 @@ uint32_t mrc_sib_read(tx39_sib *sib, uint32_t off, bool *decoded)
     }
 }
 
-bool mrc_sib_write(tx39_sib *sib, uint32_t off, uint32_t val)
+bool mh_sib_write(tx39_sib *sib, uint32_t off, uint32_t val)
 {
     switch (off) {
     case TX39_SIBSIZE:       sib->size = val; return true;
@@ -354,7 +354,7 @@ bool mrc_sib_write(tx39_sib *sib, uint32_t off, uint32_t val)
     }
 }
 
-void mrc_sib_print_codec_traffic(const tx39_sib *sib, FILE *f)
+void mh_sib_print_codec_traffic(const tx39_sib *sib, FILE *f)
 {
     static const char *const name[16] = {
         "IO_DATA", "IO_DIR", "IE_RIS", "IE_FAL", "IE_STATUS", "TC_A", "TC_B",

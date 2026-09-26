@@ -17,9 +17,9 @@
 #define ROW_EJECT2 0x6021
 #define ROW_IMPORT_SRAM 0x6022
 
-static mrc_ui_row rows[5];
+static mh_ui_row rows[5];
 static bool showing;
-static mrc_picker *picker;
+static mh_picker *picker;
 static unsigned picker_slot;
 static char last_directory[4096];
 static char card_directory[4096];
@@ -31,25 +31,25 @@ static char create_name[128];
 static char notice[160];
 static char display_values[2][256];
 static bool create_name_edited;
-static void begin_create(mrc_ui *, mrc_runtime *);
-static void finish_create(mrc_ui *, mrc_runtime *);
+static void begin_create(mh_ui *, mh_runtime *);
+static void finish_create(mh_ui *, mh_runtime *);
 
-static const char *card_display_name(mrc_runtime *m, unsigned slot)
+static const char *card_display_name(mh_runtime *m, unsigned slot)
 {
     const char *path = m && m->ops->card_name
                      ? m->ops->card_name(m->board, slot) : NULL;
     if (!path || !*path) return "inserted — eject";
-    const char *slash = mrc_path_last_separator(path);
+    const char *slash = mh_path_last_separator(path);
     return slash && slash[1] ? slash + 1 : path;
 }
 
 static bool ensure_card_directory(void)
 {
     struct stat st;
-    if (mrc_mkdir("cards") < 0 && access("cards", F_OK) < 0)
+    if (mh_mkdir("cards") < 0 && access("cards", F_OK) < 0)
         return false;
     if (stat("cards", &st) < 0 || !S_ISDIR(st.st_mode)) return false;
-    if (!mrc_realpath("cards", card_directory, sizeof(card_directory))) return false;
+    if (!mh_realpath("cards", card_directory, sizeof(card_directory))) return false;
     return true;
 }
 
@@ -64,42 +64,42 @@ static void default_name(void)
     snprintf(create_name, sizeof(create_name), "mc%u", 100000u);
 }
 
-static void build(mrc_ui *ui, mrc_runtime *m)
+static void build(mh_ui *ui, mh_runtime *m)
 {
     unsigned count = 0;
     if (notice[0]) {
-        rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_HEADING,
+        rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_HEADING,
                                       .label = notice };
     }
     if (creating) {
-        rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_HEADING,
+        rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_HEADING,
                                       .label = "Type a name, then choose Create" };
-        rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_CHOICE,
+        rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_CHOICE,
                                       .label = create_name,
                                       .value = "name" };
-        rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_ACTION,
+        rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_ACTION,
                                       .label = "Create",
                                       .value = create_slot ? "slot 2" : "slot 1",
                                       .id = ROW_CREATE };
-        mrc_ui_open_panel(ui, "New memory card", rows, count);
+        mh_ui_open_panel(ui, "New memory card", rows, count);
         showing = true;
         return;
     }
     if (type_selecting) {
-        rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_ACTION,
+        rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_ACTION,
                                       .label = "SRAM memory card",
                                       .value = "writable storage",
                                       .id = ROW_TYPE_SRAM };
-        if (mrc_import_available())
-            rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_ACTION,
+        if (mh_import_available())
+            rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_ACTION,
                 .label = "Import SRAM card copy…", .value = "from Android storage",
                 .id = ROW_IMPORT_SRAM };
         if (m && m->ops->card_insert_ne2000)
-            rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_ACTION,
+            rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_ACTION,
                                           .label = "NE2000 network card",
                                           .value = "Internet",
                                           .id = ROW_TYPE_NE2000 };
-        mrc_ui_open_panel(ui, "Choose PC Card", rows, count);
+        mh_ui_open_panel(ui, "Choose PC Card", rows, count);
         showing = true;
         return;
     }
@@ -113,27 +113,27 @@ static void build(mrc_ui *ui, mrc_runtime *m)
                      "%s — %s", type ? type : "card",
                      card_display_name(m, slot));
         }
-        rows[count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_ACTION,
+        rows[count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_ACTION,
             .label = slot ? "Card 2" : "Card 1",
             .value = present ? display_values[slot] : "empty — insert",
             .id = slot ? ROW_SLOT2 : ROW_SLOT1,
             .action_count = present ? 1 : 0,
-            .action_icon = { MRC_UI_ICON_EJECT },
+            .action_icon = { MH_UI_ICON_EJECT },
             .action_id = { slot ? ROW_EJECT2 : ROW_EJECT1 },
         };
     }
-    rows[count++] = (mrc_ui_row){ .kind = MRC_UI_ROW_ACTION,
+    rows[count++] = (mh_ui_row){ .kind = MH_UI_ROW_ACTION,
                                   .label = "Create card…",
                                   .value = "new writable SRAM image",
                                   .id = ROW_CREATE };
-    mrc_ui_open_panel(ui, "PC Cards", rows, count);
+    mh_ui_open_panel(ui, "PC Cards", rows, count);
     showing = true;
 }
 
-void mrc_card_panel_open(mrc_ui *ui, mrc_runtime *m)
+void mh_card_panel_open(mh_ui *ui, mh_runtime *m)
 {
-    if (picker) { mrc_picker_close(picker); picker = NULL; }
+    if (picker) { mh_picker_close(picker); picker = NULL; }
     if (creating) SDL_StopTextInput();
     creating = false;
     type_selecting = false;
@@ -143,24 +143,24 @@ void mrc_card_panel_open(mrc_ui *ui, mrc_runtime *m)
     build(ui, m);
 }
 
-void mrc_card_panel_close(mrc_ui *ui)
+void mh_card_panel_close(mh_ui *ui)
 {
-    mrc_import_cancel(MRC_IMPORT_CARD);
+    mh_import_cancel(MH_IMPORT_CARD);
     if (picker) {
-        const char *at = mrc_picker_directory(picker);
+        const char *at = mh_picker_directory(picker);
         if (at) snprintf(last_directory, sizeof(last_directory), "%s", at);
-        mrc_picker_close(picker); picker = NULL;
+        mh_picker_close(picker); picker = NULL;
     }
     if (creating) SDL_StopTextInput();
     creating = false;
     type_selecting = false;
-    if (mrc_ui_panel_open(ui)) mrc_ui_close_panel(ui);
+    if (mh_ui_panel_open(ui)) mh_ui_close_panel(ui);
     showing = false;
 }
 
-bool mrc_card_panel_showing(void) { return showing; }
+bool mh_card_panel_showing(void) { return showing; }
 
-bool mrc_card_panel_back(mrc_ui *ui, mrc_runtime *m)
+bool mh_card_panel_back(mh_ui *ui, mh_runtime *m)
 {
     if (!showing) return false;
     if (creating) {
@@ -171,29 +171,29 @@ bool mrc_card_panel_back(mrc_ui *ui, mrc_runtime *m)
         return true;
     }
     if (type_selecting) {
-        mrc_import_cancel(MRC_IMPORT_CARD);
+        mh_import_cancel(MH_IMPORT_CARD);
         type_selecting = false;
         build(ui, m);
         return true;
     }
     if (!picker) return false;
-    const char *at = mrc_picker_directory(picker);
+    const char *at = mh_picker_directory(picker);
     if (at) snprintf(last_directory, sizeof(last_directory), "%s", at);
-    mrc_picker_close(picker); picker = NULL;
+    mh_picker_close(picker); picker = NULL;
     type_slot = picker_slot;
     type_selecting = true;
     build(ui, m);
     return true;
 }
 
-static unsigned first_empty_slot(mrc_runtime *m)
+static unsigned first_empty_slot(mh_runtime *m)
 {
     for (unsigned slot = 0; slot < 2; slot++)
         if (!m->ops->card_present(m->board, slot)) return slot;
     return 2;
 }
 
-static void begin_create(mrc_ui *ui, mrc_runtime *m)
+static void begin_create(mh_ui *ui, mh_runtime *m)
 {
     if (!card_directory[0] && !ensure_card_directory()) {
         snprintf(notice, sizeof(notice), "could not create cards directory");
@@ -214,7 +214,7 @@ static void begin_create(mrc_ui *ui, mrc_runtime *m)
     build(ui, m);
 }
 
-static void finish_create(mrc_ui *ui, mrc_runtime *m)
+static void finish_create(mh_ui *ui, mh_runtime *m)
 {
     if (!create_name[0] || !strcmp(create_name, ".") || !strcmp(create_name, "..")) {
         snprintf(notice, sizeof(notice), "Enter a valid card name");
@@ -243,7 +243,7 @@ static void finish_create(mrc_ui *ui, mrc_runtime *m)
     build(ui, m);
 }
 
-bool mrc_card_panel_event(mrc_ui *ui, mrc_runtime *m, const SDL_Event *e)
+bool mh_card_panel_event(mh_ui *ui, mh_runtime *m, const SDL_Event *e)
 {
     if (!showing || !creating) return false;
     if (e->type == SDL_TEXTINPUT) {
@@ -280,19 +280,19 @@ bool mrc_card_panel_event(mrc_ui *ui, mrc_runtime *m, const SDL_Event *e)
     return true;
 }
 
-bool mrc_card_panel_row(mrc_ui *ui, mrc_runtime *m, int id)
+bool mh_card_panel_row(mh_ui *ui, mh_runtime *m, int id)
 {
     if (!showing) return false;
-    if (mrc_import_pending(MRC_IMPORT_CARD)) return true;
+    if (mh_import_pending(MH_IMPORT_CARD)) return true;
     if (picker) {
-        if (!mrc_picker_row(picker, id)) return false;
-        const char *chosen = mrc_picker_taken(picker);
+        if (!mh_picker_row(picker, id)) return false;
+        const char *chosen = mh_picker_taken(picker);
         if (!chosen) return true;
         char path[4096];
         snprintf(path, sizeof(path), "%s", chosen);
-        const char *at = mrc_picker_directory(picker);
+        const char *at = mh_picker_directory(picker);
         if (at) snprintf(last_directory, sizeof(last_directory), "%s", at);
-        mrc_picker_close(picker); picker = NULL;
+        mh_picker_close(picker); picker = NULL;
         if (!m || !m->ops->card_insert_sram ||
             !m->ops->card_insert_sram(m->board, picker_slot, path))
             snprintf(notice, sizeof(notice), "Could not attach that SRAM card");
@@ -309,7 +309,7 @@ bool mrc_card_panel_row(mrc_ui *ui, mrc_runtime *m, int id)
     if (type_selecting) {
         if (id == ROW_IMPORT_SRAM) {
             picker_slot = type_slot;
-            snprintf(notice, sizeof(notice), "%s", mrc_import_request(MRC_IMPORT_CARD)
+            snprintf(notice, sizeof(notice), "%s", mh_import_request(MH_IMPORT_CARD)
                 ? "Choose a card to copy into local storage"
                 : "Another file import is still finishing");
             build(ui, m);
@@ -318,7 +318,7 @@ bool mrc_card_panel_row(mrc_ui *ui, mrc_runtime *m, int id)
         if (id == ROW_TYPE_SRAM) {
             type_selecting = false;
             picker_slot = type_slot;
-            picker = mrc_picker_open(ui, "Choose SRAM card image",
+            picker = mh_picker_open(ui, "Choose SRAM card image",
                                      card_directory[0] ? card_directory : NULL,
                                      NULL, 0);
             if (!picker) build(ui, m);
@@ -358,11 +358,11 @@ bool mrc_card_panel_row(mrc_ui *ui, mrc_runtime *m, int id)
     return true;
 }
 
-void mrc_card_panel_tick(mrc_ui *ui, mrc_runtime *m)
+void mh_card_panel_tick(mh_ui *ui, mh_runtime *m)
 {
     if (!showing) return;
     char path[4096], error[256];
-    if (!mrc_import_result(MRC_IMPORT_CARD, path, sizeof(path), error, sizeof(error))) return;
+    if (!mh_import_result(MH_IMPORT_CARD, path, sizeof(path), error, sizeof(error))) return;
     if (error[0]) snprintf(notice, sizeof(notice), "%s", error);
     else if (!path[0]) snprintf(notice, sizeof(notice), "File selection cancelled");
     else if (!m || !m->ops->card_insert_sram ||

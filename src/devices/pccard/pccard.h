@@ -24,8 +24,8 @@
  * silently lost: snapshots with NE2000 or writable SRAM attached are
  * rejected until a card-state serializer is implemented.
  */
-#ifndef MRC_PCCARD_H
-#define MRC_PCCARD_H
+#ifndef MH_PCCARD_H
+#define MH_PCCARD_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,12 +33,12 @@
 #include "devices/ne2000/ne2000.h"
 
 typedef enum {
-    MRC_PCCARD_WINDOW_A,
-    MRC_PCCARD_WINDOW_B,
-    MRC_PCCARD_NWINDOW,
-} mrc_pccard_window;
+    MH_PCCARD_WINDOW_A,
+    MH_PCCARD_WINDOW_B,
+    MH_PCCARD_NWINDOW,
+} mh_pccard_window;
 
-typedef struct mrc_pccard mrc_pccard;
+typedef struct mh_pccard mh_pccard;
 
 /* A data modem card's UART and Hayes responder (modem_card.c). */
 typedef struct {
@@ -50,8 +50,8 @@ typedef struct {
     unsigned line_len, plus;
     uint64_t now_ns, next_rx_ns, last_tx_ns, tx_bytes, rx_bytes;
     unsigned log_io, log_data;
-    void    *link;                     /* an mrc_serial for the far end */
-} mrc_modem;
+    void    *link;                     /* an mh_serial for the far end */
+} mh_modem;
 
 /*
  * What a particular kind of card does. A memory card serves bytes; a network
@@ -61,14 +61,14 @@ typedef struct {
  */
 typedef struct {
     const char *name;
-    bool (*read)(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+    bool (*read)(mh_pccard *c, mh_pccard_window w, uint32_t off,
                  unsigned size, uint32_t *out);
-    bool (*write)(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+    bool (*write)(mh_pccard *c, mh_pccard_window w, uint32_t off,
                   unsigned size, uint32_t val);
-} mrc_pccard_kind;
+} mh_pccard_kind;
 
-struct mrc_pccard {
-    const mrc_pccard_kind *kind;
+struct mh_pccard {
+    const mh_pccard_kind *kind;
     unsigned    slot;               /* 0 or 1, for messages */
     FILE       *log;
 
@@ -76,29 +76,29 @@ struct mrc_pccard {
     uint8_t    *image;
     uint32_t    image_len;
     ne2000      nic;
-    mrc_modem   modem;
+    mh_modem   modem;
     uint8_t     config;
     uint8_t     cis[64];
     unsigned    cis_len;
 
     /* Per-window traffic accounting, independent of the card type. */
-    uint64_t    reads[MRC_PCCARD_NWINDOW];
-    uint64_t    writes[MRC_PCCARD_NWINDOW];
-    uint32_t    first_off[MRC_PCCARD_NWINDOW];
-    uint32_t    high_off[MRC_PCCARD_NWINDOW];
-    bool        touched[MRC_PCCARD_NWINDOW];
+    uint64_t    reads[MH_PCCARD_NWINDOW];
+    uint64_t    writes[MH_PCCARD_NWINDOW];
+    uint32_t    first_off[MH_PCCARD_NWINDOW];
+    uint32_t    high_off[MH_PCCARD_NWINDOW];
+    bool        touched[MH_PCCARD_NWINDOW];
 
     /* Diagnostics: log the first n accesses with the site that made them. */
     unsigned    log_first;
 };
 
 /* The memory card: an image, mirrored through the window. */
-extern const mrc_pccard_kind mrc_pccard_memory;
-extern const mrc_pccard_kind mrc_pccard_ne2000;
+extern const mh_pccard_kind mh_pccard_memory;
+extern const mh_pccard_kind mh_pccard_ne2000;
 /* Standard NE2000 CIS/COR attribute bytes, shared with experimental 68k slot. */
-bool mrc_ne2000_card_attribute_byte(uint32_t off, uint8_t config, uint8_t *value);
+bool mh_ne2000_card_attribute_byte(uint32_t off, uint8_t config, uint8_t *value);
 /* Experimental PIC-2000 variant: standard CIS plus Magic Cap's IO-card tuple. */
-bool mrc_ne2000_magic_attribute_byte(uint32_t off, uint8_t config, uint8_t *value);
+bool mh_ne2000_magic_attribute_byte(uint32_t off, uint8_t config, uint8_t *value);
 /*
  * Which card, as a number rather than a pointer.
  *
@@ -107,36 +107,36 @@ bool mrc_ne2000_magic_attribute_byte(uint32_t off, uint8_t config, uint8_t *valu
  * find again in a later run, so it stores one of these and the image's path.
  */
 typedef enum {
-    MRC_CARD_NONE = 0,
-    MRC_CARD_SRAM = 1,
-    MRC_CARD_MEMORY = 2,
-    MRC_CARD_NE2000 = 3,
-    MRC_CARD_MODEM = 4,
-} mrc_card_kind;
+    MH_CARD_NONE = 0,
+    MH_CARD_SRAM = 1,
+    MH_CARD_MEMORY = 2,
+    MH_CARD_NE2000 = 3,
+    MH_CARD_MODEM = 4,
+} mh_card_kind;
 
-extern const mrc_pccard_kind mrc_pccard_modem;
-void mrc_modem_init(mrc_pccard *c);
-bool mrc_modem_irq(const mrc_pccard *c);
-void mrc_modem_tick(mrc_pccard *c, uint64_t now_ns);
+extern const mh_pccard_kind mh_pccard_modem;
+void mh_modem_init(mh_pccard *c);
+bool mh_modem_irq(const mh_pccard *c);
+void mh_modem_tick(mh_pccard *c, uint64_t now_ns);
 
-extern const mrc_pccard_kind mrc_pccard_sram;
-void mrc_pccard_sram_init(mrc_pccard *c, unsigned slot, uint8_t *data, uint32_t size);
+extern const mh_pccard_kind mh_pccard_sram;
+void mh_pccard_sram_init(mh_pccard *c, unsigned slot, uint8_t *data, uint32_t size);
 
-void mrc_pccard_init(mrc_pccard *c, unsigned slot, const mrc_pccard_kind *kind);
-void mrc_pccard_report(const mrc_pccard *c);
+void mh_pccard_init(mh_pccard *c, unsigned slot, const mh_pccard_kind *kind);
+void mh_pccard_report(const mh_pccard *c);
 
 /*
  * Bus glue. One of these per window, so the region's ctx carries both the
  * card and which of its windows this is.
  */
 typedef struct {
-    mrc_pccard        *card;
-    mrc_pccard_window  window;
+    mh_pccard        *card;
+    mh_pccard_window  window;
     const uint32_t    *pc_hint;     /* diagnostics only */
     const bool        *present;     /* board socket's physical insertion */
-} mrc_pccard_port;
+} mh_pccard_port;
 
-uint32_t mrc_pccard_read(void *ctx, uint32_t off, unsigned size);
-void     mrc_pccard_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
+uint32_t mh_pccard_read(void *ctx, uint32_t off, unsigned size);
+void     mh_pccard_write(void *ctx, uint32_t off, unsigned size, uint32_t val);
 
-#endif /* MRC_PCCARD_H */
+#endif /* MH_PCCARD_H */

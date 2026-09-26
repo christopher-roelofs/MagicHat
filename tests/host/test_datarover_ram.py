@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-MCAP = sys.argv.pop(1)
+MHAT = sys.argv.pop(1)
 
 
 class RamTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class RamTests(unittest.TestCase):
         self.rom.write_bytes(data)
 
     def run_guest(self, *args):
-        return subprocess.run([MCAP, '--temporary', '--fresh', '--device', 'datarover840', '--rom', str(self.rom), '--headless', '-n', '0', *args],
+        return subprocess.run([MHAT, '--temporary', '--fresh', '--device', 'datarover840', '--rom', str(self.rom), '--headless', '-n', '0', *args],
                               capture_output=True, text=True, timeout=10)
 
     def test_rom_detection_without_mutation(self):
@@ -79,7 +79,7 @@ class RamTests(unittest.TestCase):
         state = self.rom.with_suffix('.state')
         state.write_bytes(b'not a snapshot')
         result = subprocess.run(
-            [MCAP, '--device', 'datarover840', '--rom', str(self.rom),
+            [MHAT, '--device', 'datarover840', '--rom', str(self.rom),
              '--headless', '-n', '0'],
             capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)

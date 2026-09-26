@@ -9,9 +9,9 @@
 #include <string.h>
 #include <unistd.h>
 
-int mrc_datarover_main(int argc, char **argv);
-#ifdef MRC_HAVE_PIC2000
-int mrc_pic2000_main(int argc, char **argv);
+int mh_datarover_main(int argc, char **argv);
+#ifdef MH_HAVE_PIC2000
+int mh_pic2000_main(int argc, char **argv);
 #endif
 
 /* Skip option values while inspecting the common launcher switches. This
@@ -55,16 +55,16 @@ static unsigned value_count(const char *option)
  */
 static const char *next_device(char *rom_out, size_t cap)
 {
-    const char *id = mrc_state_take_requested_device();
+    const char *id = mh_state_take_requested_device();
     if (!id) return NULL;
-    mrc_device d;
-    if (!mrc_device_by_id(id, &d)) {
+    mh_device d;
+    if (!mh_device_by_id(id, &d)) {
         fprintf(stderr, "launch: there is no device called \"%s\"\n", id);
         return NULL;
     }
-    if (!mrc_device_paths(&d, rom_out, cap, NULL, 0)) return NULL;
+    if (!mh_device_paths(&d, rom_out, cap, NULL, 0)) return NULL;
     fprintf(stderr, "launch: switching to \"%s\"\n", d.name);
-    mrc_state_set_device_id(d.id);
+    mh_state_set_device_id(d.id);
     return rom_out;
 }
 
@@ -95,27 +95,27 @@ static bool belongs_to_device(const char *option)
     return false;
 }
 
-/* What board this image is, by looking at it. MRC_ROM_UNKNOWN when it cannot
+/* What board this image is, by looking at it. MH_ROM_UNKNOWN when it cannot
  * be read or cannot be told. */
-static mrc_rom_device identify(const char *rom)
+static mh_rom_device identify(const char *rom)
 {
     FILE *f = fopen(rom,"rb");
-    if (!f) { perror(rom); return MRC_ROM_UNKNOWN; }
-    if (fseek(f,0,SEEK_END)) { fclose(f); return MRC_ROM_UNKNOWN; }
+    if (!f) { perror(rom); return MH_ROM_UNKNOWN; }
+    if (fseek(f,0,SEEK_END)) { fclose(f); return MH_ROM_UNKNOWN; }
     long size = ftell(f);
     if (size <= 0 || size > 64*1024*1024 || fseek(f,0,SEEK_SET)) {
         fprintf(stderr,"ROM is empty, unreadable, or larger than 64 MiB\n");
-        fclose(f); return MRC_ROM_UNKNOWN;
+        fclose(f); return MH_ROM_UNKNOWN;
     }
     uint8_t *data = malloc((size_t)size);
     if (!data || fread(data,1,(size_t)size,f) != (size_t)size) {
         fprintf(stderr,"Cannot read ROM\n"); free(data); fclose(f);
-        return MRC_ROM_UNKNOWN;
+        return MH_ROM_UNKNOWN;
     }
     fclose(f);
-    mrc_rom_device detected = mrc_rom_identify(data,(size_t)size);
+    mh_rom_device detected = mh_rom_identify(data,(size_t)size);
     free(data);
-    fprintf(stderr,"ROM identification: %s\n",mrc_rom_device_name(detected));
+    fprintf(stderr,"ROM identification: %s\n",mh_rom_device_name(detected));
     return detected;
 }
 
@@ -177,11 +177,11 @@ int main(int argc, char **argv)
      * A run told to be headless never opens one, and a run that cannot open
      * one says so rather than carrying on without.
      */
-    mrc_shell *shell = NULL;
-    if (!help && !headless && mrc_chooser_available()) {
-        shell = mrc_shell_open("mcap", 480, 320);
+    mh_shell *shell = NULL;
+    if (!help && !headless && mh_chooser_available()) {
+        shell = mh_shell_open("MagicHat", 480, 320);
         if (!shell) { free(args); return 1; }
-        mrc_shell_set_current(shell);
+        mh_shell_set_current(shell);
     }
 
     /*
@@ -192,9 +192,9 @@ int main(int argc, char **argv)
      */
     char made_rom[4096];
     if (make) {
-        mrc_device fresh;
-        if (!mrc_device_create(make, make_name, &fresh)) { free(args); return 1; }
-        if (!mrc_device_paths(&fresh, made_rom, sizeof(made_rom), NULL, 0)) {
+        mh_device fresh;
+        if (!mh_device_create(make, make_name, &fresh)) { free(args); return 1; }
+        if (!mh_device_paths(&fresh, made_rom, sizeof(made_rom), NULL, 0)) {
             free(args); return 1;
         }
         if (rom) {
@@ -204,7 +204,7 @@ int main(int argc, char **argv)
         rom = made_rom;
         args[count++] = "--rom";
         args[count++] = made_rom;
-        mrc_state_set_device_id(fresh.id);
+        mh_state_set_device_id(fresh.id);
     }
 
     /*
@@ -219,33 +219,33 @@ int main(int argc, char **argv)
      * that fill them. */
     char recent[4096], picked[4096];
     if (!rom && !help) {
-        mrc_device last;
-        if (mrc_devices_list(&last, 1) &&
-            mrc_device_paths(&last, recent, sizeof(recent), NULL, 0)) {
+        mh_device last;
+        if (mh_devices_list(&last, 1) &&
+            mh_device_paths(&last, recent, sizeof(recent), NULL, 0)) {
             rom = recent;
             args[count++] = "--rom";
             args[count++] = recent;
-            mrc_state_set_device_id(last.id);
+            mh_state_set_device_id(last.id);
             fprintf(stderr, "Resuming \"%s\"\n", last.name);
         }
     }
 
-    mrc_rom_device selected = MRC_ROM_UNKNOWN;
-    if (!strcmp(device,"datarover840")) selected = MRC_ROM_DATAROVER840;
-    else if (!strcmp(device,"pic2000")) selected = MRC_ROM_PIC2000;
-    else if (!strcmp(device,"envoy")) selected = MRC_ROM_ENVOY;
-    else if (!strcmp(device,"hix300")) selected = MRC_ROM_HIX300;
+    mh_rom_device selected = MH_ROM_UNKNOWN;
+    if (!strcmp(device,"datarover840")) selected = MH_ROM_DATAROVER840;
+    else if (!strcmp(device,"pic2000")) selected = MH_ROM_PIC2000;
+    else if (!strcmp(device,"envoy")) selected = MH_ROM_ENVOY;
+    else if (!strcmp(device,"hix300")) selected = MH_ROM_HIX300;
     else if (strcmp(device,"auto")) {
         fprintf(stderr,"--device must be auto, datarover840, pic2000, envoy, or hix300\n"); free(args); return 2;
     }
     if (rom) {
-        mrc_rom_device detected = identify(rom);
-        if (detected == MRC_ROM_UNKNOWN && access(rom, R_OK)) { free(args); return 1; }
-        if (selected == MRC_ROM_UNKNOWN) selected = detected;
-        else if (detected != MRC_ROM_UNKNOWN && detected != selected) {
+        mh_rom_device detected = identify(rom);
+        if (detected == MH_ROM_UNKNOWN && access(rom, R_OK)) { free(args); return 1; }
+        if (selected == MH_ROM_UNKNOWN) selected = detected;
+        else if (detected != MH_ROM_UNKNOWN && detected != selected) {
             fprintf(stderr,"--device conflicts with the detected ROM\n"); free(args); return 2;
-        } else fprintf(stderr,"Machine selected explicitly: %s\n",mrc_rom_device_name(selected));
-        if (selected == MRC_ROM_UNKNOWN) {
+        } else fprintf(stderr,"Machine selected explicitly: %s\n",mh_rom_device_name(selected));
+        if (selected == MH_ROM_UNKNOWN) {
             fprintf(stderr,"Cannot select a machine from ROM contents. For an experimental ROM, specify --device datarover840, --device pic2000, --device envoy, or --device hix300.\n"); free(args); return 2;
         }
     }
@@ -255,21 +255,21 @@ int main(int argc, char **argv)
      * else, this is just a ROM and there is no device to name.
      */
     if (rom) {
-        const char *root = mrc_devices_root();
+        const char *root = mh_devices_root();
         size_t n = root ? strlen(root) : 0;
         if (root && !strncmp(rom, root, n) && rom[n] == '/') {
-            char id[MRC_DEVICE_ID_MAX];
+            char id[MH_DEVICE_ID_MAX];
             const char *rest = rom + n + 1, *slash = strchr(rest, '/');
             size_t len = slash ? (size_t)(slash - rest) : strlen(rest);
             if (len && len < sizeof(id)) {
                 memcpy(id, rest, len);
                 id[len] = 0;
-                mrc_state_set_device_id(id);
+                mh_state_set_device_id(id);
             }
         }
     }
     if (help)
-        fprintf(stderr,"mcap selects the machine from ROM contents.\n"
+        fprintf(stderr,"mhat selects the machine from ROM contents.\n"
                        "  --device auto|datarover840|pic2000|envoy|hix300  (default auto)\n"
                        "Use --device hix300 --help (or envoy/pic2000) for 68k options.\n");
     /*
@@ -284,21 +284,21 @@ int main(int argc, char **argv)
      * because that is what it is.
      */
     if (!rom && !help) {
-        if (!mrc_chooser_available()) {
+        if (!mh_chooser_available()) {
             fprintf(stderr,
                 "No devices yet, and this build has no window to make one in.\n"
-                "  mcap --new-device <image> [--name \"Whatever you call it\"]\n");
+                "  mhat --new-device <image> [--name \"Whatever you call it\"]\n");
             free(args);
             return 2;
         }
         if (!shell) {
             fprintf(stderr, "No devices yet, and no window to make one in.\n"
-                            "  mcap --new-device <image>\n");
+                            "  mhat --new-device <image>\n");
             free(args);
             return 2;
         }
-        if (!mrc_chooser_run(shell)) {          /* closed, not failed */
-            mrc_shell_close(shell);
+        if (!mh_chooser_run(shell)) {          /* closed, not failed */
+            mh_shell_close(shell);
             free(args);
             return 0;
         }
@@ -307,7 +307,7 @@ int main(int argc, char **argv)
         args[count++] = "--rom";
         args[count++] = picked;
         selected = identify(rom);
-        if (selected == MRC_ROM_UNKNOWN) {
+        if (selected == MH_ROM_UNKNOWN) {
             fprintf(stderr, "launch: cannot tell what kind of machine that is\n");
             free(args);
             return 2;
@@ -318,19 +318,19 @@ int main(int argc, char **argv)
     char next_rom[4096];
     for (;;) {
         count = parsed_count;      /* undo any --gui appended last time round */
-        if (selected == MRC_ROM_PIC2000 || selected == MRC_ROM_ENVOY ||
-            selected == MRC_ROM_HIX300) {
-#ifdef MRC_HAVE_PIC2000
-            if (!help && !gui_set && mrc_gui_available()) args[count++] = "--gui";
-            result = mrc_pic2000_main(count,args);
+        if (selected == MH_ROM_PIC2000 || selected == MH_ROM_ENVOY ||
+            selected == MH_ROM_HIX300) {
+#ifdef MH_HAVE_PIC2000
+            if (!help && !gui_set && mh_gui_available()) args[count++] = "--gui";
+            result = mh_pic2000_main(count,args);
 #else
             (void)gui_set;
-            fprintf(stderr,"68k device detected, but this build lacks 68k machine support. Reconfigure with -DMRC_BUILD_M68K_MACHINES=ON.\n"); result = 2;
+            fprintf(stderr,"68k device detected, but this build lacks 68k machine support. Reconfigure with -DMH_BUILD_M68K_MACHINES=ON.\n"); result = 2;
 #endif
-        } else if (selected == MRC_ROM_DATAROVER840 || help || !rom) {
-            result = mrc_datarover_main(count,args);
+        } else if (selected == MH_ROM_DATAROVER840 || help || !rom) {
+            result = mh_datarover_main(count,args);
         } else {
-            fprintf(stderr,"%s is identified, but its hardware is not implemented.\n",mrc_rom_device_name(selected)); result = 2;
+            fprintf(stderr,"%s is identified, but its hardware is not implemented.\n",mh_rom_device_name(selected)); result = 2;
         }
 
         /*
@@ -338,12 +338,12 @@ int main(int argc, char **argv)
          * It has already saved itself and shut down; this is the same act as
          * starting the first one, with another path.
          */
-        if (mrc_state_take_stop()) {
+        if (mh_state_take_stop()) {
             /* The board main has now saved, flushed cards, and freed it.
              * Do not run startup's auto-resume while showing the list. */
-            mrc_state_set_device_id(NULL);
-            mrc_state_set_path(NULL);
-            if (result || !shell || !mrc_chooser_run(shell)) break;
+            mh_state_set_device_id(NULL);
+            mh_state_set_path(NULL);
+            if (result || !shell || !mh_chooser_run(shell)) break;
         }
         if (!next_device(next_rom, sizeof(next_rom))) break;
         rom = next_rom;
@@ -362,13 +362,13 @@ int main(int argc, char **argv)
 
         /* Its board is decided the way the first one's was: by looking. */
         selected = identify(rom);
-        if (selected == MRC_ROM_UNKNOWN) {
+        if (selected == MH_ROM_UNKNOWN) {
             fprintf(stderr,"launch: cannot tell what kind of machine that device is\n");
             result = 2;
             break;
         }
     }
-    if (shell) mrc_shell_close(shell);
+    if (shell) mh_shell_close(shell);
     free(args);
     return result;
 }

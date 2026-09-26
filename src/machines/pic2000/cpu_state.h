@@ -1,6 +1,6 @@
 /* State and diagnostics for the project-owned CPU32 core. */
-#ifndef MRC_PIC2000_CPU_STATE_H
-#define MRC_PIC2000_CPU_STATE_H
+#ifndef MH_PIC2000_CPU_STATE_H
+#define MH_PIC2000_CPU_STATE_H
 
 #include "machines/pic2000/board.h"
 
@@ -60,7 +60,7 @@ inline uint16_t opcode_at(const m68k_machine *m, uint32_t pc)
                                     page[(pc & 0xFFFu) + 1]);
     }
     bool ok = true;
-    return (uint16_t)mrc_bus_read(c.bus, pc, 2, &ok);
+    return (uint16_t)mh_bus_read(c.bus, pc, 2, &ok);
 }
 
 inline void count_insn_heat(m68k_machine *m, uint32_t pc)
@@ -68,7 +68,7 @@ inline void count_insn_heat(m68k_machine *m, uint32_t pc)
     const uint16_t word = opcode_at(m, pc);
     m->cpu.insn_heat_counts[word]++;
     if (m->cpu.after_divide) m->cpu.after_divide_counts[word]++;
-    uint8_t code[MRC_JIT_M68K_MAX_BYTES];
+    uint8_t code[MH_JIT_M68K_MAX_BYTES];
     code[0] = (uint8_t)(word >> 8);
     code[1] = (uint8_t)word;
     for (unsigned k = 2; k < sizeof code; k++) code[k] = (uint8_t)(k * 7);

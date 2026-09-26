@@ -291,7 +291,7 @@ class Link:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('port', help='PTY printed by mcap --serial a')
+    ap.add_argument('port', help='PTY printed by mhat --serial a')
     ap.add_argument('--send', type=Path, help='package to send after connection')
     ap.add_argument('--receive', type=Path, default=Path('.'), metavar='DIR',
                     help='save packages sent by the guest in DIR (default: current directory)')

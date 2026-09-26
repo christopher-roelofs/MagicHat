@@ -9,12 +9,12 @@ while slot 2 holds storage:
 
 ```sh
 mkdir -p cards
-./build/mcap --rom roms/MagicCap-USA.image \
-  --load-state out/networking/browser-desk.state \
+./build/mhat --rom roms/MagicCap-USA.image \
+  --load-state states/desk.state \
   --net user --sram2 cards/storage.img
 ```
 
-Use your own compatible Desk snapshot if the local browser fixture is absent.
+Use any saved Desk state; `scripts/mkstates` makes `states/desk.state`.
 The same card options also work without a snapshot. The NIC still requires
 its guest driver and provider configuration; see [NETWORKING.md](NETWORKING.md).
 The 68k frontend now accepts the same `--sram1` / `--sram2` options. Its ROM
@@ -43,8 +43,8 @@ Cap*, printed page 213. Schedule that physical key press and insertion when
 starting from an awake Desk:
 
 ```sh
-./build/mcap --rom roms/MagicCap-USA.image \
-  --load-state out/networking/browser-desk.state \
+./build/mhat --rom roms/MagicCap-USA.image \
+  --load-state states/desk.state \
   --sram2 cards/storage.img --card-at 50000000 \
   --option-key '1,10000000;0,200000000'
 ```
@@ -117,11 +117,6 @@ With the stock USA ROM and the local card-free browser Desk fixture:
 4. Reopened the same image in slot 1; the guest accepted it there too.
 5. Attached NE2000 in slot 1 and SRAM in slot 2. Web Browser loaded the
    host's HTTP page through Ethernet/TCP while storage remained attached.
-
-Local evidence is under `out/storage/`: `named.png`,
-`reopened-storeroom.png`, `with-nic-web.png`, the matching run logs, and
-`with-nic.pcap`. `roundtrip.img` is the guest-formatted test card. None of
-these generated artifacts is required by the emulator.
 
 Host tests cover big-endian byte lanes, capacity wrapping, read-only
 attribute memory, file reopening, exclusive locking, invalid file sizes,

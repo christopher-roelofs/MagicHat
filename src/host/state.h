@@ -20,8 +20,8 @@
  * the whole of what is shared here: not a callback, because a window that can
  * ask a board to save itself does not need anyone to do it on its behalf.
  */
-#ifndef MRC_HOST_STATE_H
-#define MRC_HOST_STATE_H
+#ifndef MH_HOST_STATE_H
+#define MH_HOST_STATE_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -35,7 +35,7 @@ extern "C" {
  * not fit, or would name the image itself -- a device launched from its own
  * state file would otherwise overwrite it with a machine that never booted.
  */
-bool mrc_state_path_for(const char *rom, char *out, size_t cap);
+bool mh_state_path_for(const char *rom, char *out, size_t cap);
 
 /*
  * The file this session saves to and restores from, or NULL when it has none
@@ -43,8 +43,8 @@ bool mrc_state_path_for(const char *rom, char *out, size_t cap);
  * it. A window offers its save button only when this and the board's own
  * save operation are both present.
  */
-void mrc_state_set_path(const char *path);
-const char *mrc_state_path(void);
+void mh_state_set_path(const char *path);
+const char *mh_state_path(void);
 
 /*
  * Which device is running, when one is. The launcher sets it; the window
@@ -52,8 +52,8 @@ const char *mrc_state_path(void);
  * NULL when the machine was started from a plain ROM path and is not a
  * device at all, which is still how every test and script runs.
  */
-void mrc_state_set_device_id(const char *id);
-const char *mrc_state_device_id(void);
+void mh_state_set_device_id(const char *id);
+const char *mh_state_device_id(void);
 
 /*
  * Asking for a different device.
@@ -68,16 +68,16 @@ const char *mrc_state_device_id(void);
  * be the same kind of machine, and the only code that knows how to choose is
  * the code that chose the first time.
  */
-void mrc_state_request_device(const char *id);
-bool mrc_state_device_requested(void);
+void mh_state_request_device(const char *id);
+bool mh_state_device_requested(void);
 /* Stop also ends the frontend loop, but returns to the unloaded device list.
  * Requests replace one another; consume only after machine teardown. */
-void mrc_state_request_stop(void);
-bool mrc_state_take_stop(void);
+void mh_state_request_stop(void);
+bool mh_state_take_stop(void);
 /* Takes it, clearing the request. Valid until the next call. */
-const char *mrc_state_take_requested_device(void);
+const char *mh_state_take_requested_device(void);
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* MRC_HOST_STATE_H */
+#endif /* MH_HOST_STATE_H */

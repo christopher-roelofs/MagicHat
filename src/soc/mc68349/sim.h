@@ -17,7 +17,7 @@ struct Mc68349Sim {
      */
     void (*boot_select_programmed)(void *) = nullptr;
     void *board = nullptr;
-    mrc_bus *bus = nullptr;
+    mh_bus *bus = nullptr;
     bool overlay_off = false;
     Mc68349Duart *duart = nullptr;
 };

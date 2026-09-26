@@ -1,17 +1,17 @@
-#ifndef MRC_SDL_CARD_PANEL_H
-#define MRC_SDL_CARD_PANEL_H
+#ifndef MH_SDL_CARD_PANEL_H
+#define MH_SDL_CARD_PANEL_H
 
 #include <stdbool.h>
 #include "frontend/sdl/ui.h"
 #include "runtime/machine.h"
 
-void mrc_card_panel_open(mrc_ui *, mrc_runtime *);
-void mrc_card_panel_close(mrc_ui *);
-bool mrc_card_panel_showing(void);
-bool mrc_card_panel_row(mrc_ui *, mrc_runtime *, int);
+void mh_card_panel_open(mh_ui *, mh_runtime *);
+void mh_card_panel_close(mh_ui *);
+bool mh_card_panel_showing(void);
+bool mh_card_panel_row(mh_ui *, mh_runtime *, int);
 /* Returns true when Back only dismissed the card's file picker. */
-bool mrc_card_panel_back(mrc_ui *, mrc_runtime *);
-bool mrc_card_panel_event(mrc_ui *, mrc_runtime *, const SDL_Event *);
-void mrc_card_panel_tick(mrc_ui *, mrc_runtime *);
+bool mh_card_panel_back(mh_ui *, mh_runtime *);
+bool mh_card_panel_event(mh_ui *, mh_runtime *, const SDL_Event *);
+void mh_card_panel_tick(mh_ui *, mh_runtime *);
 
 #endif
