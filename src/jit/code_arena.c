@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool mrc_code_arena_open(mrc_code_arena *arena, size_t size)
+bool mh_code_arena_open(mh_code_arena *arena, size_t size)
 {
     memset(arena, 0, sizeof *arena);
 #if HAVE_MMAP
@@ -34,8 +34,8 @@ bool mrc_code_arena_open(mrc_code_arena *arena, size_t size)
      * an API level newer than this builds against on Android. A kernel
      * without it answers ENOSYS and the single mapping below is used.
      */
-    int fd = getenv("MRC_JIT_SINGLE_MAP") ? -1 :
-             (int)syscall(__NR_memfd_create, "mrc-jit", 1u /* MFD_CLOEXEC */);
+    int fd = getenv("MH_JIT_SINGLE_MAP") ? -1 :
+             (int)syscall(__NR_memfd_create, "mh-jit", 1u /* MFD_CLOEXEC */);
     if (fd >= 0) {
         if (!ftruncate(fd, (off_t)size)) {
             exec = mmap(NULL, size, PROT_READ | PROT_EXEC, MAP_SHARED, fd, 0);
@@ -68,7 +68,7 @@ bool mrc_code_arena_open(mrc_code_arena *arena, size_t size)
 #endif
 }
 
-void mrc_code_arena_close(mrc_code_arena *arena)
+void mh_code_arena_close(mh_code_arena *arena)
 {
 #if HAVE_MMAP
     if (arena->exec) munmap(arena->exec, arena->size);
@@ -77,13 +77,13 @@ void mrc_code_arena_close(mrc_code_arena *arena)
     memset(arena, 0, sizeof *arena);
 }
 
-void mrc_code_arena_reset(mrc_code_arena *arena)
+void mh_code_arena_reset(mh_code_arena *arena)
 {
     arena->used = 0;
     arena->flushes++;
 }
 
-uint8_t *mrc_code_arena_reserve(mrc_code_arena *arena, size_t most,
+uint8_t *mh_code_arena_reserve(mh_code_arena *arena, size_t most,
                                 uint8_t **exec_at)
 {
 #if HAVE_MMAP
@@ -107,7 +107,7 @@ uint8_t *mrc_code_arena_reserve(mrc_code_arena *arena, size_t most,
 #endif
 }
 
-void mrc_code_arena_commit(mrc_code_arena *arena, uint8_t *at, size_t bytes)
+void mh_code_arena_commit(mh_code_arena *arena, uint8_t *at, size_t bytes)
 {
 #if HAVE_MMAP
     size_t offset = (size_t)(at - arena->write);
@@ -129,7 +129,7 @@ void mrc_code_arena_commit(mrc_code_arena *arena, uint8_t *at, size_t bytes)
 
 #if HAVE_MMAP
 /* The whole pages covering `bytes` at `at`, as an offset and a length. */
-static size_t window(const mrc_code_arena *arena, const uint8_t *at,
+static size_t window(const mh_code_arena *arena, const uint8_t *at,
                      size_t bytes, size_t *length)
 {
     size_t offset = (size_t)(at - arena->write);
@@ -141,7 +141,7 @@ static size_t window(const mrc_code_arena *arena, const uint8_t *at,
 }
 #endif
 
-bool mrc_code_arena_unlock(mrc_code_arena *arena, uint8_t *at, size_t bytes)
+bool mh_code_arena_unlock(mh_code_arena *arena, uint8_t *at, size_t bytes)
 {
 #if HAVE_MMAP
     if (arena->dual) return true;
@@ -153,7 +153,7 @@ bool mrc_code_arena_unlock(mrc_code_arena *arena, uint8_t *at, size_t bytes)
 #endif
 }
 
-void mrc_code_arena_relock(mrc_code_arena *arena, uint8_t *at, size_t bytes)
+void mh_code_arena_relock(mh_code_arena *arena, uint8_t *at, size_t bytes)
 {
 #if HAVE_MMAP
     size_t offset = (size_t)(at - arena->write);

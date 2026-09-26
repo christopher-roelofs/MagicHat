@@ -19,14 +19,14 @@
 #define ROW_CANCEL_BASE 0x6300
 #define ROW_STOP 0x6400
 
-static mrc_device devices[MRC_DEVICE_MAX];
+static mh_device devices[MH_DEVICE_MAX];
 static unsigned   device_count;
 
 /* The rows the rail borrows, so they outlive the call that built them. Each
  * label points at the name in `devices` beside it, and each value at the
  * line composed for it here. */
-static mrc_ui_row rows[MRC_DEVICE_MAX + 3];
-static char       marks[MRC_DEVICE_MAX][64];
+static mh_ui_row rows[MH_DEVICE_MAX + 3];
+static char       marks[MH_DEVICE_MAX][64];
 static unsigned   row_count;
 
 /*
@@ -39,11 +39,11 @@ static unsigned   row_count;
  */
 static char notice[160];
 
-static char current_id[MRC_DEVICE_ID_MAX];
-static char taken_id[MRC_DEVICE_ID_MAX];
+static char current_id[MH_DEVICE_ID_MAX];
+static char taken_id[MH_DEVICE_ID_MAX];
 static bool have_taken;
 
-static mrc_picker *picker;
+static mh_picker *picker;
 static bool showing;
 
 /*
@@ -53,7 +53,7 @@ static bool showing;
  * a second tap on the same trash can carries it out. Anything else --
  * another row, the picker, reopening -- disarms it instead of deleting.
  */
-static char armed_id[MRC_DEVICE_ID_MAX];
+static char armed_id[MH_DEVICE_ID_MAX];
 
 /* Where the picker last looked, so making a second device does not start
  * again from the beginning. */
@@ -66,13 +66,13 @@ static char last_directory[4096];
  */
 static char armed_label[96];
 
-static void build(mrc_ui *ui)
+static void build(mh_ui *ui)
 {
-    device_count = mrc_devices_list(devices, MRC_DEVICE_MAX);
+    device_count = mh_devices_list(devices, MH_DEVICE_MAX);
     row_count = 0;
     if (notice[0])
-        rows[row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_HEADING, .label = notice,
+        rows[row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_HEADING, .label = notice,
         };
     for (unsigned i = 0; i < device_count; i++) {
         bool armed = armed_id[0] && !strcmp(devices[i].id, armed_id);
@@ -97,13 +97,13 @@ static void build(mrc_ui *ui)
              */
             snprintf(armed_label, sizeof(armed_label), "Delete \"%s\"?",
                      devices[i].name);
-            rows[row_count++] = (mrc_ui_row){
-                .kind = MRC_UI_ROW_ACTION,
+            rows[row_count++] = (mh_ui_row){
+                .kind = MH_UI_ROW_ACTION,
                 .label = armed_label,
                 .value = "tap the trash can again to confirm",
                 .id = (int)(ROW_CANCEL_BASE + i),
                 .action_count = 1,
-                .action_icon = { MRC_UI_ICON_TRASH },
+                .action_icon = { MH_UI_ICON_TRASH },
                 .action_id = { (int)(ROW_TRASH_BASE + i) },
             };
             continue;
@@ -113,44 +113,44 @@ static void build(mrc_ui *ui)
          * cannot tell you -- two devices called "Spare" are not the same
          * device -- and then its condition, if it has one worth saying.
          */
-        const char *kind = mrc_rom_device_name(
-            mrc_rom_device_from_slug(devices[i].machine));
+        const char *kind = mh_rom_device_name(
+            mh_rom_device_from_slug(devices[i].machine));
         const char *state = NULL;
         if (current_id[0] && !strcmp(devices[i].id, current_id)) state = "in use";
         else if (!devices[i].has_state) state = "not started";
         snprintf(marks[i], sizeof(marks[i]), "%s%s%s", kind,
                  state ? " \xc2\xb7 " : "", state ? state : "");
-        rows[row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_ACTION,
+        rows[row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_ACTION,
             .label = devices[i].name,
             .value = marks[i],
             .id = (int)(ROW_BASE + i),
             .action_count = 2,
-            .action_icon = { !strcmp(devices[i].id, current_id) ? MRC_UI_ICON_STOP : MRC_UI_ICON_PLAY,
-                             MRC_UI_ICON_TRASH },
+            .action_icon = { !strcmp(devices[i].id, current_id) ? MH_UI_ICON_STOP : MH_UI_ICON_PLAY,
+                             MH_UI_ICON_TRASH },
             .action_id = { !strcmp(devices[i].id, current_id) ? ROW_STOP : (int)(ROW_BASE + i),
                            (int)(ROW_TRASH_BASE + i) },
         };
     }
     if (!device_count)
-        rows[row_count++] = (mrc_ui_row){
-            .kind = MRC_UI_ROW_HEADING,
+        rows[row_count++] = (mh_ui_row){
+            .kind = MH_UI_ROW_HEADING,
             .label = "no devices yet",
         };
-    rows[row_count++] = (mrc_ui_row){
-        .kind = MRC_UI_ROW_ACTION,
+    rows[row_count++] = (mh_ui_row){
+        .kind = MH_UI_ROW_ACTION,
         .label = "New device\xe2\x80\xa6",
-        .value = mrc_import_pending(MRC_IMPORT_ROM) ? "choosing a ROM\xe2\x80\xa6" : "from a ROM",
+        .value = mh_import_pending(MH_IMPORT_ROM) ? "choosing a ROM\xe2\x80\xa6" : "from a ROM",
         .id = ROW_NEW,
     };
-    mrc_ui_open_panel(ui, "Devices", rows, row_count);
+    mh_ui_open_panel(ui, "Devices", rows, row_count);
     showing = true;
 }
 
-void mrc_devices_panel_open(mrc_ui *ui, const char *current)
+void mh_devices_panel_open(mh_ui *ui, const char *current)
 {
     snprintf(current_id, sizeof(current_id), "%s", current ? current : "");
-    if (picker) { mrc_picker_close(picker); picker = NULL; }
+    if (picker) { mh_picker_close(picker); picker = NULL; }
     notice[0] = 0;          /* reopening is a fresh look, not a stale warning */
     armed_id[0] = 0;        /* likewise: not a live question from before */
     build(ui);
@@ -161,66 +161,66 @@ void mrc_devices_panel_open(mrc_ui *ui, const char *current)
  * was pressed -- a person browsing their files takes as long as they take --
  * so the list keeps drawing and picks it up whenever it appears.
  */
-void mrc_devices_panel_tick(mrc_ui *ui)
+void mh_devices_panel_tick(mh_ui *ui)
 {
     if (!showing || picker) return;
     char arrived[4096], error[256];
     static bool was_pending;
-    if (mrc_import_result(MRC_IMPORT_ROM, arrived, sizeof(arrived), error, sizeof(error))) {
-        mrc_device made;
+    if (mh_import_result(MH_IMPORT_ROM, arrived, sizeof(arrived), error, sizeof(error))) {
+        mh_device made;
         if (error[0]) snprintf(notice, sizeof(notice), "%s", error);
-        else if (!arrived[0] || mrc_device_create(arrived, NULL, &made)) notice[0] = 0;
+        else if (!arrived[0] || mh_device_create(arrived, NULL, &made)) notice[0] = 0;
         else snprintf(notice, sizeof(notice), "%s",
-                      mrc_devices_last_error() ? mrc_devices_last_error()
+                      mh_devices_last_error() ? mh_devices_last_error()
                                                : "could not make that device");
         build(ui);
-    } else if (was_pending != mrc_import_pending(MRC_IMPORT_ROM)) {
+    } else if (was_pending != mh_import_pending(MH_IMPORT_ROM)) {
         build(ui);          /* the row says whether we are still waiting */
     }
-    was_pending = mrc_import_pending(MRC_IMPORT_ROM);
+    was_pending = mh_import_pending(MH_IMPORT_ROM);
 }
 
-void mrc_devices_panel_close(mrc_ui *ui)
+void mh_devices_panel_close(mh_ui *ui)
 {
-    mrc_import_cancel(MRC_IMPORT_ROM);
+    mh_import_cancel(MH_IMPORT_ROM);
     if (picker) {
         /* Remember where it was looking: ROMs live together, so the next one
          * is almost certainly beside the last. */
-        const char *at = mrc_picker_directory(picker);
+        const char *at = mh_picker_directory(picker);
         if (at) snprintf(last_directory, sizeof(last_directory), "%s", at);
-        mrc_picker_close(picker);
+        mh_picker_close(picker);
         picker = NULL;
     }
-    if (mrc_ui_panel_open(ui)) mrc_ui_close_panel(ui);
+    if (mh_ui_panel_open(ui)) mh_ui_close_panel(ui);
     showing = false;
 }
 
-bool mrc_devices_panel_showing(void)
+bool mh_devices_panel_showing(void)
 {
     return showing;
 }
 
-bool mrc_devices_panel_back(mrc_ui *ui)
+bool mh_devices_panel_back(mh_ui *ui)
 {
     if (!showing || !picker) return false;
-    const char *at = mrc_picker_directory(picker);
+    const char *at = mh_picker_directory(picker);
     if (at) snprintf(last_directory, sizeof(last_directory), "%s", at);
-    mrc_picker_close(picker); picker = NULL;
+    mh_picker_close(picker); picker = NULL;
     build(ui);
     return true;
 }
 
-bool mrc_devices_panel_row(mrc_ui *ui, int id)
+bool mh_devices_panel_row(mh_ui *ui, int id)
 {
     if (!showing) return false;
 
     /* While the picker is up it answers for its own rows, and a chosen file
      * is a device to make. */
     if (picker) {
-        if (!mrc_picker_row(picker, id)) return false;
-        const char *chosen = mrc_picker_taken(picker);
+        if (!mh_picker_row(picker, id)) return false;
+        const char *chosen = mh_picker_taken(picker);
         if (!chosen) return true;          /* walked into a directory */
-        const char *at = mrc_picker_directory(picker);
+        const char *at = mh_picker_directory(picker);
         if (at) snprintf(last_directory, sizeof(last_directory), "%s", at);
         /*
          * NULL is the name, which means "call it after the file". This is
@@ -230,15 +230,15 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
          * panel does not have yet, so for now the default stands and the
          * device can be renamed afterwards.
          */
-        mrc_device made;
-        bool ok = mrc_device_create(chosen, NULL, &made);
+        mh_device made;
+        bool ok = mh_device_create(chosen, NULL, &made);
         /* Say so where the person is looking, not only on a stream they
          * cannot see. */
         if (ok) notice[0] = 0;
         else snprintf(notice, sizeof(notice), "%s",
-                      mrc_devices_last_error() ? mrc_devices_last_error()
+                      mh_devices_last_error() ? mh_devices_last_error()
                                                : "could not make that device");
-        mrc_picker_close(picker);
+        mh_picker_close(picker);
         picker = NULL;
         build(ui);
         return true;
@@ -248,7 +248,7 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
      * -1 is what a completed tap on nothing produces, but it is also what
      * the frontend hands over on every ordinary pointer motion across the
      * sheet -- the rail takes the event to update which row is hot, and
-     * whatever it read back from mrc_ui_take_row is passed on here whether
+     * whatever it read back from mh_ui_take_row is passed on here whether
      * or not anything actually happened. There is no question to answer
      * about a hover, so it is not treated as one: nothing below this reacts
      * to an id that never named a row.
@@ -289,7 +289,7 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
     }
 
     if (id >= ROW_TRASH_BASE && id < (int)(ROW_TRASH_BASE + device_count)) {
-        const mrc_device *d = &devices[id - ROW_TRASH_BASE];
+        const mh_device *d = &devices[id - ROW_TRASH_BASE];
         /*
          * The device in use is not offered for deletion: its files are open
          * under it, and a save from the running machine into a directory
@@ -301,9 +301,9 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
                      "Press Stop on this device before deleting it");
             armed_id[0] = 0;
         } else if (confirmed) {
-            if (!mrc_device_delete(d))
+            if (!mh_device_delete(d))
                 snprintf(notice, sizeof(notice), "%s",
-                         mrc_devices_last_error() ? mrc_devices_last_error()
+                         mh_devices_last_error() ? mh_devices_last_error()
                                                   : "could not delete that device");
             else notice[0] = 0;
             armed_id[0] = 0;
@@ -315,7 +315,7 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
     }
 
     if (id == ROW_STOP && current_id[0]) {
-        mrc_state_request_stop();
+        mh_state_request_stop();
         return true;
     }
 
@@ -325,8 +325,8 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
          * the image the person wants is in storage this program cannot walk,
          * and the system's document picker is the only way to reach it.
          */
-        if (mrc_import_available()) {
-            if (!mrc_import_request(MRC_IMPORT_ROM))
+        if (mh_import_available()) {
+            if (!mh_import_request(MH_IMPORT_ROM))
                 snprintf(notice, sizeof(notice), "Another file import is still finishing");
             build(ui);
             return true;
@@ -337,7 +337,7 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
          * was named which.
          */
         static const char *const kinds[] = { ".rom", ".image", ".bin" };
-        picker = mrc_picker_open(ui, "Choose firmware",
+        picker = mh_picker_open(ui, "Choose firmware",
                                  last_directory[0] ? last_directory : NULL,
                                  kinds, 3);
         if (!picker) {
@@ -348,7 +348,7 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
     }
 
     if (id >= ROW_BASE && id < (int)(ROW_BASE + device_count)) {
-        const mrc_device *d = &devices[id - ROW_BASE];
+        const mh_device *d = &devices[id - ROW_BASE];
         if (!strcmp(d->id, current_id)) return true;   /* already running it */
         snprintf(taken_id, sizeof(taken_id), "%s", d->id);
         have_taken = true;
@@ -358,13 +358,13 @@ bool mrc_devices_panel_row(mrc_ui *ui, int id)
          * panel can do, and the two need not even be the same kind of
          * machine.
          */
-        mrc_state_request_device(d->id);
+        mh_state_request_device(d->id);
         return true;
     }
     return false;
 }
 
-const char *mrc_devices_panel_taken(void)
+const char *mh_devices_panel_taken(void)
 {
     if (!have_taken) return NULL;
     have_taken = false;

@@ -8,8 +8,8 @@ static void sample(void *p, int16_t v) { ((std::vector<int16_t>*)p)->push_back(v
 int main() {
     uint8_t ram[4096] = {};
     ram[0]=0x80; ram[2]=0x7f; ram[3]=0xff;
-    mrc_bus bus; mrc_bus_init(&bus);
-    mrc_bus_add_ram(&bus,"audio",0,ram,sizeof(ram),sizeof(ram));
+    mh_bus bus; mh_bus_init(&bus);
+    mh_bus_add_ram(&bus,"audio",0,ram,sizeof(ram),sizeof(ram));
     Pic2000Registers r; r.w1c_lo[0]=0xb0; r.w1c_hi[0]=0xb4; Pic2000Audio a; std::vector<int16_t> out;
     a.approximate_output=false; // raw DMA/PCM checks below
     a.sink=sample; a.ctx=&out; r.reg[0x52/2]=0xb40; r.reg[0x4e/2]=0x1007;

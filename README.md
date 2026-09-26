@@ -26,7 +26,7 @@ optionally libslirp for user-mode networking. Then:
 cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build --output-on-failure
-./build/mcap --rom /path/to/your/rom
+./build/mhat --rom /path/to/your/rom
 ```
 
 On Windows, build in the [MSYS2](https://www.msys2.org/) UCRT64 environment.
@@ -37,10 +37,10 @@ pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,SDL2,libslirp,
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
-./build/mcap.exe --rom /path/to/your/rom
+./build/mhat.exe --rom /path/to/your/rom
 ```
 
-That `mcap.exe` needs `C:\msys64\ucrt64\bin` on `PATH` for SDL2, GLib and
+That `mhat.exe` needs `C:\msys64\ucrt64\bin` on `PATH` for SDL2, GLib and
 the compiler runtime. To build one that runs on any Windows 10 or 11 machine
 with nothing else installed, link everything in statically. Use the patched
 libslirp (see below) and add `diffutils` to the packages above:
@@ -48,14 +48,14 @@ libslirp (see below) and add `diffutils` to the packages above:
 ```sh
 scripts/build-slirp
 PKG_CONFIG_PATH="$PWD/build/slirp-fixed/lib/pkgconfig" \
-    cmake -S . -B build-static -G Ninja -DMRC_STATIC_DEPENDENCIES=ON
+    cmake -S . -B build-static -G Ninja -DMH_STATIC_DEPENDENCIES=ON
 cmake --build build-static
 ```
 
-`build-static/mcap.exe` is then the whole emulator in a single file. It
+`build-static/mhat.exe` is then the whole emulator in a single file. It
 imports only DLLs that are part of Windows. Each Windows build also makes
-`mcapw.exe`, the same program without a console window, for starting from
-Explorer or a shortcut. Use `mcap.exe` from a terminal, where its messages
+`mhatw.exe`, the same program without a console window, for starting from
+Explorer or a shortcut. Use `mhat.exe` from a terminal, where its messages
 appear.
 
 The Windows build has a few differences from Linux:
@@ -74,8 +74,9 @@ The emulator detects supported machines from ROM contents; see
 [ROM support](docs/ROM_DETECTION.md).
 
 For Android, run `scripts/build_android.sh` with the Android SDK and NDK
-installed. The app retains its existing `org.magicrecomp.app` identifier so
-an update does not discard an installed user's app data. See
+installed. The app identifier is `org.magichat.app`. Earlier builds used a
+different identifier, so Android installs this one as a new app rather than
+as an update, and does not carry over the old app's data. See
 [Android setup](docs/ANDROID.md).
 
 ## Repository layout
@@ -87,7 +88,3 @@ an update does not discard an installed user's app data. See
 - `patches/`: optional ROM and network-dependency patch recipes.
 - `assets/licenses/`: licenses for embedded UI fonts.
 - `docs/`: emulator operation and implementation notes.
-
-Research experiments, historical SDKs, toolchains, reference documents, and
-the separate Magic Cap for Windows native rewrite remain in the original
-`magicrecomp` workspace. They are not build dependencies of MagicHat.

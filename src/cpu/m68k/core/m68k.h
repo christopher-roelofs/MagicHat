@@ -25,8 +25,8 @@
  * case to a byte store, and it is the representation a translator wants
  * before it starts keeping them in host flags.
  */
-#ifndef MRC_M68K_H
-#define MRC_M68K_H
+#ifndef MH_M68K_H
+#define MH_M68K_H
 
 #include "cpu/m68k/core/m68k_decode.h"
 
@@ -309,4 +309,4 @@ bool m68k_interrupt(m68k *c, unsigned level, unsigned vector);
  */
 bool m68k_implemented(unsigned op);
 
-#endif /* MRC_M68K_H */
+#endif /* MH_M68K_H */

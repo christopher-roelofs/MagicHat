@@ -2,9 +2,9 @@
  * reference loop carries no decode-cache branch. Intentionally no guard. */
 static void STEP_NAME(STEP_PARAMETERS)
 {
-    if (MRC_UNLIKELY(c->halted))
+    if (MH_UNLIKELY(c->halted))
         return;
-    if (MRC_UNLIKELY(c->power_stopped)) {
+    if (MH_UNLIKELY(c->power_stopped)) {
         /* Keep the host execution-slot/time budget moving while the core
          * is stopped. No instruction fetch or interrupt exception occurs. */
         c->insn_count++;
@@ -21,16 +21,16 @@ static void STEP_NAME(STEP_PARAMETERS)
     c->in_delay = c->branch_pending;
 
     /* An interrupt is taken in place of the instruction, not alongside it. */
-    if (MRC_UNLIKELY(check_interrupts(c)))
+    if (MH_UNLIKELY(check_interrupts(c)))
         return;
 
-    if (MRC_UNLIKELY(c->pc & 3)) {
+    if (MH_UNLIKELY(c->pc & 3)) {
         raise_exc(c, EXC_AdEL, c->pc, true);
         return;
     }
 
     uint32_t pa;
-    if (MRC_LIKELY(!c->has_mmu)) {
+    if (MH_LIKELY(!c->has_mmu)) {
         /* DataRover's normal TX39 configuration has no TLB. Keep instruction
          * fetches on the short segment-map path; data accesses still use the
          * shared load/store helpers. */
@@ -44,7 +44,7 @@ static void STEP_NAME(STEP_PARAMETERS)
     uint32_t insn;
     if (span && (span->generation != c->bus->lookup_generation ||
                  span->length < 4 || pa - span->base > span->length - 4)) {
-        span->bytes = mrc_bus_read_span(c->bus, pa, &span->length);
+        span->bytes = mh_bus_read_span(c->bus, pa, &span->length);
         span->base = pa;
         span->generation = c->bus->lookup_generation;
     }
@@ -56,13 +56,13 @@ static void STEP_NAME(STEP_PARAMETERS)
                (uint32_t)p[2] << 8 | p[3];
         c->bus->reads++;
     } else {
-        insn = mrc_bus_read(c->bus, pa, 4, &ok);
+        insn = mh_bus_read(c->bus, pa, 4, &ok);
     }
     if (!ok) {
         /* Recorded so another implementation can be told to fail the same
          * fetch; keyed by address rather than by position, because a
          * pipelined core fetches ahead of the accesses around it. */
-        if (MRC_UNLIKELY(g_bus_trace != NULL))
+        if (MH_UNLIKELY(g_bus_trace != NULL))
             bus_trace_emit(c, pa, 4, 0, BUS_F_IFETCH | BUS_F_ERROR);
         raise_exc(c, EXC_IBE, c->pc, true);
         return;
@@ -118,7 +118,7 @@ static void STEP_NAME(STEP_PARAMETERS)
     EXECUTE_INSTRUCTION(c, pa, insn);
 
     c->r[0] = 0;
-    if (MRC_UNLIKELY(g_trace_state != NULL))
+    if (MH_UNLIKELY(g_trace_state != NULL))
         trace_state_emit(c, insn);
     c->insn_count++;
     c->cycle_count++;

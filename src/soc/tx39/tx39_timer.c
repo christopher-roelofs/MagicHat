@@ -10,7 +10,7 @@
  */
 #include "soc/tx39/tx39.h"
 
-uint64_t mrc_timer_rtc_now(const tx39_timer *t)
+uint64_t mh_timer_rtc_now(const tx39_timer *t)
 {
     const tx39 *s = t->soc;
     uint64_t elapsed = s->cpu->cycle_count - t->rtc_cycle_ref;
@@ -19,14 +19,14 @@ uint64_t mrc_timer_rtc_now(const tx39_timer *t)
 
 static void rtc_sync(tx39_timer *t)
 {
-    t->rtc = mrc_timer_rtc_now(t);
+    t->rtc = mh_timer_rtc_now(t);
     t->rtc_cycle_ref = t->soc->cpu->cycle_count;
 }
 
-uint32_t mrc_timer_read(tx39_timer *t, uint32_t off, bool *decoded)
+uint32_t mh_timer_read(tx39_timer *t, uint32_t off, bool *decoded)
 {
     *decoded = true;
-    uint64_t now = mrc_timer_rtc_now(t);
+    uint64_t now = mh_timer_rtc_now(t);
 
     switch (off) {
     case TX39_TIMERRTCHI:    return (uint32_t)((now >> 32) & 0x7FF);
@@ -41,7 +41,7 @@ uint32_t mrc_timer_read(tx39_timer *t, uint32_t off, bool *decoded)
     }
 }
 
-bool mrc_timer_write(tx39_timer *t, uint32_t off, uint32_t val)
+bool mh_timer_write(tx39_timer *t, uint32_t off, uint32_t val)
 {
     switch (off) {
     case TX39_TIMERALARMHI:  t->alarm_hi = val & 0x7FF; return true;
@@ -67,17 +67,17 @@ bool mrc_timer_write(tx39_timer *t, uint32_t off, uint32_t val)
     }
 }
 
-void mrc_timer_tick(tx39_timer *t)
+void mh_timer_tick(tx39_timer *t)
 {
     if (t->control & TIMERCTRL_FREEZERTC)
         return;
 
-    uint64_t now = mrc_timer_rtc_now(t);
+    uint64_t now = mh_timer_rtc_now(t);
 
     /* Alarm: fires when the 43-bit RTC matches ALARMHI:ALARMLO. */
     uint64_t alarm = ((uint64_t)t->alarm_hi << 32) | t->alarm_lo;
     if (alarm && now >= alarm && !(t->soc->icu.status[4] & INT5_ALARMINT))
-        mrc_icu_raise(&t->soc->icu, 5, INT5_ALARMINT);
+        mh_icu_raise(&t->soc->icu, 5, INT5_ALARMINT);
 
     /*
      * Periodic timer. PERVAL is the reload value in 32.768 kHz ticks, so the
@@ -89,7 +89,7 @@ void mrc_timer_tick(tx39_timer *t)
         uint64_t period = now / t->periodic_reload;
         if (period != t->last_period) {
             t->last_period = period;
-            mrc_icu_raise(&t->soc->icu, 5, INT5_PERINT);
+            mh_icu_raise(&t->soc->icu, 5, INT5_PERINT);
         }
     } else {
         t->last_period = t->periodic_reload ? now / t->periodic_reload : 0;

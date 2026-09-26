@@ -14,13 +14,13 @@
  * is hidden, because a list of a hundred names you cannot choose is worse
  * than no list.
  */
-#ifndef MRC_SDL_PICKER_H
-#define MRC_SDL_PICKER_H
+#ifndef MH_SDL_PICKER_H
+#define MH_SDL_PICKER_H
 
 #include <stdbool.h>
 #include "frontend/sdl/ui.h"
 
-typedef struct mrc_picker mrc_picker;
+typedef struct mh_picker mh_picker;
 
 /*
  * Open on a directory, showing files whose names end with any of the given
@@ -31,25 +31,25 @@ typedef struct mrc_picker mrc_picker;
  * path that cannot be read falls back to the home directory and then to the
  * filesystem root, so the picker always opens on something.
  */
-mrc_picker *mrc_picker_open(mrc_ui *ui, const char *title, const char *start,
+mh_picker *mh_picker_open(mh_ui *ui, const char *title, const char *start,
                             const char *const *suffixes, unsigned suffix_count);
-void mrc_picker_close(mrc_picker *p);
+void mh_picker_close(mh_picker *p);
 
 /*
  * Hand it a row the rail reported. Returns true when the picker consumed it,
  * which it does for its own rows -- navigating into a directory or choosing a
  * file. Anything else is left for the caller.
  */
-bool mrc_picker_row(mrc_picker *p, int id);
+bool mh_picker_row(mh_picker *p, int id);
 
 /*
  * The file chosen since this was last asked, or NULL. The string belongs to
  * the picker and is valid until it is asked again or closed, so a caller that
  * wants to keep it copies it.
  */
-const char *mrc_picker_taken(mrc_picker *p);
+const char *mh_picker_taken(mh_picker *p);
 
 /* Where it is looking now, for a caller that wants to reopen there later. */
-const char *mrc_picker_directory(const mrc_picker *p);
+const char *mh_picker_directory(const mh_picker *p);
 
-#endif /* MRC_SDL_PICKER_H */
+#endif /* MH_SDL_PICKER_H */

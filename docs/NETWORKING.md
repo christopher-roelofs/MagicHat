@@ -1,8 +1,7 @@
 # Networking: what the device can actually do
 
 The working card path described below is DataRover/MIPS, not a verified 68k
-configuration. 68k driver and modem research remains in the original
-`magicrecomp` workspace.
+configuration.
 
 Measured from the ROM and the package set, before any of it was built. The
 point of writing it down first is that it decides the order of the work, and
@@ -104,8 +103,7 @@ WinPcLink sends two `Cntd` replies to `Cnct`; our client sent one, leaving a
 20-second connection wait to expire while a large package was arriving.
 `scripts/pclink` now sends both replies. Ne2000 (67,096 bytes) and WCPack
 (126,388 bytes) both transfer completely and the guest resumes command
-processing. The ROM watchpoints and failure trace remain in the original
-research workspace.
+processing.
 
 This fixes the serial package transport used to install networking software.
 The NE2000 card now has packet transport through libslirp userspace NAT.
@@ -117,8 +115,7 @@ as zero starts accessory enumeration, which fails without a peer and enters
 a 60-second recovery cycle that temporarily disables UART A. The empty-bus
 model now reports that input high, so the guest finishes discovery with no
 devices and exits normally. The polarity is inferred from the ROM's
-discovery logic; the trace and validation remain in the original research
-workspace. This does not implement an Ethernet card or network connection.
+discovery logic. This does not implement an Ethernet card or network connection.
 
 With this fix, a 126,388-byte WCPack transfer followed by keeping PCLink open
 leaves the installed drivers visible with no warning after 108.5 emulated
@@ -329,7 +326,7 @@ provider's name is `Lan`.
 From a Desk snapshot prepared this way, this replay reaches initialization:
 
 ```sh
-./build/mcap --rom roms/MagicCap-USA.image --headless --no-host-battery \
+./build/mhat --rom roms/MagicCap-USA.image --headless --no-host-battery \
   --load-state /tmp/datarover-ne2000/minimal-desk.state \
   --ne2000 1 --card-at 20000000 --log-card 4000 \
   --codec-gpio '100,260000000;000,360000000' \
@@ -484,9 +481,6 @@ The complete response still matches SHA-256
 The remaining pauses follow guest acknowledgements and window updates;
 this measurement is not a claim about real hardware throughput. The public
 `example.com` page also renders with the patched backend in slot 2.
-Evidence: `out/networking/browser-large.pcap` (before),
-`browser-large-fast.pcap` (after), `transfer-timing.jsonl`,
-`large-fast-verification.txt`, and `ctest-transfer-fixed.log`.
 
 The network regression test fails against the original library and passes
 with the patch. It verifies full 8,000-byte HTTP bodies with MSS offers
@@ -498,22 +492,18 @@ that a genuine boundary collision still causes overrun.
 The patched dependency is built locally by `scripts/build-slirp`, pinned to
 upstream v4.7.0 commit `3ad1710a96678fe79066b1469cead4058713a1d9`. It applies
 only the checked-in patch and installs under `build/slirp-fixed`, without
-changing system libraries. Startup identifies it with the `mrc-mss1` suffix
+changing system libraries. Startup identifies it with the `mh-mss1` suffix
 (the upstream version generator also labels the patched tree `dirty`). The
 script accepts reruns of its exact patch and refuses unrelated source edits.
 
-Local, ignored test artifacts are in `out/networking/`: `browser-desk.state`
-has the installed packages and configured provider before card insertion;
-`browser-example.state` has the public URL entered, ready to press **go**;
-`browser-local.state` similarly contains `http://10.0.2.2:8080/`. The captures
-and screenshots record the local and public tests. These states contain
-licensed guest software and are not repository fixtures.
-
-For this workspace, launch the prepared public-page test with:
+Saved states with the networking packages installed contain licensed guest
+software, so none are in the repository. Once you have saved one with the
+packages installed, the provider configured and a URL entered in the browser,
+resume it with networking attached:
 
 ```sh
-SDL_VIDEODRIVER=wayland ./build/mcap --rom roms/MagicCap-USA.image \
-  --load-state out/networking/browser-example.state --net user
+./build/mhat --rom roms/MagicCap-USA.image \
+  --load-state states/browser.state --net user
 ```
 
 Press **go** after the card initializes. This snapshot is already awake;
@@ -532,7 +522,7 @@ PKG_CONFIG_PATH="$PWD/build/slirp-fixed/lib/pkgconfig" \
   cmake -S . -B build -U 'SLIRP_*' -U '__pkg_config_checked_SLIRP' \
   -U 'pkgcfg_lib_SLIRP_*'
 cmake --build build -j
-./build/mcap --rom roms/MagicCap-USA.image \
+./build/mhat --rom roms/MagicCap-USA.image \
   --load-state /path/to/driver-installed-desk.state \
   --net user --net-pcap /tmp/datarover.pcap
 ```

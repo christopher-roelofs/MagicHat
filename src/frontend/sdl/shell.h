@@ -16,8 +16,8 @@
  * What stays with the machine is what belongs to it: the audio device, whose
  * rate is a property of the board, and the run loop itself.
  */
-#ifndef MRC_SDL_SHELL_H
-#define MRC_SDL_SHELL_H
+#ifndef MH_SDL_SHELL_H
+#define MH_SDL_SHELL_H
 
 #include <stdbool.h>
 
@@ -30,17 +30,17 @@
  * defines, and the link fails on a duplicate symbol. The three things a
  * shell holds are named by pointer instead, which needs no definitions.
  */
-typedef struct mrc_sdl_display mrc_sdl_display;
-typedef struct mrc_ui mrc_ui;
-typedef struct mrc_lcd mrc_lcd;
+typedef struct mh_sdl_display mh_sdl_display;
+typedef struct mh_ui mh_ui;
+typedef struct mh_lcd mh_lcd;
 
-typedef struct mrc_shell mrc_shell;
+typedef struct mh_shell mh_shell;
 
 /* What a machine borrows. Valid while the shell is open. */
-mrc_sdl_display *mrc_shell_display(mrc_shell *sh);
-mrc_ui          *mrc_shell_ui(mrc_shell *sh);
-mrc_lcd         *mrc_shell_lcd(mrc_shell *sh);
-bool             mrc_shell_is_open(const mrc_shell *sh);
+mh_sdl_display *mh_shell_display(mh_shell *sh);
+mh_ui          *mh_shell_ui(mh_shell *sh);
+mh_lcd         *mh_shell_lcd(mh_shell *sh);
+bool             mh_shell_is_open(const mh_shell *sh);
 
 /*
  * Start SDL and open the window. `panel_w`/`panel_h` size the first texture
@@ -50,8 +50,8 @@ bool             mrc_shell_is_open(const mrc_shell *sh);
  * rather than carry on without: everything this program does happens in it.
  */
 /* Returns NULL when there is no window to be had. */
-mrc_shell *mrc_shell_open(const char *title, unsigned panel_w, unsigned panel_h);
-void mrc_shell_close(mrc_shell *sh);
+mh_shell *mh_shell_open(const char *title, unsigned panel_w, unsigned panel_h);
+void mh_shell_close(mh_shell *sh);
 
 /*
  * Hand the window to a machine: its name in the title bar, its panel size on
@@ -63,7 +63,7 @@ void mrc_shell_close(mrc_shell *sh);
  * frame against the last one of the machine before it would be a picture of
  * neither.
  */
-bool mrc_shell_attach(mrc_shell *sh, const char *title,
+bool mh_shell_attach(mh_shell *sh, const char *title,
                       unsigned panel_w, unsigned panel_h);
 
 /*
@@ -73,7 +73,7 @@ bool mrc_shell_attach(mrc_shell *sh, const char *title,
  * reached through a fixed main(argc, argv) and there is nowhere to hand it to
  * them. NULL when nothing opened one, which is every headless run.
  */
-void mrc_shell_set_current(mrc_shell *sh);
-mrc_shell *mrc_shell_current(void);
+void mh_shell_set_current(mh_shell *sh);
+mh_shell *mh_shell_current(void);
 
-#endif /* MRC_SDL_SHELL_H */
+#endif /* MH_SDL_SHELL_H */

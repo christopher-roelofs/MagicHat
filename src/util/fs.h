@@ -3,10 +3,10 @@
  *
  * Paths stay forward-slashed everywhere. Windows accepts '/' as well as '\',
  * and the rest of the emulator splits paths on '/', so the Windows side of
- * mrc_realpath converts on the way out rather than every caller learning both.
+ * mh_realpath converts on the way out rather than every caller learning both.
  */
-#ifndef MRC_UTIL_FS_H
-#define MRC_UTIL_FS_H
+#ifndef MH_UTIL_FS_H
+#define MH_UTIL_FS_H
 
 #include <limits.h>
 #include <stdbool.h>
@@ -22,7 +22,7 @@
 #endif
 
 /* Windows also takes '\', which is what Explorer and cmd hand a program. */
-static inline bool mrc_is_path_separator(char c)
+static inline bool mh_is_path_separator(char c)
 {
 #ifdef _WIN32
     if (c == '\\') return true;
@@ -31,24 +31,24 @@ static inline bool mrc_is_path_separator(char c)
 }
 
 /* The last separator in a path, or NULL when there is none. */
-static inline const char *mrc_path_last_separator(const char *path)
+static inline const char *mh_path_last_separator(const char *path)
 {
     const char *last = NULL;
     for (const char *p = path; *p; p++)
-        if (mrc_is_path_separator(*p)) last = p;
+        if (mh_is_path_separator(*p)) last = p;
     return last;
 }
 
 /* The final component: the filename without its directories. */
-static inline const char *mrc_path_base(const char *path)
+static inline const char *mh_path_base(const char *path)
 {
-    const char *slash = mrc_path_last_separator(path);
+    const char *slash = mh_path_last_separator(path);
     return slash ? slash + 1 : path;
 }
 
 /* Absolute form of an existing path. False when it does not exist, as with
  * realpath, or when the result would not fit. */
-static inline bool mrc_realpath(const char *path, char *out, size_t size)
+static inline bool mh_realpath(const char *path, char *out, size_t size)
 {
 #ifdef _WIN32
     if (!_fullpath(out, path, size)) return false;
@@ -66,7 +66,7 @@ static inline bool mrc_realpath(const char *path, char *out, size_t size)
 }
 
 /* A directory only this user can read, where permissions mean anything. */
-static inline int mrc_mkdir(const char *path)
+static inline int mh_mkdir(const char *path)
 {
 #ifdef _WIN32
     return _mkdir(path);
@@ -77,7 +77,7 @@ static inline int mrc_mkdir(const char *path)
 
 /* True for the top of a filesystem: "/" or, on Windows, a drive such as
  * "C:/". There is nothing above it to go up to. */
-static inline bool mrc_path_is_root(const char *path)
+static inline bool mh_path_is_root(const char *path)
 {
 #ifdef _WIN32
     if (path[0] && path[1] == ':' && (path[2] == '/' || path[2] == '\\') && !path[3])
@@ -87,7 +87,7 @@ static inline bool mrc_path_is_root(const char *path)
 }
 
 /* Where scratch files go. */
-static inline const char *mrc_temp_dir(void)
+static inline const char *mh_temp_dir(void)
 {
 #ifdef _WIN32
     static char dir[1024];
@@ -103,7 +103,7 @@ static inline const char *mrc_temp_dir(void)
 }
 
 /* mkdtemp, which Windows lacks: the pattern ends in XXXXXX. */
-static inline char *mrc_mkdtemp(char *pattern)
+static inline char *mh_mkdtemp(char *pattern)
 {
 #ifdef _WIN32
     if (_mktemp_s(pattern, strlen(pattern) + 1) || _mkdir(pattern)) return NULL;
@@ -113,7 +113,7 @@ static inline char *mrc_mkdtemp(char *pattern)
 #endif
 }
 
-static inline int mrc_setenv(const char *name, const char *value)
+static inline int mh_setenv(const char *name, const char *value)
 {
 #ifdef _WIN32
     return _putenv_s(name, value);
@@ -122,4 +122,4 @@ static inline int mrc_setenv(const char *name, const char *value)
 #endif
 }
 
-#endif /* MRC_UTIL_FS_H */
+#endif /* MH_UTIL_FS_H */

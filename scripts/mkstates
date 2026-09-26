@@ -14,22 +14,22 @@
 #   scripts/mkstates 'roms/Data Rover 840/DataRover-840-USA.image' states/dr840
 set -e
 cd "$(dirname "$0")/.."
-ROM=${1:-roms/Rosemary SDK/MagicCap-USA.image}
+ROM=${1:-roms/MagicCap-USA.image}
 STATES=${2:-states}
 mkdir -p "$STATES"
 
 echo "==> booting to the monitor prompt"
-./build/mcap --temporary --fresh --rom "$ROM" --headless --monitor \
+./build/mhat --temporary --fresh --rom "$ROM" --headless --monitor \
     -n 820000000 --save-state "$STATES/monitor.state" 2>&1 >/dev/null \
     | grep -E 'snapshot|^cpu:'
 
 echo "==> starting Magic Cap and running to the boot screen"
-./build/mcap --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/monitor.state" \
+./build/mhat --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/monitor.state" \
     --input 'go -c\n' -n 1500000000 --save-state "$STATES/bootscreen.state" \
     2>&1 >/dev/null | grep -E 'snapshot|^irq:|^cpu:'
 
 echo "==> touching the screen to reach touchscreen calibration"
-./build/mcap --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/bootscreen.state" \
+./build/mhat --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/bootscreen.state" \
     --tap 500 500 5000000 --tap-hold 20000000 -n 400000000 \
     --save-state "$STATES/calibrate.state" 2>&1 >/dev/null \
     | grep -E 'snapshot|touch'
@@ -38,7 +38,7 @@ echo "==> calibrating the touchscreen to reach the Desk"
 # Three targets: top-left, bottom-right, centre. The raw ADC coordinates were
 # found by watching where the on-screen target went; the hold matters, because
 # a press shorter than about 30M instructions is not accepted.
-./build/mcap --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/calibrate.state" \
+./build/mhat --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/calibrate.state" \
     --taps "120,120,20000000;800,740,140000000;460,430,260000000" \
     --tap-hold 45000000 -n 450000000 --save-state "$STATES/desk.state" \
     2>&1 >/dev/null | grep -E 'snapshot|touch'
@@ -47,7 +47,7 @@ echo "==> dismissing the startup dialogs for a clear view of the Desk"
 # The title bar — date, battery gauge — is hidden behind the splash and the
 # attached-device notice until those are closed. "$STATES/cleandesk.state" is
 # the one to load when you want to see the gauge.
-./build/mcap --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/desk.state" \
+./build/mhat --temporary --fresh --rom "$ROM" --headless --load-state "$STATES/desk.state" \
     --taps-px "413,61,20000000;393,22,120000000;413,61,220000000" \
     --tap-hold 30000000 -n 400000000 --save-state "$STATES/cleandesk.state" \
     2>&1 >/dev/null | grep -E 'snapshot saved'

@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void mrc_machine_rebind(machine *m);
+void mh_machine_rebind(machine *m);
 
 /* Electrical edges must propagate on register accesses, not just between
  * 1024-instruction batches. Otherwise an ISR/IMR acknowledgement followed by
@@ -17,39 +17,39 @@ void mrc_machine_rebind(machine *m);
 static void card_irq_update(machine *m)
 {
     for (unsigned sl = 0; sl < 2; sl++)
-        if (m->card_in[sl] && m->card[sl].kind == &mrc_pccard_ne2000)
-            mrc_glacier_set_card_irq(&m->pcmcia[sl],
-                                    mrc_ne2000_irq(&m->card[sl].nic));
-        else if (m->card_in[sl] && m->card[sl].kind == &mrc_pccard_modem)
-            mrc_glacier_set_card_irq(&m->pcmcia[sl], mrc_modem_irq(&m->card[sl]));
-    bool asserted = mrc_glacier_irq(&m->pcmcia[0]) ||
-                    mrc_glacier_irq(&m->pcmcia[1]);
+        if (m->card_in[sl] && m->card[sl].kind == &mh_pccard_ne2000)
+            mh_glacier_set_card_irq(&m->pcmcia[sl],
+                                    mh_ne2000_irq(&m->card[sl].nic));
+        else if (m->card_in[sl] && m->card[sl].kind == &mh_pccard_modem)
+            mh_glacier_set_card_irq(&m->pcmcia[sl], mh_modem_irq(&m->card[sl]));
+    bool asserted = mh_glacier_irq(&m->pcmcia[0]) ||
+                    mh_glacier_irq(&m->pcmcia[1]);
     bool old = (m->soc.io_datain & 2u) != 0;
     m->soc.io_datain = (m->soc.io_datain & ~2u) | (asserted ? 2u : 0u);
-    if (asserted && !old) mrc_icu_raise(&m->soc.icu, 3, 4u);
+    if (asserted && !old) mh_icu_raise(&m->soc.icu, 3, 4u);
 }
 static uint32_t glacier_read(void *ctx, uint32_t off, unsigned size)
 {
     datarover_card_port *p = ctx;
-    return mrc_glacier_read(&p->owner->pcmcia[p->slot], off, size);
+    return mh_glacier_read(&p->owner->pcmcia[p->slot], off, size);
 }
 static void glacier_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
     datarover_card_port *p = ctx;
-    mrc_glacier_write(&p->owner->pcmcia[p->slot], off, size, val);
+    mh_glacier_write(&p->owner->pcmcia[p->slot], off, size, val);
     card_irq_update(p->owner);
 }
 static uint32_t card_read(void *ctx, uint32_t off, unsigned size)
 {
     datarover_card_port *p = ctx;
-    uint32_t v = mrc_pccard_read(&p->owner->card_port[p->slot][p->window], off, size);
+    uint32_t v = mh_pccard_read(&p->owner->card_port[p->slot][p->window], off, size);
     card_irq_update(p->owner);
     return v;
 }
 static void card_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
     datarover_card_port *p = ctx;
-    mrc_pccard_write(&p->owner->card_port[p->slot][p->window], off, size, val);
+    mh_pccard_write(&p->owner->card_port[p->slot][p->window], off, size, val);
     card_irq_update(p->owner);
 }
 
@@ -86,7 +86,7 @@ static uint32_t rom_ram_size(const uint8_t *rom, uint32_t length)
     return size && size <= DR840_RAM_WINDOW ? size : 0;
 }
 
-bool mrc_machine_init(machine *m, const char *rom_path, uint32_t ram_size)
+bool mh_machine_init(machine *m, const char *rom_path, uint32_t ram_size)
 {
     memset(m, 0, sizeof(*m));
     if (ram_size > DR840_RAM_WINDOW) {
@@ -133,21 +133,21 @@ bool mrc_machine_init(machine *m, const char *rom_path, uint32_t ram_size)
     if (!m->ram)
         return false;
 
-    mrc_bus_init(&m->bus);
-    mrc_cpu_init(&m->cpu, &m->bus);
+    mh_bus_init(&m->bus);
+    mh_cpu_init(&m->cpu, &m->bus);
     /* The TMPR3902U has no TLB; see the has_mmu comment in cpu/r3900.h for
      * the ROM evidence. */
     m->cpu.has_mmu = false;
-    mrc_tx39_init(&m->soc, &m->cpu, DR840_CPU_HZ);
-    mrc_dr_keyboard_init(&m->keyboard, &m->soc.mbus);
+    mh_tx39_init(&m->soc, &m->cpu, DR840_CPU_HZ);
+    mh_dr_keyboard_init(&m->keyboard, &m->soc.mbus);
     /* The ROM's 0x40C4 boot-select read tests IOCTRL.IODIN[3]. */
     m->soc.io_ctrl |= DR840_IO_BOOT_NORMAL;
-    mrc_glacier_init(&m->pcmcia[0], "pcmcia0");
-    mrc_glacier_init(&m->pcmcia[1], "pcmcia1");
-    mrc_unknown_init(&m->kseg3, "kseg3-dev");
-    mrc_machine_rebind(m);
+    mh_glacier_init(&m->pcmcia[0], "pcmcia0");
+    mh_glacier_init(&m->pcmcia[1], "pcmcia1");
+    mh_unknown_init(&m->kseg3, "kseg3-dev");
+    mh_machine_rebind(m);
 
-    mrc_bus_add_ram(&m->bus, "dram", DR840_RAM_BASE, m->ram, m->ram_size,
+    mh_bus_add_ram(&m->bus, "dram", DR840_RAM_BASE, m->ram, m->ram_size,
                     DR840_RAM_WINDOW);
     /*
      * Program storage is flash, not mask ROM. The DataRover840F flasher
@@ -170,42 +170,42 @@ bool mrc_machine_init(machine *m, const char *rom_path, uint32_t ram_size)
      * the image mirrors through the rest — which is what lets an
      * out-of-range access produce what the board would rather than a fault.
      */
-    mrc_bus_add_flash(&m->bus, "flash@3C", DR840_ROM_BASE_A, DR840_ROM_WINDOW,
+    mh_bus_add_flash(&m->bus, "flash@3C", DR840_ROM_BASE_A, DR840_ROM_WINDOW,
                       m->rom, m->rom_size);
-    mrc_bus_add_flash(&m->bus, "flash@13C", DR840_ROM_BASE_B, DR840_ROM_WINDOW,
+    mh_bus_add_flash(&m->bus, "flash@13C", DR840_ROM_BASE_B, DR840_ROM_WINDOW,
                       m->rom, m->rom_size);
     /* At BFC00000 the ROM's first J resolves to B3C0001C, not 83C0001C:
      * MIPS J retains the current PC's high nibble. That target is the
      * existing physical 13C flash alias. The reset alias is inferred from
      * this working ROM path; exact board decode extent remains unverified. */
-    mrc_bus_add_flash(&m->bus, "flash@reset", DR840_BOOT_BASE, DR840_BOOT_WINDOW,
+    mh_bus_add_flash(&m->bus, "flash@reset", DR840_BOOT_BASE, DR840_BOOT_WINDOW,
                       m->rom, m->rom_size);
-    mrc_bus_add_mmio(&m->bus, "tx39", TX39_CFG_BASE, TX39_CFG_SIZE, &m->soc,
-                     mrc_tx39_read, mrc_tx39_write);
+    mh_bus_add_mmio(&m->bus, "tx39", TX39_CFG_BASE, TX39_CFG_SIZE, &m->soc,
+                     mh_tx39_read, mh_tx39_write);
     for (unsigned sl = 0; sl < 2; sl++)
-        for (unsigned w = 0; w < MRC_PCCARD_NWINDOW; w++)
+        for (unsigned w = 0; w < MH_PCCARD_NWINDOW; w++)
             m->socket_port[sl][w] = (datarover_card_port){m, sl, w};
-    mrc_bus_add_mmio(&m->bus, "pcmcia0", DR840_PCMCIA0_BASE, GLACIER_WINDOW,
+    mh_bus_add_mmio(&m->bus, "pcmcia0", DR840_PCMCIA0_BASE, GLACIER_WINDOW,
                      &m->socket_port[0][0], glacier_read, glacier_write);
-    mrc_bus_add_mmio(&m->bus, "pcmcia1", DR840_PCMCIA1_BASE, GLACIER_WINDOW,
+    mh_bus_add_mmio(&m->bus, "pcmcia1", DR840_PCMCIA1_BASE, GLACIER_WINDOW,
                      &m->socket_port[1][0], glacier_read, glacier_write);
 
-    mrc_bus_add_float(&m->bus, "card1a", DR840_CARD_A1_BASE, DR840_CARD_SIZE);
-    mrc_bus_add_float(&m->bus, "card2a", DR840_CARD_A2_BASE, DR840_CARD_SIZE);
-    mrc_bus_add_float(&m->bus, "card1b", DR840_CARD_B1_BASE, DR840_CARD_SIZE);
-    mrc_bus_add_float(&m->bus, "card2b", DR840_CARD_B2_BASE, DR840_CARD_SIZE);
+    mh_bus_add_float(&m->bus, "card1a", DR840_CARD_A1_BASE, DR840_CARD_SIZE);
+    mh_bus_add_float(&m->bus, "card2a", DR840_CARD_A2_BASE, DR840_CARD_SIZE);
+    mh_bus_add_float(&m->bus, "card1b", DR840_CARD_B1_BASE, DR840_CARD_SIZE);
+    mh_bus_add_float(&m->bus, "card2b", DR840_CARD_B2_BASE, DR840_CARD_SIZE);
 
-    mrc_bus_add_mmio(&m->bus, "kseg3-dev", DR840_KSEG3_DEV_BASE,
-                     DR840_KSEG3_DEV_SIZE, &m->kseg3, mrc_unknown_read,
-                     mrc_unknown_write);
+    mh_bus_add_mmio(&m->bus, "kseg3-dev", DR840_KSEG3_DEV_BASE,
+                     DR840_KSEG3_DEV_SIZE, &m->kseg3, mh_unknown_read,
+                     mh_unknown_write);
 
-    mrc_bus_enable_lookup(&m->bus, true);
+    mh_bus_enable_lookup(&m->bus, true);
     return true;
 }
 
-void mrc_machine_rebind(machine *m)
+void mh_machine_rebind(machine *m)
 {
-    mrc_bus_invalidate_lookup(&m->bus);
+    mh_bus_invalidate_lookup(&m->bus);
     m->cpu.bus     = &m->bus;
     m->cpu.log     = stderr;
     m->cpu.on_trap = cpu_trap;
@@ -235,24 +235,24 @@ void mrc_machine_rebind(machine *m)
      * across a load because the devices live inside `machine`. Only the
      * backing stores need re-pointing. */
     for (unsigned i = 0; i < m->bus.nregion; i++) {
-        mrc_region *r = &m->bus.region[i];
-        if (r->kind == MRC_REGION_RAM)
+        mh_region *r = &m->bus.region[i];
+        if (r->kind == MH_REGION_RAM)
             r->host = m->ram;
-        else if (r->kind == MRC_REGION_ROM || r->kind == MRC_REGION_FLASH)
+        else if (r->kind == MH_REGION_ROM || r->kind == MH_REGION_FLASH)
             r->host = m->rom;
     }
 }
 
-void mrc_machine_free(machine *m)
+void mh_machine_free(machine *m)
 {
-    mrc_cpu_jit_report(m->jit, stderr);
-    mrc_cpu_jit_free(m->jit);
+    mh_cpu_jit_report(m->jit, stderr);
+    mh_cpu_jit_free(m->jit);
     m->jit = NULL;
-    mrc_cpu_decode_cache_free(m->decode_cache);
+    mh_cpu_decode_cache_free(m->decode_cache);
     m->decode_cache = NULL;
-    for (unsigned i = 0; i < 2; i++) mrc_network_close(m->network[i]);
+    for (unsigned i = 0; i < 2; i++) mh_network_close(m->network[i]);
     for (unsigned i = 0; i < 2; i++) {
-        mrc_card_image_close(&m->storage[i]);
+        mh_card_image_close(&m->storage[i]);
         free(m->card_image[i]);
         free(m->card_path[i]);
         m->card_path[i] = NULL;
@@ -265,49 +265,49 @@ void mrc_machine_free(machine *m)
     m->rom = NULL;
 }
 
-void mrc_machine_reset(machine *m, uint32_t reset_pc)
+void mh_machine_reset(machine *m, uint32_t reset_pc)
 {
-    mrc_cpu_reset(&m->cpu, reset_pc);
+    mh_cpu_reset(&m->cpu, reset_pc);
     m->input_epoch_set = false;
     m->power_release_at = 0;
     m->power_close_after = 0;
 }
 
-void mrc_machine_wake(machine *m)
+void mh_machine_wake(machine *m)
 {
     if (!m->cpu.power_stopped) return;
-    mrc_power_set_button(&m->soc.power, false);
-    mrc_power_set_button(&m->soc.power, true);
+    mh_power_set_button(&m->soc.power, false);
+    mh_power_set_button(&m->soc.power, true);
     m->power_release_at = m->cpu.insn_count + DR840_CPU_HZ / 20;
     /* Host input policy: allow wake UI/housekeeping to finish before an
      * immediate window close sends OFF. This is not a hardware timer. */
     m->power_close_after = m->cpu.insn_count + (uint64_t)DR840_CPU_HZ * 5;
 }
 
-void mrc_machine_set_option(machine *m, bool down)
+void mh_machine_set_option(machine *m, bool down)
 {
     if (down) m->soc.io_ctrl &= ~DR840_IO_BOOT_NORMAL;
     else m->soc.io_ctrl |= DR840_IO_BOOT_NORMAL;
 }
 
-bool mrc_machine_option_held(const machine *m)
+bool mh_machine_option_held(const machine *m)
 {
     return !(m->soc.io_ctrl & DR840_IO_BOOT_NORMAL);
 }
 
-bool mrc_machine_power_off(machine *m)
+bool mh_machine_power_off(machine *m)
 {
     /* Do not collapse launch ON and close OFF into one guest poll, or send
      * OFF while the ROM is still ignoring buttons during wake. */
     if (!m->cpu.power_stopped && !m->cpu.halted &&
         m->power_close_after > m->cpu.insn_count)
-        mrc_machine_run(m, m->power_close_after - m->cpu.insn_count, 1024);
+        mh_machine_run(m, m->power_close_after - m->cpu.insn_count, 1024);
     m->power_close_after = 0;
     m->power_release_at = 0;
-    mrc_ucb_set_pen(&m->soc.sib.codec, false, 0, 0);
-    mrc_machine_set_option(m, false);
+    mh_ucb_set_pen(&m->soc.sib.codec, false, 0, 0);
+    mh_machine_set_option(m, false);
     bool held = (m->soc.power.ctrl & PWRCTRL_ONBUTN) != 0;
-    mrc_power_set_button(&m->soc.power, false);
+    mh_power_set_button(&m->soc.power, false);
     if (m->cpu.power_stopped) return true;
     if (m->cpu.halted) return false;
 
@@ -315,20 +315,20 @@ bool mrc_machine_power_off(machine *m)
      * sending another. Otherwise supply an ordinary, guest-visible press.
      * The hold and timeout are host input policy, not hardware constants. */
     if (!held) {
-        mrc_power_set_button(&m->soc.power, true);
-        mrc_machine_run(m, DR840_CPU_HZ / 20, 1024);
-        mrc_power_set_button(&m->soc.power, false);
+        mh_power_set_button(&m->soc.power, true);
+        mh_machine_run(m, DR840_CPU_HZ / 20, 1024);
+        mh_power_set_button(&m->soc.power, false);
     }
     const uint64_t deadline = m->cpu.insn_count + (uint64_t)DR840_CPU_HZ * 30;
     while (!m->cpu.power_stopped && !m->cpu.halted &&
            m->cpu.insn_count < deadline) {
         uint64_t left = deadline - m->cpu.insn_count;
-        mrc_machine_run(m, left < 1000000 ? left : 1000000, 1024);
+        mh_machine_run(m, left < 1000000 ? left : 1000000, 1024);
     }
     return m->cpu.power_stopped;
 }
 
-void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
+void mh_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
 {
     if (tick_interval == 0)
         tick_interval = 1024;
@@ -347,15 +347,15 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
         if (chunk > tick_interval)
             chunk = tick_interval;
         if (m->jit)
-            mrc_cpu_run_jit(&m->cpu, chunk, m->jit);
+            mh_cpu_run_jit(&m->cpu, chunk, m->jit);
         else if (m->decode_cache)
-            mrc_cpu_run_decoded(&m->cpu, chunk, m->decode_cache);
+            mh_cpu_run_decoded(&m->cpu, chunk, m->decode_cache);
         else
-            mrc_cpu_run(&m->cpu, chunk);
-        mrc_tx39_tick(&m->soc);
-        mrc_dr_keyboard_service(&m->keyboard);
+            mh_cpu_run(&m->cpu, chunk);
+        mh_tx39_tick(&m->soc);
+        mh_dr_keyboard_service(&m->keyboard);
         if (m->power_release_at && m->cpu.insn_count >= m->power_release_at) {
-            mrc_power_set_button(&m->soc.power, false);
+            mh_power_set_button(&m->soc.power, false);
             m->power_release_at = 0;
         }
 
@@ -365,10 +365,10 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
          * syscall well out of the instruction loop.
          */
         if (m->track_host_battery && m->cpu.insn_count >= m->host_battery_next) {
-            mrc_host_power p;
-            if (mrc_host_power_read(&p) && p.has_battery)
+            mh_host_power p;
+            if (mh_host_power_read(&p) && p.has_battery)
                 m->soc.sib.codec.aux[2] =
-                    (uint16_t)mrc_host_power_to_adc(p.percent);
+                    (uint16_t)mh_host_power_to_adc(p.percent);
             m->host_battery_next = m->cpu.insn_count + DR840_CPU_HZ / 4;
         }
 
@@ -376,9 +376,9 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
             if (m->card[sl].kind && !m->card_in[sl] &&
                 m->cpu.insn_count - base >= m->card_at[sl]) {
                 m->card_in[sl] = true;
-                mrc_glacier_set_present(&m->pcmcia[sl], true);
-                if(m->card[sl].kind == &mrc_pccard_sram) {
-                    mrc_glacier_set_memory_inputs(&m->pcmcia[sl], true, false, true);
+                mh_glacier_set_present(&m->pcmcia[sl], true);
+                if(m->card[sl].kind == &mh_pccard_sram) {
+                    mh_glacier_set_memory_inputs(&m->pcmcia[sl], true, false, true);
                     /* ROM 13C346CC reads IO1 for slot 1, IO0 for slot 2.
                      * Both battery-detect inputs high mean healthy SRAM. */
                     m->soc.io_ctrl |= sl == 0 ? 2u : 1u;
@@ -387,20 +387,20 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
                         "+%llu\n", sl + 1,
                         (unsigned long long)(m->cpu.insn_count - base));
             }
-            if (m->card_in[sl] && m->card[sl].kind == &mrc_pccard_ne2000) {
+            if (m->card_in[sl] && m->card[sl].kind == &mh_pccard_ne2000) {
                 uint64_t cycles = m->cpu.cycle_count;
                 uint64_t ns = cycles / DR840_CPU_HZ * 1000000000 +
                               cycles % DR840_CPU_HZ * 1000000000 / DR840_CPU_HZ;
-                mrc_network_poll(m->network[sl], ns);
-                mrc_ne2000_tick(&m->card[sl].nic, ns);
-                mrc_glacier_set_ready_irq(&m->pcmcia[sl], true);
+                mh_network_poll(m->network[sl], ns);
+                mh_ne2000_tick(&m->card[sl].nic, ns);
+                mh_glacier_set_ready_irq(&m->pcmcia[sl], true);
             }
-            if (m->card_in[sl] && m->card[sl].kind == &mrc_pccard_modem) {
+            if (m->card_in[sl] && m->card[sl].kind == &mh_pccard_modem) {
                 uint64_t cycles = m->cpu.cycle_count;
                 uint64_t ns = cycles / DR840_CPU_HZ * 1000000000 +
                               cycles % DR840_CPU_HZ * 1000000000 / DR840_CPU_HZ;
-                mrc_modem_tick(&m->card[sl], ns);
-                mrc_glacier_set_ready_irq(&m->pcmcia[sl], true);
+                mh_modem_tick(&m->card[sl], ns);
+                mh_glacier_set_ready_irq(&m->pcmcia[sl], true);
             }
         }
         if (m->card[0].kind || m->card[1].kind)
@@ -408,13 +408,13 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
 
         if (m->option_i < m->option_n) {
             while (m->cpu.insn_count - base >= m->option_key[m->option_i].at) {
-                mrc_machine_set_option(m, m->option_key[m->option_i].down);
+                mh_machine_set_option(m, m->option_key[m->option_i].down);
                 if (++m->option_i == m->option_n) break;
             }
         }
         if (m->gpio_i < m->gpio_n) {
             while (m->cpu.insn_count - base >= m->gpio[m->gpio_i].at) {
-                mrc_ucb_set_gpio_in(&m->soc.sib.codec, m->gpio[m->gpio_i].level);
+                mh_ucb_set_gpio_in(&m->soc.sib.codec, m->gpio[m->gpio_i].level);
                 fprintf(stderr, "[codec] input pins driven to %03X at +%llu\n",
                         m->gpio[m->gpio_i].level,
                         (unsigned long long)(m->cpu.insn_count - base));
@@ -425,8 +425,8 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
             while (m->cpu.insn_count - base >= m->mfio_sched[m->mfio_i].at) {
                 uint32_t was = m->soc.io_datain, now = m->mfio_sched[m->mfio_i].level;
                 m->soc.io_datain = now;
-                if (now & ~was) mrc_icu_raise(&m->soc.icu, 3, now & ~was);
-                if (was & ~now) mrc_icu_raise(&m->soc.icu, 4, was & ~now);
+                if (now & ~was) mh_icu_raise(&m->soc.icu, 3, now & ~was);
+                if (was & ~now) mh_icu_raise(&m->soc.icu, 4, was & ~now);
                 fprintf(stderr, "[mfio] input word driven to %08X at +%llu\n", now,
                         (unsigned long long)(m->cpu.insn_count - base));
                 if (++m->mfio_i == m->mfio_n) break;
@@ -436,8 +436,8 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
             while (m->cpu.insn_count - base >= m->io_sched[m->io_i].at) {
                 uint32_t was = m->soc.io_ctrl & 0x7fu, now = m->io_sched[m->io_i].level & 0x7fu;
                 m->soc.io_ctrl = (m->soc.io_ctrl & ~0x7fu) | now;
-                if (now & ~was) mrc_icu_raise(&m->soc.icu, 5, (now & ~was) << 7);
-                if (was & ~now) mrc_icu_raise(&m->soc.icu, 5, was & ~now);
+                if (now & ~was) mh_icu_raise(&m->soc.icu, 5, (now & ~was) << 7);
+                if (was & ~now) mh_icu_raise(&m->soc.icu, 5, was & ~now);
                 fprintf(stderr, "[io] pins driven to %02X at +%llu\n", now,
                         (unsigned long long)(m->cpu.insn_count - base));
                 if (++m->io_i == m->io_n) break;
@@ -448,8 +448,8 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
                 bool was = (m->soc.power.ctrl & 0x40000000u) != 0;
                 bool now = m->pwrint_sched[m->pwrint_i].level != 0;
                 m->soc.power.ctrl = (m->soc.power.ctrl & ~0x40000000u) | (now ? 0x40000000u : 0);
-                if (now && !was) mrc_icu_raise(&m->soc.icu, 5, 0x08000000u);   /* POSPWRINT */
-                if (was && !now) mrc_icu_raise(&m->soc.icu, 5, 0x04000000u);   /* NEGPWRINT */
+                if (now && !was) mh_icu_raise(&m->soc.icu, 5, 0x08000000u);   /* POSPWRINT */
+                if (was && !now) mh_icu_raise(&m->soc.icu, 5, 0x04000000u);   /* NEGPWRINT */
                 fprintf(stderr, "[power] PWRINT pin %d at +%llu\n", now,
                         (unsigned long long)(m->cpu.insn_count - base));
                 if (++m->pwrint_i == m->pwrint_n) break;
@@ -459,10 +459,10 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
         if (m->power_scheduled) {
             uint64_t now = m->cpu.insn_count - base;
             if (m->power_phase == 0 && now >= m->power_at) {
-                mrc_power_set_button(&m->soc.power, true); m->power_phase = 1;
+                mh_power_set_button(&m->soc.power, true); m->power_phase = 1;
                 fprintf(stderr, "[power] button pressed at +%llu\n", (unsigned long long)now);
             } else if (m->power_phase == 1 && now >= m->power_at + m->tap_hold) {
-                mrc_power_set_button(&m->soc.power, false); m->power_phase = 2;
+                mh_power_set_button(&m->soc.power, false); m->power_phase = 2;
                 fprintf(stderr, "[power] button released at +%llu\n", (unsigned long long)now);
             }
         }
@@ -473,14 +473,14 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
          * one.
          */
         while (m->key_i < m->key_n && m->cpu.insn_count >= m->key[m->key_i].at) {
-            mrc_dr_keyboard_key(&m->keyboard, m->key[m->key_i].code,
+            mh_dr_keyboard_key(&m->keyboard, m->key[m->key_i].code,
                                 m->key[m->key_i].ext, m->key[m->key_i].down);
             m->key_i++;
         }
         if (m->tap_i < m->tap_n) {
             uint64_t now = m->cpu.insn_count - base;
             if (m->tap_phase == 0 && now >= m->tap[m->tap_i].at) {
-                mrc_ucb_set_pen(&m->soc.sib.codec, true, m->tap[m->tap_i].x,
+                mh_ucb_set_pen(&m->soc.sib.codec, true, m->tap[m->tap_i].x,
                                 m->tap[m->tap_i].y);
                 m->tap_phase = 1;
                 fprintf(stderr, "[touch] press %u at raw (%u,%u), +%llu\n",
@@ -488,7 +488,7 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
                         (unsigned long long)now);
             } else if (m->tap_phase == 1 &&
                        now >= m->tap[m->tap_i].at + m->tap_hold) {
-                mrc_ucb_set_pen(&m->soc.sib.codec, false, 0, 0);
+                mh_ucb_set_pen(&m->soc.sib.codec, false, 0, 0);
                 m->tap_phase = 0;
                 fprintf(stderr, "[touch] release %u at +%llu\n", m->tap_i,
                         (unsigned long long)now);
@@ -510,21 +510,21 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
                     ((int)m->tap[i].end_x - m->tap[i].x) * fraction);
                 uint16_t y = (uint16_t)(m->tap[i].y +
                     ((int)m->tap[i].end_y - m->tap[i].y) * fraction);
-                mrc_ucb_set_pen(&m->soc.sib.codec, true, x, y);
+                mh_ucb_set_pen(&m->soc.sib.codec, true, x, y);
             }
         }
 
         /* A host serial port, when one is attached, feeds the same way. */
         for (unsigned uix = 0; uix < 2; uix++) {
             tx39_uart *u = &m->soc.uart[uix];
-            void *lnk = mrc_uart_link(u);
+            void *lnk = mh_uart_link(u);
             tx39_uart_timing *timing = &m->soc.uart_timing[uix];
             if (lnk && (u->ctrl1 & UART_CTRL1_ENUART) && !u->rx_full &&
                 m->cpu.cycle_count >= timing->rx_next) {
                 uint8_t byte;
-                if (mrc_serial_read(lnk, &byte)) {
-                    mrc_uart_rx_byte(u, byte);
-                    timing->rx_next = m->cpu.cycle_count + mrc_uart_frame_cycles(u);
+                if (mh_serial_read(lnk, &byte)) {
+                    mh_uart_rx_byte(u, byte);
+                    timing->rx_next = m->cpu.cycle_count + mh_uart_frame_cycles(u);
                 }
             }
         }
@@ -532,8 +532,8 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
         /* Feed the console into UART A's receiver when it has room. */
         if (m->con_active && !m->soc.uart[0].rx_full) {
             uint8_t byte;
-            if (mrc_console_poll(&m->con, m->cpu.cycle_count, &byte))
-                mrc_uart_rx_byte(&m->soc.uart[0], byte);
+            if (mh_console_poll(&m->con, m->cpu.cycle_count, &byte))
+                mh_uart_rx_byte(&m->soc.uart[0], byte);
         }
         done += chunk;
 
@@ -546,24 +546,24 @@ void mrc_machine_run(machine *m, uint64_t insns, uint32_t tick_interval)
             char path[512];
             snprintf(path, sizeof(path), "%s%04u.pgm", m->fb_watch_prefix,
                      m->fb_watch_seq++);
-            mrc_machine_dump_fb(m, path);
+            mh_machine_dump_fb(m, path);
             next_shot = done + m->fb_watch_every;
         }
     }
 }
 
-bool mrc_machine_read_fb(machine *m, uint8_t *out, unsigned *w_out,
+bool mh_machine_read_fb(machine *m, uint8_t *out, unsigned *w_out,
                          unsigned *h_out)
 {
     if (m->cpu.power_stopped) return false;
     uint32_t fb_pa;
     unsigned w, h, bpp;
 
-    if (!mrc_video_geometry(&m->soc.video, &fb_pa, &w, &h, &bpp))
+    if (!mh_video_geometry(&m->soc.video, &fb_pa, &w, &h, &bpp))
         return false;
 
     uint32_t stride = (w * bpp + 7) / 8;
-    uint8_t *fb = mrc_bus_host_ptr(&m->bus, fb_pa, stride * h);
+    uint8_t *fb = mh_bus_host_ptr(&m->bus, fb_pa, stride * h);
     if (!fb)
         return false;
 
@@ -592,12 +592,12 @@ bool mrc_machine_read_fb(machine *m, uint8_t *out, unsigned *w_out,
     return true;
 }
 
-bool mrc_machine_dump_fb(machine *m, const char *path)
+bool mh_machine_dump_fb(machine *m, const char *path)
 {
     static uint8_t gray[PANEL_SCREEN_W * PANEL_SCREEN_H];
     unsigned w, h;
 
-    if (!mrc_machine_read_fb(m, gray, &w, &h)) {
+    if (!mh_machine_read_fb(m, gray, &w, &h)) {
         fprintf(stderr, "video controller is off or its framebuffer is "
                 "outside RAM; nothing to dump\n");
         return false;
@@ -612,7 +612,7 @@ bool mrc_machine_dump_fb(machine *m, const char *path)
 
     if (!m->fb_watch_every || m->fb_watch_seq <= 1) {
         uint32_t fb_pa; unsigned bw, bh, bpp;
-        mrc_video_geometry(&m->soc.video, &fb_pa, &bw, &bh, &bpp);
+        mh_video_geometry(&m->soc.video, &fb_pa, &bw, &bh, &bpp);
         fprintf(stderr, "framebuffer %ux%u @ %ubpp from %08X -> %s\n", w, h,
                 bpp, fb_pa, path);
     }
@@ -628,7 +628,7 @@ bool mrc_machine_dump_fb(machine *m, const char *path)
  * kept as it was given rather than dropped: it is still the best name anyone
  * has for the card.
  */
-static void remember_card(machine *m, unsigned slot, mrc_card_kind kind,
+static void remember_card(machine *m, unsigned slot, mh_card_kind kind,
                           const char *path)
 {
     free(m->card_path[slot]);
@@ -636,30 +636,30 @@ static void remember_card(machine *m, unsigned slot, mrc_card_kind kind,
     m->card_kind[slot] = kind;
     if (!path) return;
     char resolved[PATH_MAX];
-    const char *keep = mrc_realpath(path, resolved, sizeof(resolved)) ? resolved : path;
+    const char *keep = mh_realpath(path, resolved, sizeof(resolved)) ? resolved : path;
     m->card_path[slot] = strdup(keep);
 }
 
 static void map_card(machine *m, unsigned slot)
 {
-    mrc_bus_invalidate_lookup(&m->bus);
-    static const uint32_t base[2][MRC_PCCARD_NWINDOW] = {
+    mh_bus_invalidate_lookup(&m->bus);
+    static const uint32_t base[2][MH_PCCARD_NWINDOW] = {
         { DR840_CARD_A1_BASE, DR840_CARD_B1_BASE },
         { DR840_CARD_A2_BASE, DR840_CARD_B2_BASE },
     };
     /* Route both physical windows to the card. Memory cards retain their
      * legacy mirrored image; I/O cards distinguish the spaces themselves. */
-    for (unsigned w = 0; w < MRC_PCCARD_NWINDOW; w++) {
+    for (unsigned w = 0; w < MH_PCCARD_NWINDOW; w++) {
         m->card_port[slot][w].card = &m->card[slot];
-        m->card_port[slot][w].window = (mrc_pccard_window)w;
+        m->card_port[slot][w].window = (mh_pccard_window)w;
         m->card_port[slot][w].pc_hint = &m->cpu.cur_pc;
         m->card_port[slot][w].present = &m->card_in[slot];
 
         for (unsigned i = 0; i < m->bus.nregion; i++) {
-            mrc_region *r = &m->bus.region[i];
+            mh_region *r = &m->bus.region[i];
             if (r->base != base[slot][w])
                 continue;
-            r->kind = MRC_REGION_MMIO;
+            r->kind = MH_REGION_MMIO;
             r->ctx = &m->socket_port[slot][w];
             r->read = card_read;
             r->write = card_write;
@@ -671,7 +671,7 @@ static void map_card(machine *m, unsigned slot)
 
 }
 
-bool mrc_machine_insert_card(machine *m, unsigned slot, const char *path)
+bool mh_machine_insert_card(machine *m, unsigned slot, const char *path)
 {
     if (slot > 1)
         return false;
@@ -695,28 +695,28 @@ bool mrc_machine_insert_card(machine *m, unsigned slot, const char *path)
     }
     fclose(f);
 
-    mrc_pccard_init(&m->card[slot], slot, &mrc_pccard_memory);
+    mh_pccard_init(&m->card[slot], slot, &mh_pccard_memory);
     m->card[slot].image = m->card_image[slot];
     m->card[slot].image_len = (uint32_t)n;
 
-    remember_card(m, slot, MRC_CARD_MEMORY, path);
+    remember_card(m, slot, MH_CARD_MEMORY, path);
     map_card(m, slot);
     fprintf(stderr, "card: slot %u <- %s (%ld bytes)\n", slot + 1, path, n);
     return true;
 }
 
-bool mrc_machine_insert_sram(machine *m, unsigned slot, const char *path, uint32_t create_size)
+bool mh_machine_insert_sram(machine *m, unsigned slot, const char *path, uint32_t create_size)
 {
     if (slot > 1 || m->card[slot].kind) return false;
-    if (!mrc_card_image_open(&m->storage[slot], path, create_size)) return false;
-    mrc_pccard_sram_init(&m->card[slot], slot,
+    if (!mh_card_image_open(&m->storage[slot], path, create_size)) return false;
+    mh_pccard_sram_init(&m->card[slot], slot,
                         m->storage[slot].data, m->storage[slot].size);
-    remember_card(m, slot, MRC_CARD_SRAM, path);
+    remember_card(m, slot, MH_CARD_SRAM, path);
     map_card(m, slot);
     return true;
 }
 
-bool mrc_machine_eject_card(machine *m, unsigned slot)
+bool mh_machine_eject_card(machine *m, unsigned slot)
 {
     if (slot > 1 || !m->card[slot].kind) return false;
     /*
@@ -725,46 +725,46 @@ bool mrc_machine_eject_card(machine *m, unsigned slot)
      * whatever it had cached about the card. Then the image is flushed and
      * closed, so the file on disk is complete by the time this returns.
      */
-    mrc_glacier_set_present(&m->pcmcia[slot], false);
-    mrc_glacier_set_memory_inputs(&m->pcmcia[slot], false, false, false);
+    mh_glacier_set_present(&m->pcmcia[slot], false);
+    mh_glacier_set_memory_inputs(&m->pcmcia[slot], false, false, false);
     m->soc.io_ctrl &= ~(slot == 0 ? 2u : 1u);
     m->card_in[slot] = false;
     if (m->network[slot]) {
-        mrc_network_close(m->network[slot]);
+        mh_network_close(m->network[slot]);
         m->network[slot] = NULL;
     }
-    mrc_card_image_close(&m->storage[slot]);
+    mh_card_image_close(&m->storage[slot]);
     free(m->card_image[slot]);
     m->card_image[slot] = NULL;
-    m->card[slot] = (mrc_pccard){0};
-    remember_card(m, slot, MRC_CARD_NONE, NULL);
+    m->card[slot] = (mh_pccard){0};
+    remember_card(m, slot, MH_CARD_NONE, NULL);
     map_card(m, slot);
     fprintf(stderr, "card: slot %u opened its detect lines; the card is out\n",
             slot + 1);
     return true;
 }
 
-bool mrc_machine_insert_ne2000(machine *m, unsigned slot)
+bool mh_machine_insert_ne2000(machine *m, unsigned slot)
 {
     if (slot > 1 || m->card[slot].kind) return false;
-    mrc_pccard_init(&m->card[slot], slot, &mrc_pccard_ne2000);
+    mh_pccard_init(&m->card[slot], slot, &mh_pccard_ne2000);
     uint8_t mac[6] = { 0x02, 0x00, 0x00, 0x84, 0x00, (uint8_t)(slot + 1) };
-    mrc_ne2000_init(&m->card[slot].nic, mac);
-    remember_card(m, slot, MRC_CARD_NE2000, NULL);
-    /* Nothing behind it yet: a card with the cable out. mrc_machine_network
+    mh_ne2000_init(&m->card[slot].nic, mac);
+    remember_card(m, slot, MH_CARD_NE2000, NULL);
+    /* Nothing behind it yet: a card with the cable out. mh_machine_network
      * is what plugs the cable in, and it records what it plugged into. */
     map_card(m, slot);
     fprintf(stderr, "card: slot %u <- NE2000 (Ethernet cable disconnected)\n", slot + 1);
     return true;
 }
 
-bool mrc_machine_insert_modem(machine *m, unsigned slot, void *link)
+bool mh_machine_insert_modem(machine *m, unsigned slot, void *link)
 {
     if (slot > 1 || m->card[slot].kind) return false;
-    mrc_pccard_init(&m->card[slot], slot, &mrc_pccard_modem);
-    mrc_modem_init(&m->card[slot]);
+    mh_pccard_init(&m->card[slot], slot, &mh_pccard_modem);
+    mh_modem_init(&m->card[slot]);
     m->card[slot].modem.link = link;
-    remember_card(m, slot, MRC_CARD_MODEM, NULL);
+    remember_card(m, slot, MH_CARD_MODEM, NULL);
     map_card(m, slot);
     fprintf(stderr, "card: slot %u <- data modem (%s)\n", slot + 1,
             link ? "far end on a pty" : "far end unplugged");
@@ -773,14 +773,14 @@ bool mrc_machine_insert_modem(machine *m, unsigned slot, void *link)
 
 static void network_receive(void *opaque, const uint8_t *frame, size_t len)
 {
-    mrc_ne2000_receive(opaque, frame, len);
+    mh_ne2000_receive(opaque, frame, len);
 }
-bool mrc_machine_network(machine *m, unsigned slot, const char *pcap)
+bool mh_machine_network(machine *m, unsigned slot, const char *pcap)
 {
-    if (slot > 1 || m->card[slot].kind != &mrc_pccard_ne2000 || m->network[slot]) return false;
-    m->network[slot] = mrc_network_open(network_receive, &m->card[slot].nic, pcap);
+    if (slot > 1 || m->card[slot].kind != &mh_pccard_ne2000 || m->network[slot]) return false;
+    m->network[slot] = mh_network_open(network_receive, &m->card[slot].nic, pcap);
     if (!m->network[slot]) return false;
-    m->card[slot].nic.send = mrc_network_send;
+    m->card[slot].nic.send = mh_network_send;
     m->card[slot].nic.send_opaque = m->network[slot];
     /*
      * What the card is plugged into, so a state can plug it back in. A network

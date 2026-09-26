@@ -7,8 +7,8 @@
  * The whole block is one 1 KiB window at physical 0x10C00000, reachable as
  * kseg1 0xB0C00000 (uncached) — which is how the Magic Cap ROM addresses it.
  */
-#ifndef MRC_TX39_REGS_H
-#define MRC_TX39_REGS_H
+#ifndef MH_TX39_REGS_H
+#define MH_TX39_REGS_H
 
 #define TX39_CFG_BASE           0x10C00000u
 #define TX39_CFG_SIZE           0x00000400u
@@ -380,4 +380,4 @@
 #define TX39_EXT_FIRST          0x1C8
 #define TX39_EXT_LAST           0x1FC
 
-#endif /* MRC_TX39_REGS_H */
+#endif /* MH_TX39_REGS_H */

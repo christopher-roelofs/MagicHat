@@ -66,11 +66,11 @@ class NativePPPTests(unittest.TestCase):
 #include "host/pclink.c"
 int check_package(const char *path, const unsigned char *expected,
                   unsigned length, int raw) {
-    mrc_pclink *peer = mrc_pclink_open(path);
+    mh_pclink *peer = mh_pclink_open(path);
     if (!peer) return 0;
     int result = peer->package_len == length &&
         !memcmp(peer->package, expected, length) && peer->m68k_package == raw;
-    mrc_pclink_close(peer);
+    mh_pclink_close(peer);
     return result ? 1 : -1;
 }
 ''')
@@ -121,7 +121,7 @@ int check_package(const char *path, const unsigned char *expected,
             harness.write_text('''
 #include "host/pclink.c"
 int test_sequence_wrap(void) {
-    mrc_pclink peer = {0};
+    mh_pclink peer = {0};
     peer.ppp_package_sent = true;
     peer.ppp_package_end = 0x10005;
     peer.gmtp_acked = 4;
@@ -141,14 +141,14 @@ int test_sequence_wrap(void) {
                             str(harness), '-o', str(library)], check=True)
             lib = ctypes.CDLL(str(library))
             self.assertEqual(lib.test_sequence_wrap(), 0)
-            lib.mrc_pclink_open.argtypes = [ctypes.c_char_p]
-            lib.mrc_pclink_open.restype = ctypes.c_void_p
-            lib.mrc_pclink_close.argtypes = [ctypes.c_void_p]
-            lib.mrc_pclink_from_guest.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
-            lib.mrc_pclink_to_guest.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint8)]
-            lib.mrc_pclink_to_guest.restype = ctypes.c_bool
-            lib.mrc_pclink_state_of.argtypes = [ctypes.c_void_p]
-            lib.mrc_pclink_state_of.restype = ctypes.c_int
+            lib.mh_pclink_open.argtypes = [ctypes.c_char_p]
+            lib.mh_pclink_open.restype = ctypes.c_void_p
+            lib.mh_pclink_close.argtypes = [ctypes.c_void_p]
+            lib.mh_pclink_from_guest.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+            lib.mh_pclink_to_guest.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint8)]
+            lib.mh_pclink_to_guest.restype = ctypes.c_bool
+            lib.mh_pclink_state_of.argtypes = [ctypes.c_void_p]
+            lib.mh_pclink_state_of.restype = ctypes.c_int
             package = directory / 'Test.pkg'
             cluster = bytes(16) + struct.pack('>I', 20)
             expected = (b'MPkg' + struct.pack('>7I', 1, 0, 0, 0, 0, 0, 0)
@@ -161,18 +161,18 @@ int test_sequence_wrap(void) {
                                     + b'Test' + expected)
             else:
                 package.write_bytes(cluster)
-            peer = lib.mrc_pclink_open(str(package).encode())
+            peer = lib.mh_pclink_open(str(package).encode())
             self.assertTrue(peer)
 
             def send(pdu):
                 wire = hix_frame(pdu) if direct_hix else frame(pdu)
                 for byte in wire:
-                    lib.mrc_pclink_from_guest(peer, byte)
+                    lib.mh_pclink_from_guest(peer, byte)
 
             def drain():
                 wire = bytearray()
                 byte = ctypes.c_uint8()
-                while lib.mrc_pclink_to_guest(peer, ctypes.byref(byte)):
+                while lib.mh_pclink_to_guest(peer, ctypes.byref(byte)):
                     wire.append(byte.value)
                 frames = []
                 for encoded in wire.split(b'\x7e'):
@@ -227,7 +227,7 @@ int test_sequence_wrap(void) {
                     # HIX can put a cumulative ACK and multiple commands
                     # inside one UDP datagram.
                     for byte in frame(bytes(cumulative) + bytes(msg)):
-                        lib.mrc_pclink_from_guest(peer, byte)
+                        lib.mh_pclink_from_guest(peer, byte)
                     data_frames = drain()
                     self.assertEqual(data_frames[0][0], 4)
                     self.assertEqual(len(data_frames), 4)
@@ -269,7 +269,7 @@ int test_sequence_wrap(void) {
                 self.assertTrue(stream.startswith(b'SBuf'))
                 message(2, b'Pong')  # An early Pong cannot finish a transfer.
                 drain()
-                self.assertEqual(lib.mrc_pclink_state_of(peer), 2)
+                self.assertEqual(lib.mh_pclink_state_of(peer), 2)
                 sequence = 4
                 while True:
                     send(ack(sequence))
@@ -286,15 +286,15 @@ int test_sequence_wrap(void) {
                 # The guest replies to Ping before acknowledging that Ping.
                 byte = ctypes.c_uint8()
                 for _ in range(20001):
-                    if lib.mrc_pclink_to_guest(peer, ctypes.byref(byte)):
+                    if lib.mh_pclink_to_guest(peer, ctypes.byref(byte)):
                         break
                 else:
                     self.fail('peer did not send its completion Ping')
                 drain()
                 message(3, b'Pong')
-                self.assertEqual(lib.mrc_pclink_state_of(peer), 3)
+                self.assertEqual(lib.mh_pclink_state_of(peer), 3)
             finally:
-                lib.mrc_pclink_close(peer)
+                lib.mh_pclink_close(peer)
 
 
 if __name__ == '__main__':

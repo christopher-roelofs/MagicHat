@@ -14,26 +14,26 @@
  * then reports what the link is doing. Pretending otherwise would mean
  * synthesising taps at coordinates that differ between machines and versions.
  */
-#ifndef MRC_SDL_INSTALL_PANEL_H
-#define MRC_SDL_INSTALL_PANEL_H
+#ifndef MH_SDL_INSTALL_PANEL_H
+#define MH_SDL_INSTALL_PANEL_H
 
 #include <stdbool.h>
 #include "frontend/sdl/ui.h"
 #include "runtime/machine.h"
 
-void mrc_install_panel_open(mrc_ui *ui, mrc_runtime *m);
-void mrc_install_panel_close(mrc_ui *ui);
-bool mrc_install_panel_showing(void);
+void mh_install_panel_open(mh_ui *ui, mh_runtime *m);
+void mh_install_panel_close(mh_ui *ui);
+bool mh_install_panel_showing(void);
 
 /* Hand it a row the rail reported. True when the panel consumed it. */
-bool mrc_install_panel_row(mrc_ui *ui, mrc_runtime *m, int id);
-bool mrc_install_panel_back(mrc_ui *ui, mrc_runtime *m);
+bool mh_install_panel_row(mh_ui *ui, mh_runtime *m, int id);
+bool mh_install_panel_back(mh_ui *ui, mh_runtime *m);
 
 /*
  * Bring the progress up to date. The transfer runs as the machine runs, so
  * this is called once a frame while the panel is open; it is cheap and does
  * nothing when there is nothing to report.
  */
-void mrc_install_panel_tick(mrc_ui *ui, mrc_runtime *m);
+void mh_install_panel_tick(mh_ui *ui, mh_runtime *m);
 
-#endif /* MRC_SDL_INSTALL_PANEL_H */
+#endif /* MH_SDL_INSTALL_PANEL_H */

@@ -28,14 +28,14 @@ static bool fail(const char *fmt, ...)
     return false;
 }
 
-const char *mrc_devices_last_error(void)
+const char *mh_devices_last_error(void)
 {
     return last_error[0] ? last_error : NULL;
 }
 
 static bool make_dir(const char *path)
 {
-    if (!mrc_mkdir(path) || errno == EEXIST) return true;
+    if (!mh_mkdir(path) || errno == EEXIST) return true;
     return fail("cannot create %s: %s", path, strerror(errno));
 }
 
@@ -60,12 +60,12 @@ static bool make_dirs(const char *path)
     return make_dir(work);
 }
 
-const char *mrc_devices_root(void)
+const char *mh_devices_root(void)
 {
     if (root_ready) return root_path[0] ? root_path : NULL;
     root_ready = true;
 
-    const char *override = getenv("MRC_DEVICES_DIR");
+    const char *override = getenv("MH_DEVICES_DIR");
     const char *data = getenv("XDG_DATA_HOME");
     const char *home = getenv("HOME");
 #ifdef _WIN32
@@ -77,12 +77,12 @@ const char *mrc_devices_root(void)
         snprintf(root_path, sizeof(root_path), "%s", override);
 #ifdef _WIN32
     else if (local && *local)
-        snprintf(root_path, sizeof(root_path), "%s/magicrecomp/devices", local);
+        snprintf(root_path, sizeof(root_path), "%s/magichat/devices", local);
 #endif
     else if (data && *data)
-        snprintf(root_path, sizeof(root_path), "%s/magicrecomp/devices", data);
+        snprintf(root_path, sizeof(root_path), "%s/magichat/devices", data);
     else if (home && *home)
-        snprintf(root_path, sizeof(root_path), "%s/.local/share/magicrecomp/devices",
+        snprintf(root_path, sizeof(root_path), "%s/.local/share/magichat/devices",
                  home);
     else {
         /* Nowhere to put them. Everything that does not need a device still
@@ -125,7 +125,7 @@ static void make_id(const char *name, char *id, size_t cap)
 
 static bool path_in(const char *id, const char *leaf, char *out, size_t cap)
 {
-    const char *root = mrc_devices_root();
+    const char *root = mh_devices_root();
     if (!root) return false;
     int n = snprintf(out, cap, "%s/%s/%s", root, id, leaf);
     return n > 0 && (size_t)n < cap;
@@ -159,7 +159,7 @@ static bool exists(const char *path)
 /* Fill in a device from its directory. False when the directory is not one:
  * a stray folder under the root is ignored rather than listed as a device
  * that cannot be started. */
-static bool load(const char *id, mrc_device *out)
+static bool load(const char *id, mh_device *out)
 {
     char rom[4096], state[4096], name[4096], machine[4096];
     if (!path_in(id, "rom", rom, sizeof(rom)) ||
@@ -177,13 +177,13 @@ static bool load(const char *id, mrc_device *out)
     return true;
 }
 
-bool mrc_device_by_id(const char *id, mrc_device *out)
+bool mh_device_by_id(const char *id, mh_device *out)
 {
-    if (!id || !*id || mrc_path_last_separator(id)) return false;
+    if (!id || !*id || mh_path_last_separator(id)) return false;
     return load(id, out);
 }
 
-bool mrc_device_paths(const mrc_device *d, char *rom, size_t rom_cap,
+bool mh_device_paths(const mh_device *d, char *rom, size_t rom_cap,
                       char *state, size_t state_cap)
 {
     if (!d) return false;
@@ -192,19 +192,19 @@ bool mrc_device_paths(const mrc_device *d, char *rom, size_t rom_cap,
     return true;
 }
 
-unsigned mrc_devices_list(mrc_device *out, unsigned max)
+unsigned mh_devices_list(mh_device *out, unsigned max)
 {
-    const char *root = mrc_devices_root();
+    const char *root = mh_devices_root();
     if (!root || !out || !max) return 0;
     DIR *dir = opendir(root);
     if (!dir) return 0;
 
     /* Newest first, by when the device was last put down -- which is the
      * order someone thinks of their own devices in. */
-    struct { mrc_device d; long when; } found[MRC_DEVICE_MAX];
+    struct { mh_device d; long when; } found[MH_DEVICE_MAX];
     unsigned n = 0;
     const struct dirent *e;
-    while ((e = readdir(dir)) && n < MRC_DEVICE_MAX) {
+    while ((e = readdir(dir)) && n < MH_DEVICE_MAX) {
         if (e->d_name[0] == '.') continue;
         if (!load(e->d_name, &found[n].d)) continue;
         char state[4096];
@@ -267,42 +267,42 @@ static bool copy_file(const char *from, const char *to)
  * each -- and so that the device can be named after the machine rather than
  * after whatever the file was called.
  */
-static mrc_rom_device identify_rom(const char *rom_path)
+static mh_rom_device identify_rom(const char *rom_path)
 {
     FILE *f = fopen(rom_path, "rb");
     if (!f) {
         fail("cannot read that file: %s", strerror(errno));
-        return MRC_ROM_UNKNOWN;
+        return MH_ROM_UNKNOWN;
     }
-    if (fseek(f, 0, SEEK_END)) { fclose(f); return MRC_ROM_UNKNOWN; }
+    if (fseek(f, 0, SEEK_END)) { fclose(f); return MH_ROM_UNKNOWN; }
     long size = ftell(f);
     if (size <= 0 || size > 64 * 1024 * 1024 || fseek(f, 0, SEEK_SET)) {
         fail("that file is empty, unreadable, or over 64 MiB");
         fclose(f);
-        return MRC_ROM_UNKNOWN;
+        return MH_ROM_UNKNOWN;
     }
     uint8_t *data = malloc((size_t)size);
     bool read_ok = data && fread(data, 1, (size_t)size, f) == (size_t)size;
     fclose(f);
-    if (!read_ok) { free(data); return MRC_ROM_UNKNOWN; }
-    mrc_rom_device found = mrc_rom_identify(data, (size_t)size);
+    if (!read_ok) { free(data); return MH_ROM_UNKNOWN; }
+    mh_rom_device found = mh_rom_identify(data, (size_t)size);
     free(data);
-    if (found == MRC_ROM_UNKNOWN) {
+    if (found == MH_ROM_UNKNOWN) {
         /*
          * Refused rather than filed as unknown. A device is a thing you can
          * start, and a list is only worth trusting when everything in it
          * starts; an experimental image still runs from a path with --device.
          */
         fail("that is not a firmware image this knows");
-        return MRC_ROM_UNKNOWN;
+        return MH_ROM_UNKNOWN;
     }
     return found;
 }
 
-bool mrc_device_create(const char *rom_path, const char *name, mrc_device *out)
+bool mh_device_create(const char *rom_path, const char *name, mh_device *out)
 {
     last_error[0] = 0;
-    const char *root = mrc_devices_root();
+    const char *root = mh_devices_root();
     if (!root || !rom_path) return fail("there is nowhere to keep devices");
     /*
      * The store may have gone since it was last looked at -- deleted, or on a
@@ -312,9 +312,9 @@ bool mrc_device_create(const char *rom_path, const char *name, mrc_device *out)
      */
     if (!make_dirs(root)) return false;
 
-    mrc_rom_device board = identify_rom(rom_path);
-    if (board == MRC_ROM_UNKNOWN) return false;
-    const char *machine = mrc_rom_device_slug(board);
+    mh_rom_device board = identify_rom(rom_path);
+    if (board == MH_ROM_UNKNOWN) return false;
+    const char *machine = mh_rom_device_slug(board);
 
     /*
      * What to call it. A name given by hand is taken as given, including the
@@ -327,8 +327,8 @@ bool mrc_device_create(const char *rom_path, const char *name, mrc_device *out)
      * two of the same machine is ordinary, so a second one counts up rather
      * than failing.
      */
-    char chosen[MRC_DEVICE_NAME_MAX];
-    char id[MRC_DEVICE_ID_MAX];
+    char chosen[MH_DEVICE_NAME_MAX];
+    char id[MH_DEVICE_ID_MAX];
     char dir[4096];
     if (name && *name) {
         snprintf(chosen, sizeof(chosen), "%s", name);
@@ -338,7 +338,7 @@ bool mrc_device_create(const char *rom_path, const char *name, mrc_device *out)
         if (exists(dir))
             return fail("there is already a device called \"%s\"", chosen);
     } else {
-        const char *product = mrc_rom_device_product(board);
+        const char *product = mh_rom_device_product(board);
         for (unsigned n = 1; ; n++) {
             /*
              * Parenthesised, because these machines are named by number.
@@ -383,7 +383,7 @@ bool mrc_device_create(const char *rom_path, const char *name, mrc_device *out)
     return true;
 }
 
-bool mrc_device_rename(const mrc_device *d, const char *name)
+bool mh_device_rename(const mh_device *d, const char *name)
 {
     char namefile[4096];
     if (!d || !name || !*name) return false;
@@ -391,10 +391,10 @@ bool mrc_device_rename(const mrc_device *d, const char *name)
     return write_line(namefile, name);
 }
 
-bool mrc_device_delete(const mrc_device *d)
+bool mh_device_delete(const mh_device *d)
 {
-    const char *root = mrc_devices_root();
-    if (!root || !d || !d->id[0] || mrc_path_last_separator(d->id)) return false;
+    const char *root = mh_devices_root();
+    if (!root || !d || !d->id[0] || mh_path_last_separator(d->id)) return false;
     char dir[4096];
     if (snprintf(dir, sizeof(dir), "%s/%s", root, d->id) >= (int)sizeof(dir))
         return false;

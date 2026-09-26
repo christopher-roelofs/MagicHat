@@ -27,8 +27,8 @@
  * as illegal, because that is what this hardware does with them. See
  * docs/M68K_CORE.md for that list.
  */
-#ifndef MRC_M68K_DECODE_H
-#define MRC_M68K_DECODE_H
+#ifndef MH_M68K_DECODE_H
+#define MH_M68K_DECODE_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -149,7 +149,7 @@ unsigned m68k_decode(const uint8_t *code, unsigned avail, uint32_t pc,
                      m68k_insn *out);
 
 /* No CPU32 instruction is longer than this. */
-#define MRC_JIT_M68K_MAX_BYTES 24
+#define MH_JIT_M68K_MAX_BYTES 24
 
 /* The mnemonic, for diagnostics. Never NULL. */
 const char *m68k_op_name(unsigned op);
@@ -180,4 +180,4 @@ static inline uint32_t m68k_cycle_key(const m68k_insn *insn)
            (uint32_t)insn->src.mode << 4 | (uint32_t)insn->dst.mode;
 }
 
-#endif /* MRC_M68K_DECODE_H */
+#endif /* MH_M68K_DECODE_H */

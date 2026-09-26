@@ -2,9 +2,9 @@
 
 #include <string.h>
 
-static const char *const window_name[MRC_PCCARD_NWINDOW] = { "A", "B" };
+static const char *const window_name[MH_PCCARD_NWINDOW] = { "A", "B" };
 
-void mrc_pccard_init(mrc_pccard *c, unsigned slot, const mrc_pccard_kind *kind)
+void mh_pccard_init(mh_pccard *c, unsigned slot, const mh_pccard_kind *kind)
 {
     memset(c, 0, sizeof(*c));
     c->kind = kind;
@@ -15,7 +15,7 @@ void mrc_pccard_init(mrc_pccard *c, unsigned slot, const mrc_pccard_kind *kind)
 /* Legacy read-only image probe. It deliberately retains the original
  * mirrored A/B mapping used by --card1/--card2. Writable SRAM has its own
  * device model: attribute/CIS in A and common memory in B (sram_card.c). */
-static bool memory_read(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+static bool memory_read(mh_pccard *c, mh_pccard_window w, uint32_t off,
                         unsigned size, uint32_t *out)
 {
     (void)w;
@@ -29,18 +29,18 @@ static bool memory_read(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
     return true;
 }
 
-static bool memory_write(mrc_pccard *c, mrc_pccard_window w, uint32_t off,
+static bool memory_write(mh_pccard *c, mh_pccard_window w, uint32_t off,
                          unsigned size, uint32_t val)
 {
     (void)c; (void)w; (void)off; (void)size; (void)val;
     return false;       /* a memory card we present read-only */
 }
 
-const mrc_pccard_kind mrc_pccard_memory = {
+const mh_pccard_kind mh_pccard_memory = {
     .name = "memory", .read = memory_read, .write = memory_write,
 };
 
-static void note(mrc_pccard *c, mrc_pccard_window w, uint32_t off)
+static void note(mh_pccard *c, mh_pccard_window w, uint32_t off)
 {
     if (!c->touched[w]) {
         c->touched[w] = true;
@@ -51,10 +51,10 @@ static void note(mrc_pccard *c, mrc_pccard_window w, uint32_t off)
     }
 }
 
-uint32_t mrc_pccard_read(void *ctx, uint32_t off, unsigned size)
+uint32_t mh_pccard_read(void *ctx, uint32_t off, unsigned size)
 {
-    mrc_pccard_port *p = ctx;
-    mrc_pccard *c = p->card;
+    mh_pccard_port *p = ctx;
+    mh_pccard *c = p->card;
     uint32_t v = 0;
 
     note(c, p->window, off);
@@ -78,10 +78,10 @@ uint32_t mrc_pccard_read(void *ctx, uint32_t off, unsigned size)
     return v;
 }
 
-void mrc_pccard_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
+void mh_pccard_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
-    mrc_pccard_port *p = ctx;
-    mrc_pccard *c = p->card;
+    mh_pccard_port *p = ctx;
+    mh_pccard *c = p->card;
 
     note(c, p->window, off);
     c->writes[p->window]++;
@@ -97,11 +97,11 @@ void mrc_pccard_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
     }
 }
 
-void mrc_pccard_report(const mrc_pccard *c)
+void mh_pccard_report(const mh_pccard *c)
 {
     if (!c->kind)
         return;
-    if (c->kind == &mrc_pccard_ne2000) {
+    if (c->kind == &mh_pccard_ne2000) {
         fprintf(c->log, "ne2000: COR=%02X CR=%02X ISR=%02X IMR=%02X "
                 "DMA=%llu read/%llu written, %llu unsupported accesses\n",
                 c->config, c->nic.cr, c->nic.isr, c->nic.imr,
@@ -114,11 +114,11 @@ void mrc_pccard_report(const mrc_pccard *c)
                 c->nic.par[4], c->nic.par[5], c->nic.pstart, c->nic.pstop,
                 c->nic.bnry, c->nic.curr, (unsigned long long)c->nic.tx_requests);
     }
-    if (c->kind == &mrc_pccard_ne2000)
+    if (c->kind == &mh_pccard_ne2000)
         fprintf(c->log, "ne2000: TX=%llu RX=%llu filtered=%llu overruns=%llu\n",
                 (unsigned long long)c->nic.tx_packets, (unsigned long long)c->nic.rx_packets,
                 (unsigned long long)c->nic.rx_filtered, (unsigned long long)c->nic.rx_overruns);
-    for (unsigned w = 0; w < MRC_PCCARD_NWINDOW; w++) {
+    for (unsigned w = 0; w < MH_PCCARD_NWINDOW; w++) {
         if (!c->touched[w])
             continue;
         fprintf(c->log,
@@ -129,7 +129,7 @@ void mrc_pccard_report(const mrc_pccard *c)
                 (unsigned long long)c->writes[w],
                 c->first_off[w], c->high_off[w]);
     }
-    for (unsigned w = 0; w < MRC_PCCARD_NWINDOW; w++)
+    for (unsigned w = 0; w < MH_PCCARD_NWINDOW; w++)
         if (!c->touched[w])
             fprintf(c->log, "card%u window %s: never accessed\n",
                     c->slot + 1, window_name[w]);

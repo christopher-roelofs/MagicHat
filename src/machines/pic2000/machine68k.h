@@ -27,15 +27,15 @@
  * BGND has been observed on assertion paths. General bus-error recovery,
  * other CPU32-only instructions and accurate cycle timing remain incomplete.
  */
-#ifndef MRC_MACHINE68K_H
-#define MRC_MACHINE68K_H
+#ifndef MH_MACHINE68K_H
+#define MH_MACHINE68K_H
 
 #include "runtime/machine.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 
-struct mrc_pclink;
+struct mh_pclink;
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,49 +70,49 @@ typedef struct m68k_machine m68k_machine;
  * the whole machine -- but the board's own memory is still worth being able
  * to point at, and the tests reach the framebuffer through it.
  */
-typedef struct { uint8_t *data; uint32_t size; } mrc_m68k_region;
-void mrc_m68k_retained_regions(m68k_machine *, mrc_m68k_region regions[2]);
-bool mrc_m68k_is_envoy(const m68k_machine *);
-bool mrc_m68k_is_hix(const m68k_machine *);
-mrc_runtime mrc_pic2000_runtime(m68k_machine *m);
-uint64_t mrc_m68k_elapsed_ns(const m68k_machine *m);
+typedef struct { uint8_t *data; uint32_t size; } mh_m68k_region;
+void mh_m68k_retained_regions(m68k_machine *, mh_m68k_region regions[2]);
+bool mh_m68k_is_envoy(const m68k_machine *);
+bool mh_m68k_is_hix(const m68k_machine *);
+mh_runtime mh_pic2000_runtime(m68k_machine *m);
+uint64_t mh_m68k_elapsed_ns(const m68k_machine *m);
 
-m68k_machine *mrc_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log);
-void          mrc_m68k_free(m68k_machine *m);
+m68k_machine *mh_m68k_new(const char *rom_path, unsigned ram_mb, FILE *log);
+void          mh_m68k_free(m68k_machine *m);
 /* Experimental modem bring-up port. This is a byte transport, not an ISP. */
-bool mrc_m68k_open_serial_a(m68k_machine *m);
-bool mrc_m68k_open_ppp(m68k_machine *m, const char *pcap);
+bool mh_m68k_open_serial_a(m68k_machine *m);
+bool mh_m68k_open_ppp(m68k_machine *m, const char *pcap);
 /* Experimental PIC-2000 NE2000 aperture for a guest driver probe. */
-bool mrc_m68k_open_ne2000_probe(m68k_machine *m, const char *pcap);
+bool mh_m68k_open_ne2000_probe(m68k_machine *m, const char *pcap);
 /* Attach a writable SRAM PC Card. Existing images retain their size; a new
  * image is created at the requested size. */
-bool mrc_m68k_insert_sram(m68k_machine *m, unsigned slot, const char *path,
+bool mh_m68k_insert_sram(m68k_machine *m, unsigned slot, const char *path,
                           uint32_t create_size);
-bool mrc_m68k_eject_card(m68k_machine *m, unsigned slot);
-bool mrc_m68k_card_present(const m68k_machine *m, unsigned slot);
-const char *mrc_m68k_card_path(const m68k_machine *m, unsigned slot);
+bool mh_m68k_eject_card(m68k_machine *m, unsigned slot);
+bool mh_m68k_card_present(const m68k_machine *m, unsigned slot);
+const char *mh_m68k_card_path(const m68k_machine *m, unsigned slot);
 
 /* Run up to `insns` execution slots or until terminal halt. Slots include
  * LPSTOP waits: this is the legacy CLI budget, not a retired-instruction count. */
-uint64_t      mrc_m68k_run(m68k_machine *m, uint64_t insns);
-void          mrc_m68k_report(const m68k_machine *m);
-bool          mrc_m68k_stopped(const m68k_machine *m);
-uint64_t      mrc_m68k_insns(const m68k_machine *m);
+uint64_t      mh_m68k_run(m68k_machine *m, uint64_t insns);
+void          mh_m68k_report(const m68k_machine *m);
+bool          mh_m68k_stopped(const m68k_machine *m);
+uint64_t      mh_m68k_insns(const m68k_machine *m);
 
 /* Live front-end access. Pixels are unpacked to 0..3, where 0 is white and
  * 3 is black. Pen coordinates are panel pixels. */
-void          mrc_m68k_lcd(const m68k_machine *m, uint8_t *pixels);
-bool          mrc_m68k_set_pen(m68k_machine *m, bool down,
+void          mh_m68k_lcd(const m68k_machine *m, uint8_t *pixels);
+bool          mh_m68k_set_pen(m68k_machine *m, bool down,
                                unsigned x, unsigned y);
-void          mrc_m68k_power_button(m68k_machine *m, bool down);
+void          mh_m68k_power_button(m68k_machine *m, bool down);
 /* Magic Bus keyboard: identified PIC-2000, Envoy 1.0/pt4 and HIX-300 firmware. */
-bool          mrc_m68k_keyboard_connect(m68k_machine *, bool connected);
-bool          mrc_m68k_keyboard_key(m68k_machine *, unsigned usage, bool down, bool repeat);
-void          mrc_m68k_keyboard_release(m68k_machine *);
-void          mrc_m68k_start(m68k_machine *m);
-bool          mrc_m68k_powered_off(const m68k_machine *m);
-bool          mrc_m68k_power_off(m68k_machine *m);
-void          mrc_m68k_schedule_power(m68k_machine *m, uint64_t at, uint64_t hold);
+bool          mh_m68k_keyboard_connect(m68k_machine *, bool connected);
+bool          mh_m68k_keyboard_key(m68k_machine *, unsigned usage, bool down, bool repeat);
+void          mh_m68k_keyboard_release(m68k_machine *);
+void          mh_m68k_start(m68k_machine *m);
+bool          mh_m68k_powered_off(const m68k_machine *m);
+bool          mh_m68k_power_off(m68k_machine *m);
+void          mh_m68k_schedule_power(m68k_machine *m, uint64_t at, uint64_t hold);
 
 /* Average cycles per instruction, used only to turn retired instructions into
  * elapsed time for the free-running counter. See the note in the .cpp. */
@@ -121,17 +121,17 @@ void          mrc_m68k_schedule_power(m68k_machine *m, uint64_t at, uint64_t hol
  * "blocks" or "jit" for cached/native execution. Returns false
  * for a name this machine has no engine for.
  */
-bool          mrc_m68k_set_engine(m68k_machine *m, const char *name);
+bool          mh_m68k_set_engine(m68k_machine *m, const char *name);
 /* What that engine did, for deciding whether it is worth having. */
-void          mrc_m68k_engine_report(const m68k_machine *m);
+void          mh_m68k_engine_report(const m68k_machine *m);
 
 /* The hardware option key: a level the guest samples, so it is held rather
  * than pressed. */
-void          mrc_m68k_set_option(m68k_machine *m, bool down);
+void          mh_m68k_set_option(m68k_machine *m, bool down);
 /* Whether it is held now. The line lives in the machine and travels in its
  * state, so a window asks rather than keeping a copy that a restore would
  * silently contradict. */
-bool          mrc_m68k_option_held(const m68k_machine *m);
+bool          mh_m68k_option_held(const m68k_machine *m);
 
 /*
  * The whole machine, to a file and back.
@@ -142,74 +142,74 @@ bool          mrc_m68k_option_held(const m68k_machine *m);
  * load into a machine built from a different ROM or a different amount of
  * memory rather than producing one that looks alive and is not.
  */
-bool          mrc_m68k_save_state(m68k_machine *m, const char *path);
-bool          mrc_m68k_load_state(m68k_machine *m, const char *path);
-void          mrc_m68k_attach_pclink(m68k_machine *m, struct mrc_pclink *link);
+bool          mh_m68k_save_state(m68k_machine *m, const char *path);
+bool          mh_m68k_load_state(m68k_machine *m, const char *path);
+void          mh_m68k_attach_pclink(m68k_machine *m, struct mh_pclink *link);
 
-void          mrc_m68k_set_cpi(m68k_machine *m, unsigned cpi);
+void          mh_m68k_set_cpi(m68k_machine *m, unsigned cpi);
 /* DEVIATION, for testing only: make the converter at dev21 +0xE4 return this
  * reading for every channel. Negative means "not supplied" and reads zero. */
-void          mrc_m68k_set_adc(m68k_machine *m, int value);
-bool          mrc_m68k_host_battery(m68k_machine *m, int percent);
-bool          mrc_m68k_host_adapter(m68k_machine *m, bool attached);
-bool          mrc_m68k_set_adapter(m68k_machine *m, bool attached);
-bool mrc_m68k_load_battery_ram(m68k_machine *, const uint8_t *, uint32_t);
-bool mrc_m68k_save_battery_ram(m68k_machine *, uint8_t **, uint32_t *);
+void          mh_m68k_set_adc(m68k_machine *m, int value);
+bool          mh_m68k_host_battery(m68k_machine *m, int percent);
+bool          mh_m68k_host_adapter(m68k_machine *m, bool attached);
+bool          mh_m68k_set_adapter(m68k_machine *m, bool attached);
+bool mh_m68k_load_battery_ram(m68k_machine *, const uint8_t *, uint32_t);
+bool mh_m68k_save_battery_ram(m68k_machine *, uint8_t **, uint32_t *);
 /* DEVIATION, for testing only: assert pen-down (IPL5 bit 1) at instruction
  * `at`. With trace, print every conversion the pen driver then starts. */
-void          mrc_m68k_touch(m68k_machine *m, uint64_t at, uint64_t len,
+void          mh_m68k_touch(m68k_machine *m, uint64_t at, uint64_t len,
                             bool trace);
 /* DEVIATION: schedule a tap at a 480x320 screen coordinate. */
-bool          mrc_m68k_tap(m68k_machine *m, uint64_t at, uint64_t len,
+bool          mh_m68k_tap(m68k_machine *m, uint64_t at, uint64_t len,
                           unsigned x, unsigned y, bool trace);
 /* DEVIATION, for testing only: a reading for one converter channel. */
-void          mrc_m68k_set_adc_chan(m68k_machine *m, unsigned chan, int value);
+void          mh_m68k_set_adc_chan(m68k_machine *m, unsigned chan, int value);
 /* DEVIATION, for testing only: a reading for one mux-and-channel pair. */
-void          mrc_m68k_set_adc_pair(m68k_machine *m, unsigned mux,
+void          mh_m68k_set_adc_pair(m68k_machine *m, unsigned mux,
                                     unsigned chan, int value);
 
 /* Diagnostics, observation only. */
-void          mrc_m68k_trace(m68k_machine *m, uint64_t n);
+void          mh_m68k_trace(m68k_machine *m, uint64_t n);
 /* Start tracing when the named PC is first reached. */
-void          mrc_m68k_trace_after(m68k_machine *m, uint32_t pc, uint64_t n);
+void          mh_m68k_trace_after(m68k_machine *m, uint32_t pc, uint64_t n);
 /* Start tracing on the selected execution of pc (first execution is 1). */
-void          mrc_m68k_trace_after_hit(m68k_machine *m, uint32_t pc,
+void          mh_m68k_trace_after_hit(m68k_machine *m, uint32_t pc,
                                       uint64_t hit, uint64_t n);
 /* Sample the PC every n instructions and report where the time went. */
-void          mrc_m68k_sample(m68k_machine *m, uint64_t every);
+void          mh_m68k_sample(m68k_machine *m, uint64_t every);
 /* DEVIATION, for testing only: assert an interrupt no device drove. */
-void          mrc_m68k_force_irq(m68k_machine *m, unsigned level, uint64_t at);
+void          mh_m68k_force_irq(m68k_machine *m, unsigned level, uint64_t at);
 /* DEVIATION, for testing only: seed a register of an unnamed probe device so
  * it reads back non-zero. Answers "does this gate matter" without inventing a
  * device -- what it reports is whatever the caller says, and is not a model. */
-bool          mrc_m68k_probe_preset(m68k_machine *m, const char *dev,
+bool          mh_m68k_probe_preset(m68k_machine *m, const char *dev,
                                     uint32_t off, uint16_t val);
 /* Count executions of an address; watch_log prints registers the first n times. */
 /* Count bytes written per 4K page; a framebuffer shows up as a hot run. */
-void          mrc_m68k_heat(m68k_machine *m, bool on);
+void          mh_m68k_heat(m68k_machine *m, bool on);
 /* Record which 256-byte blocks executed; two such files diff into "what did
  * this run reach that the other did not". */
-void          mrc_m68k_cover(m68k_machine *m, const char *path);
+void          mh_m68k_cover(m68k_machine *m, const char *path);
 /* Count reads per RAM address; a spin loop's condition is the hottest. */
-void          mrc_m68k_readheat(m68k_machine *m, bool on);
+void          mh_m68k_readheat(m68k_machine *m, bool on);
 /* Count executed instructions by opcode word; reported at exit. */
-void          mrc_m68k_insnheat(m68k_machine *m, bool on);
+void          mh_m68k_insnheat(m68k_machine *m, bool on);
 /* Report which instructions read a given address. */
-void          mrc_m68k_watch_read(m68k_machine *m, uint32_t addr);
+void          mh_m68k_watch_read(m68k_machine *m, uint32_t addr);
 /* Report which instructions write anywhere in [lo, hi). */
-void          mrc_m68k_watch_write(m68k_machine *m, uint32_t lo, uint32_t hi);
+void          mh_m68k_watch_write(m68k_machine *m, uint32_t lo, uint32_t hi);
 /* Write len bytes from addr to a file at exit; low RAM is built at run time. */
-void          mrc_m68k_dump(m68k_machine *m, uint32_t addr, uint32_t len,
+void          mh_m68k_dump(m68k_machine *m, uint32_t addr, uint32_t len,
                             const char *path);
-void          mrc_m68k_watch(m68k_machine *m, uint32_t pc);
-void          mrc_m68k_watch_log(m68k_machine *m, unsigned n);
-void          mrc_m68k_log_unknown(m68k_machine *m, bool on);
-void          mrc_m68k_audio_divider(m68k_machine *m, bool enabled);
-void          mrc_m68k_audio_approx(m68k_machine *m, bool enabled);
-unsigned      mrc_m68k_audio_rate(const m68k_machine *m);
-void          mrc_m68k_audio_sink(m68k_machine *m, void (*sink)(void *, int16_t), void *ctx);
+void          mh_m68k_watch(m68k_machine *m, uint32_t pc);
+void          mh_m68k_watch_log(m68k_machine *m, unsigned n);
+void          mh_m68k_log_unknown(m68k_machine *m, bool on);
+void          mh_m68k_audio_divider(m68k_machine *m, bool enabled);
+void          mh_m68k_audio_approx(m68k_machine *m, bool enabled);
+unsigned      mh_m68k_audio_rate(const m68k_machine *m);
+void          mh_m68k_audio_sink(m68k_machine *m, void (*sink)(void *, int16_t), void *ctx);
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* MRC_MACHINE68K_H */
+#endif /* MH_MACHINE68K_H */

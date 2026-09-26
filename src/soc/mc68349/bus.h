@@ -9,14 +9,14 @@
  */
 #include "cpu/m68k/bus.h"
 
-namespace mrc {
+namespace mh {
 
 struct Mc68349Bus : M68kBus {
     mutable uint32_t mbar = 0;
     mutable uint64_t cpu_space_other = 0;
     mutable uint16_t irq_vector = 0;
     /* The module space follows MBAR rather than being asserted. */
-    mrc_region *module_region = nullptr;
+    mh_region *module_region = nullptr;
 
     uint32_t cpu_space_read(uint32_t addr, unsigned size) const override
     {
@@ -39,7 +39,7 @@ struct Mc68349Bus : M68kBus {
                 fprintf(log, "[68k] MBAR = %08X: module space moves from %08X "
                         "to %08X\n", mbar, module_region->base, base);
                 module_region->base = base;
-                mrc_bus_invalidate_lookup(self->bus);
+                mh_bus_invalidate_lookup(self->bus);
             } else {
                 fprintf(log, "[68k] MBAR = %08X, module base %08X\n",
                         mbar, base);

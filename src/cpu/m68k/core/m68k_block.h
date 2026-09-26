@@ -22,8 +22,8 @@
  * interpreter answering for the rest, and nothing has to be finished
  * before anything works.
  */
-#ifndef MRC_M68K_BLOCK_H
-#define MRC_M68K_BLOCK_H
+#ifndef MH_M68K_BLOCK_H
+#define MH_M68K_BLOCK_H
 
 #include "cpu/m68k/core/m68k.h"
 
@@ -109,4 +109,4 @@ typedef struct {
 void m68k_blocks_describe(const m68k_blocks *blocks, uint32_t pc,
                           m68k_block_view *out);
 
-#endif /* MRC_M68K_BLOCK_H */
+#endif /* MH_M68K_BLOCK_H */

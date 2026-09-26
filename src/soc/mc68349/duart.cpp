@@ -16,7 +16,7 @@ unsigned Mc68349Duart::baud(bool channel_a, bool receive) const
      * available for timing experiments, and "guest" restores the divisor
      * selected by the ROM. */
     bool use_guest_rate = false;
-    if (const char *forced = std::getenv("MRC_68K_BAUD")) {
+    if (const char *forced = std::getenv("MH_68K_BAUD")) {
         if (std::strcmp(forced, "guest") == 0 ||
             std::strcmp(forced, "rom") == 0) {
             use_guest_rate = true;
@@ -72,14 +72,14 @@ void Mc68349Duart::refresh_status()
 
 bool Mc68349Duart::open_a()
 {
-    if (link_a.fd < 0 && !mrc_serial_open_pty(&link_a)) return false;
+    if (link_a.fd < 0 && !mh_serial_open_pty(&link_a)) return false;
     a.enabled = true;
     dirty = true;
     refresh_status();
     return true;
 }
 
-void Mc68349Duart::attach_ppp(mrc_ppp *endpoint)
+void Mc68349Duart::attach_ppp(mh_ppp *endpoint)
 {
     ppp = endpoint;
     if (ppp) a.enabled = true;
@@ -89,7 +89,7 @@ void Mc68349Duart::attach_ppp(mrc_ppp *endpoint)
 
 void Mc68349Duart::detach_ppp()
 {
-    mrc_ppp_close(ppp);
+    mh_ppp_close(ppp);
     ppp = nullptr;
     dirty = true;
 }
@@ -131,21 +131,21 @@ void Mc68349Duart::tick_a()
     const bool cts = ppp || link_a.fd >= 0 || link_a.peer;
     if (ppp && insns && clock_hz) {
         const uint64_t slots = *insns;
-        mrc_ppp_poll(ppp, (slots / clock_hz) * 1000000000ull +
+        mh_ppp_poll(ppp, (slots / clock_hz) * 1000000000ull +
                            (slots % clock_hz) * 1000000000ull / clock_hz);
     }
     if (a.tx_busy && baud(true) && (!insns || *insns >= a.tx_done_at) &&
         (!(mr2a & 0x10) || cts)) {
-        if (ppp) mrc_ppp_write(ppp, a.tx_byte);
-        else mrc_serial_write(&link_a, a.tx_byte);
+        if (ppp) mh_ppp_write(ppp, a.tx_byte);
+        else mh_serial_write(&link_a, a.tx_byte);
         a.tx_busy = false;
     }
     const unsigned rate = baud(true, true);
     if (a.rx_enabled && a.rx_len < 3 && rate &&
         (!insns || *insns >= a.rx_next_at)) {
         uint8_t byte;
-        if ((ppp && mrc_ppp_read(ppp, &byte)) ||
-            (!ppp && mrc_serial_read(&link_a, &byte))) {
+        if ((ppp && mh_ppp_read(ppp, &byte)) ||
+            (!ppp && mh_serial_read(&link_a, &byte))) {
             a.rx[(a.rx_at + a.rx_len) % 3] = byte;
             ++a.rx_len;
             a.rx_next_at = insns ? *insns +
@@ -161,15 +161,15 @@ bool Mc68349Duart::irq() const
     return (isr & ier) != 0;
 }
 
-void Mc68349Duart::attach(struct mrc_pclink *peer)
+void Mc68349Duart::attach(struct mh_pclink *peer)
 {
-    mrc_serial_attach(&link, peer);
+    mh_serial_attach(&link, peer);
     dirty = true;
 }
 
 void Mc68349Duart::detach()
 {
-    mrc_serial_close(&link);
+    mh_serial_close(&link);
     rx_at = rx_len = 0;
     rx_next_at = 0;
     tx_busy = false;
@@ -301,14 +301,14 @@ void Mc68349Duart::tick()
     bool changed = dirty;
     dirty = false;
     if (tx_busy && (!insns || *insns >= tx_done_at)) {
-        mrc_serial_write(&link, tx_byte);
+        mh_serial_write(&link, tx_byte);
         tx_busy = false;
         changed = true;
     }
     if (rx_enabled && rx_len < 4 &&
         (!insns || *insns >= rx_next_at)) {
         uint8_t b;
-        if (mrc_serial_read(&link, &b)) {
+        if (mh_serial_read(&link, &b)) {
             rx[(rx_at + rx_len) % 4] = b;
             ++rx_len;
             const unsigned rate = baud();

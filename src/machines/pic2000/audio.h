@@ -23,5 +23,5 @@ struct Pic2000Audio {
     void *ctx = nullptr;
     static unsigned rate(uint16_t reg);
     static unsigned divider_rate(uint16_t reg);
-    void tick(uint64_t now, unsigned clock, Pic2000Registers &r, mrc_bus &bus);
+    void tick(uint64_t now, unsigned clock, Pic2000Registers &r, mh_bus &bus);
 };

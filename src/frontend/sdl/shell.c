@@ -7,28 +7,28 @@
 
 #include <stdlib.h>
 
-struct mrc_shell {
-    mrc_sdl_display display;
-    mrc_ui         *ui;
-    mrc_lcd        *lcd;
+struct mh_shell {
+    mh_sdl_display display;
+    mh_ui         *ui;
+    mh_lcd        *lcd;
     bool            open;
 };
 
-mrc_sdl_display *mrc_shell_display(mrc_shell *sh) { return sh ? &sh->display : NULL; }
-mrc_ui *mrc_shell_ui(mrc_shell *sh) { return sh ? sh->ui : NULL; }
-mrc_lcd *mrc_shell_lcd(mrc_shell *sh) { return sh ? sh->lcd : NULL; }
-bool mrc_shell_is_open(const mrc_shell *sh) { return sh && sh->open; }
+mh_sdl_display *mh_shell_display(mh_shell *sh) { return sh ? &sh->display : NULL; }
+mh_ui *mh_shell_ui(mh_shell *sh) { return sh ? sh->ui : NULL; }
+mh_lcd *mh_shell_lcd(mh_shell *sh) { return sh ? sh->lcd : NULL; }
+bool mh_shell_is_open(const mh_shell *sh) { return sh && sh->open; }
 
 #include <stdio.h>
 
-static mrc_shell *g_current;
+static mh_shell *g_current;
 
-void mrc_shell_set_current(mrc_shell *sh) { g_current = sh; }
-mrc_shell *mrc_shell_current(void) { return g_current; }
+void mh_shell_set_current(mh_shell *sh) { g_current = sh; }
+mh_shell *mh_shell_current(void) { return g_current; }
 
-mrc_shell *mrc_shell_open(const char *title, unsigned panel_w, unsigned panel_h)
+mh_shell *mh_shell_open(const char *title, unsigned panel_w, unsigned panel_h)
 {
-    mrc_shell *sh = calloc(1, sizeof(*sh));
+    mh_shell *sh = calloc(1, sizeof(*sh));
     if (!sh) return NULL;
     /*
      * The native backend, chosen before the video subsystem is touched. SDL
@@ -36,7 +36,7 @@ mrc_shell *mrc_shell_open(const char *title, unsigned panel_w, unsigned panel_h)
      * creation can simply never return -- a window that never appears and a
      * process that sits in a poll saying nothing.
      */
-    mrc_sdl_prepare_video();
+    mh_sdl_prepare_video();
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         free(sh);
@@ -63,37 +63,37 @@ mrc_shell *mrc_shell_open(const char *title, unsigned panel_w, unsigned panel_h)
                 usable.w, usable.h, win_w, win_h);
     }
 
-    if (!mrc_sdl_display_open(&sh->display, title, win_w, win_h, 24)) {
+    if (!mh_sdl_display_open(&sh->display, title, win_w, win_h, 24)) {
         fprintf(stderr, "SDL display: %s\n", SDL_GetError());
         SDL_Quit();
         free(sh);
         return NULL;
     }
-    if (!mrc_sdl_display_resize(&sh->display, panel_w, panel_h)) {
+    if (!mh_sdl_display_resize(&sh->display, panel_w, panel_h)) {
         fprintf(stderr, "SDL texture: %s\n", SDL_GetError());
-        mrc_sdl_display_close(&sh->display);
+        mh_sdl_display_close(&sh->display);
         SDL_Quit();
         free(sh);
         return NULL;
     }
-    sh->lcd = mrc_lcd_create();
+    sh->lcd = mh_lcd_create();
     if (!sh->lcd) {
         fprintf(stderr, "[shell] out of memory\n");
-        mrc_sdl_display_close(&sh->display);
+        mh_sdl_display_close(&sh->display);
         SDL_Quit();
         free(sh);
         return NULL;
     }
     /* A rail that will not open is not fatal: the guest is still usable, it
      * simply has no controls beside it. */
-    if (!mrc_ui_open(&sh->ui, sh->display.renderer, sh->display.window))
+    if (!mh_ui_open(&sh->ui, sh->display.renderer, sh->display.window))
         fprintf(stderr, "[shell] no control rail: %s\n", SDL_GetError());
     sh->display.ui = sh->ui;
     sh->open = true;
     return sh;
 }
 
-bool mrc_shell_attach(mrc_shell *sh, const char *title,
+bool mh_shell_attach(mh_shell *sh, const char *title,
                       unsigned panel_w, unsigned panel_h)
 {
     if (!sh || !sh->open) return false;
@@ -104,23 +104,23 @@ bool mrc_shell_attach(mrc_shell *sh, const char *title,
      * about it. Resizing returns early when nothing changed, so attaching the
      * same machine again costs nothing.
      */
-    if (!mrc_sdl_display_resize(&sh->display, panel_w, panel_h)) {
+    if (!mh_sdl_display_resize(&sh->display, panel_w, panel_h)) {
         fprintf(stderr, "SDL texture: %s\n", SDL_GetError());
         return false;
     }
-    mrc_lcd_forget(sh->lcd);
+    mh_lcd_forget(sh->lcd);
     return true;
 }
 
-void mrc_shell_close(mrc_shell *sh)
+void mh_shell_close(mh_shell *sh)
 {
     if (!sh || !sh->open) return;
-    mrc_lcd_free(sh->lcd);
+    mh_lcd_free(sh->lcd);
     sh->lcd = NULL;
-    mrc_ui_close(sh->ui);
+    mh_ui_close(sh->ui);
     sh->ui = NULL;
     sh->display.ui = NULL;
-    mrc_sdl_display_close(&sh->display);
+    mh_sdl_display_close(&sh->display);
     SDL_Quit();
     sh->open = false;
     if (g_current == sh) g_current = NULL;

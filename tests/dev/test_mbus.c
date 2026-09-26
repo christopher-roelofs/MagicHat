@@ -6,14 +6,14 @@
 
 static uint32_t control(tx39 *soc)
 {
-    return mrc_tx39_read(soc, TX39_MBUSCTRL, 4);
+    return mh_tx39_read(soc, TX39_MBUSCTRL, 4);
 }
 
 int main(void)
 {
     r3900 cpu = {0};
     tx39 soc;
-    mrc_tx39_init(&soc, &cpu, 36864000);
+    mh_tx39_init(&soc, &cpu, 36864000);
 
     /* The guest's initial discovery check must see an empty bus, including
      * after loading an older snapshot with a zero control register. */
@@ -23,23 +23,23 @@ int main(void)
 
     /* Replay the boot command and the runtime stop/read-modify-write path.
      * Neither a command nor stopping the controller can drive the input. */
-    mrc_tx39_write(&soc, TX39_MBUSDATA, 4, 0x64080000);
-    mrc_tx39_write(&soc, TX39_MBUSCTRL, 4, 0x08a3);
+    mh_tx39_write(&soc, TX39_MBUSDATA, 4, 0x64080000);
+    mh_tx39_write(&soc, TX39_MBUSCTRL, 4, 0x08a3);
     CHECK(control(&soc) == (MBUSCTRL_INPUT_HIGH | 0x08a3));
-    mrc_tx39_write(&soc, TX39_MBUSREG_F4, 4, 0x1234);
-    mrc_tx39_write(&soc, TX39_MBUSCTRL, 4, control(&soc) & ~1u);
+    mh_tx39_write(&soc, TX39_MBUSREG_F4, 4, 0x1234);
+    mh_tx39_write(&soc, TX39_MBUSCTRL, 4, control(&soc) & ~1u);
     CHECK(control(&soc) == (MBUSCTRL_INPUT_HIGH | 0x08a2));
-    mrc_tx39_write(&soc, TX39_MBUSCTRL, 4, 0);
+    mh_tx39_write(&soc, TX39_MBUSCTRL, 4, 0);
     CHECK(control(&soc) == MBUSCTRL_INPUT_HIGH);
-    CHECK(mrc_tx39_read(&soc, TX39_MBUSREG_F4, 4) == 0x1234);
+    CHECK(mh_tx39_read(&soc, TX39_MBUSREG_F4, 4) == 0x1234);
 
     /* Completion is still immediate, and high input is not device detect
      * or received data. Check interrupts after acknowledgement as well. */
-    mrc_tx39_write(&soc, TX39_MBUSCTRL, 4, MBUSCTRL_BUSY | 0x08a3);
+    mh_tx39_write(&soc, TX39_MBUSCTRL, 4, MBUSCTRL_BUSY | 0x08a3);
     CHECK(control(&soc) == (MBUSCTRL_INPUT_HIGH | 0x08a3));
-    mrc_tx39_write(&soc, TX39_INTRCLEAR(2), 4, INT2_MBUS_MASK);
-    mrc_mbus_update(&soc.mbus);
-    CHECK((mrc_tx39_read(&soc, TX39_INTRSTATUS(2), 4) & INT2_MBUS_MASK)
+    mh_tx39_write(&soc, TX39_INTRCLEAR(2), 4, INT2_MBUS_MASK);
+    mh_mbus_update(&soc.mbus);
+    CHECK((mh_tx39_read(&soc, TX39_INTRSTATUS(2), 4) & INT2_MBUS_MASK)
           == (INT2_MBUSTXBUFAVAIL | INT2_MBUSEMPTY));
     puts("MBUS empty-bus discovery and command status passed");
     return 0;

@@ -15,8 +15,8 @@
  * Nothing here touches the guest. Every setting is read fresh each frame,
  * so changing one shows on the next and means nothing to the machine.
  */
-#ifndef MRC_SDL_LCD_H
-#define MRC_SDL_LCD_H
+#ifndef MH_SDL_LCD_H
+#define MH_SDL_LCD_H
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -25,23 +25,23 @@
 
 /* The display this renders into. Declared rather than included because
  * display.h includes this one for the settings. */
-typedef struct mrc_sdl_display mrc_sdl_display;
+typedef struct mh_sdl_display mh_sdl_display;
 
 #include "frontend/sdl/look.h"
 
-typedef struct mrc_lcd mrc_lcd;
+typedef struct mh_lcd mh_lcd;
 
-mrc_lcd *mrc_lcd_create(void);
-void mrc_lcd_free(mrc_lcd *lcd);
+mh_lcd *mh_lcd_create(void);
+void mh_lcd_free(mh_lcd *lcd);
 /* Drop the remembered frame, so the next one is not ghosted against a
  * picture from before whatever just happened. */
-void mrc_lcd_forget(mrc_lcd *lcd);
+void mh_lcd_forget(mh_lcd *lcd);
 
 typedef struct {
     unsigned cell;            /* host pixels per guest pixel, 1 when plain */
     unsigned width, height;   /* the texture's size, in host pixels        */
     uint32_t *pixels;         /* where the frame was written               */
-} mrc_lcd_frame;
+} mh_lcd_frame;
 
 /*
  * Fill the display's texture from one guest frame, resizing it when the
@@ -53,9 +53,9 @@ typedef struct {
  * what decides how large a cell can be. Returns false only when the
  * texture could not be allocated, which the caller should treat as fatal.
  */
-bool mrc_lcd_render(mrc_lcd *lcd, mrc_sdl_display *display,
+bool mh_lcd_render(mh_lcd *lcd, mh_sdl_display *display,
                     const uint8_t *gray, unsigned w, unsigned h,
-                    mrc_frame_format format, unsigned drawn_width,
-                    mrc_lcd_frame *out);
+                    mh_frame_format format, unsigned drawn_width,
+                    mh_lcd_frame *out);
 
-#endif /* MRC_SDL_LCD_H */
+#endif /* MH_SDL_LCD_H */

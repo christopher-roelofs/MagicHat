@@ -12,7 +12,7 @@ static void reset(ne2000 *n)
     memset(n->tally, 0, sizeof(n->tally));
 }
 
-void mrc_ne2000_init(ne2000 *n, const uint8_t mac[6])
+void mh_ne2000_init(ne2000 *n, const uint8_t mac[6])
 {
     memset(n, 0, sizeof(*n));
     n->dcr = 4; /* LAS is set on power-up (DP8390D section 10.3). */
@@ -24,7 +24,7 @@ void mrc_ne2000_init(ne2000 *n, const uint8_t mac[6])
     reset(n);
 }
 
-bool mrc_ne2000_irq(const ne2000 *n)
+bool mh_ne2000_irq(const ne2000 *n)
 {
     return (n->isr & n->imr & 0x7f) != 0;
 }
@@ -57,7 +57,7 @@ static void missed(ne2000 *n)
 {
     if (++n->tally[2] == 0x80) n->isr |= 0x20;
 }
-bool mrc_ne2000_receive(ne2000 *n, const uint8_t *frame, size_t len)
+bool mh_ne2000_receive(ne2000 *n, const uint8_t *frame, size_t len)
 {
     if ((n->cr & 3) != 2 || len < 14 || len > 1518)
         return false;
@@ -122,7 +122,7 @@ static void transmit(ne2000 *n)
     /* 10 Mbit/s, including preamble, FCS and inter-frame gap. */
     n->tx_due = n->now_ns + (n->tx_len + 24) * 800;
 }
-void mrc_ne2000_tick(ne2000 *n, uint64_t now_ns)
+void mh_ne2000_tick(ne2000 *n, uint64_t now_ns)
 {
     n->now_ns = now_ns;
     if (!n->tx_pending || now_ns < n->tx_due) return;
@@ -131,7 +131,7 @@ void mrc_ne2000_tick(ne2000 *n, uint64_t now_ns)
     if ((n->tcr & 6) == 2) {
         /* Internal loopback returns through the same receive-ring logic. */
         ok = true;
-        mrc_ne2000_receive(n, n->tx_frame, n->tx_len);
+        mh_ne2000_receive(n, n->tx_frame, n->tx_len);
     } else if (n->tcr & 6) {
         n->unsupported++; ok = false; /* external SNI loopback not modeled */
     } else ok = n->send && n->send(n->send_opaque, n->tx_frame, n->tx_len);
@@ -169,7 +169,7 @@ static void dma_write(ne2000 *n, uint8_t b)
     n->dma_writes++;
 }
 
-uint32_t mrc_ne2000_read(ne2000 *n, unsigned port, unsigned size)
+uint32_t mh_ne2000_read(ne2000 *n, unsigned port, unsigned size)
 {
     if (port == 0x10 && (size == 1 || size == 2)) {
         uint32_t v = dma_read(n);
@@ -215,7 +215,7 @@ uint32_t mrc_ne2000_read(ne2000 *n, unsigned port, unsigned size)
     }
 }
 
-void mrc_ne2000_write(ne2000 *n, unsigned port, unsigned size, uint32_t value)
+void mh_ne2000_write(ne2000 *n, unsigned port, unsigned size, uint32_t value)
 {
     if (port == 0x10 && (size == 1 || size == 2)) {
         dma_write(n, (uint8_t)value);

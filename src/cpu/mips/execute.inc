@@ -1,6 +1,6 @@
 /* Shared instruction semantics instantiated for raw and decoded operands.
  * Keep decoding/cache policy in r3900.c. This file intentionally has no guard. */
-static void branch_rel(r3900 *c, MRC_INSN insn, bool taken)
+static void branch_rel(r3900 *c, MH_INSN insn, bool taken)
 {
     if (taken)
         branch(c, c->pc + (SIMM(insn) << 2));
@@ -8,8 +8,8 @@ static void branch_rel(r3900 *c, MRC_INSN insn, bool taken)
         c->branch_pending = true;   /* the delay slot still executes */
 }
 
-#ifndef MRC_FLAT_DISPATCH
-static void exec_special(r3900 *c, MRC_INSN insn)
+#ifndef MH_FLAT_DISPATCH
+static void exec_special(r3900 *c, MH_INSN insn)
 {
     uint32_t s = c->r[RS(insn)], t = c->r[RT(insn)];
 
@@ -26,7 +26,7 @@ static void exec_special(r3900 *c, MRC_INSN insn)
 
 #endif
 
-static void exec_regimm(r3900 *c, MRC_INSN insn)
+static void exec_regimm(r3900 *c, MH_INSN insn)
 {
     int32_t s = (int32_t)c->r[RS(insn)];
 
@@ -43,13 +43,13 @@ static void exec_regimm(r3900 *c, MRC_INSN insn)
     }
 }
 
-static void exec(r3900 *c, MRC_INSN insn)
+static void exec(r3900 *c, MH_INSN insn)
 {
     uint32_t s = c->r[RS(insn)], t = c->r[RT(insn)];
     uint32_t v;
 
     switch (DISPATCH(insn)) {
-#ifdef MRC_FLAT_DISPATCH
+#ifdef MH_FLAT_DISPATCH
 #include "cpu/mips/special.inc"
 #else
     case 0x00: exec_special(c, insn); return;

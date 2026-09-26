@@ -2,14 +2,14 @@
 
 #include <string.h>
 
-void mrc_unknown_init(unknown_dev *d, const char *name)
+void mh_unknown_init(unknown_dev *d, const char *name)
 {
     memset(d, 0, sizeof(*d));
     d->name = name;
     d->log  = stderr;
 }
 
-uint32_t mrc_unknown_read(void *ctx, uint32_t off, unsigned size)
+uint32_t mh_unknown_read(void *ctx, uint32_t off, unsigned size)
 {
     unknown_dev *d = ctx;
     d->reads++;
@@ -19,7 +19,7 @@ uint32_t mrc_unknown_read(void *ctx, uint32_t off, unsigned size)
     return v;
 }
 
-void mrc_unknown_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
+void mh_unknown_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
     unknown_dev *d = ctx;
     d->writes++;

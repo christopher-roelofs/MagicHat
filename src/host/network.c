@@ -2,27 +2,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef MRC_HAVE_SLIRP
+#ifdef MH_HAVE_SLIRP
 #include <libslirp.h>
 #include <errno.h>
 #ifdef _WIN32
 /* libslirp hands out SOCKETs on Windows, which only WSAPoll can wait on.
  * Before 4.9 they arrive squeezed into an int. */
-typedef WSAPOLLFD mrc_pollfd;
-#define mrc_poll WSAPoll
+typedef WSAPOLLFD mh_pollfd;
+#define mh_poll WSAPoll
 #if SLIRP_CHECK_VERSION(4, 9, 0)
-typedef SOCKET mrc_socket;
-#define mrc_pollfds_fill slirp_pollfds_fill_socket
+typedef SOCKET mh_socket;
+#define mh_pollfds_fill slirp_pollfds_fill_socket
 #else
-typedef int mrc_socket;
-#define mrc_pollfds_fill slirp_pollfds_fill
+typedef int mh_socket;
+#define mh_pollfds_fill slirp_pollfds_fill
 #endif
 #else
 #include <poll.h>
-typedef struct pollfd mrc_pollfd;
-typedef int mrc_socket;
-#define mrc_poll poll
-#define mrc_pollfds_fill slirp_pollfds_fill
+typedef struct pollfd mh_pollfd;
+typedef int mh_socket;
+#define mh_poll poll
+#define mh_pollfds_fill slirp_pollfds_fill
 #endif
 typedef struct net_timer {
     struct net_timer *next;
@@ -30,18 +30,18 @@ typedef struct net_timer {
     void *opaque;
     int64_t expires;
 } net_timer;
-struct mrc_network {
+struct mh_network {
     Slirp *slirp;
-    mrc_net_receive receive;
+    mh_net_receive receive;
     void *opaque;
     uint64_t now, next_poll, tx, rx;
     net_timer *timers;
-    mrc_pollfd *fds;
+    mh_pollfd *fds;
     unsigned nfds, capacity;
     bool poll_error;
     FILE *pcap;
 };
-static void capture(mrc_network *n, const void *frame, size_t len)
+static void capture(mh_network *n, const void *frame, size_t len)
 {
     if (!n->pcap) return;
     uint32_t h[] = {n->now / 1000000000, n->now / 1000 % 1000000, len, len};
@@ -53,16 +53,16 @@ static void capture(mrc_network *n, const void *frame, size_t len)
 }
 static ssize_t receive_packet(const void *buf, size_t len, void *opaque)
 {
-    mrc_network *n = opaque;
+    mh_network *n = opaque;
     capture(n, buf, len); n->rx++;
     n->receive(n->opaque, buf, len);
     return (ssize_t)len;
 }
 static void guest_error(const char *msg, void *opaque) { fprintf(stderr, "slirp: %s\n", msg); }
-static int64_t clock_ns(void *opaque) { return ((mrc_network *)opaque)->now; }
+static int64_t clock_ns(void *opaque) { return ((mh_network *)opaque)->now; }
 static void *timer_new(SlirpTimerCb cb, void *cb_opaque, void *opaque)
 {
-    mrc_network *n = opaque;
+    mh_network *n = opaque;
     net_timer *t = calloc(1, sizeof(*t));
     if (!t) return NULL;
     *t = (net_timer){ .next = n->timers, .cb = cb, .opaque = cb_opaque, .expires = -1 };
@@ -70,7 +70,7 @@ static void *timer_new(SlirpTimerCb cb, void *cb_opaque, void *opaque)
 }
 static void timer_free(void *timer, void *opaque)
 {
-    mrc_network *n = opaque;
+    mh_network *n = opaque;
     net_timer **p = &n->timers;
     while (*p && *p != timer) p = &(*p)->next;
     if (*p) { net_timer *t = *p; *p = t->next; free(t); }
@@ -78,16 +78,16 @@ static void timer_free(void *timer, void *opaque)
 static void timer_mod(void *timer, int64_t expires, void *opaque)
 { ((net_timer *)timer)->expires = expires; }
 static void fd_notify(int fd, void *opaque) { (void)fd; (void)opaque; }
-static void notify(void *opaque) { ((mrc_network *)opaque)->next_poll = 0; }
+static void notify(void *opaque) { ((mh_network *)opaque)->next_poll = 0; }
 static const SlirpCb callbacks = {
     .send_packet = receive_packet, .guest_error = guest_error,
     .clock_get_ns = clock_ns, .timer_new = timer_new, .timer_free = timer_free,
     .timer_mod = timer_mod, .register_poll_fd = fd_notify,
     .unregister_poll_fd = fd_notify, .notify = notify,
 };
-mrc_network *mrc_network_open(mrc_net_receive receive, void *opaque, const char *pcap)
+mh_network *mh_network_open(mh_net_receive receive, void *opaque, const char *pcap)
 {
-    mrc_network *n = calloc(1, sizeof(*n));
+    mh_network *n = calloc(1, sizeof(*n));
     if (!n) return NULL;
     n->receive = receive; n->opaque = opaque;
     SlirpConfig cfg = { .version = 1, .in_enabled = true };
@@ -97,7 +97,7 @@ mrc_network *mrc_network_open(mrc_net_receive receive, void *opaque, const char 
     inet_pton(AF_INET, "10.0.2.15", &cfg.vdhcp_start);
     inet_pton(AF_INET, "10.0.2.3", &cfg.vnameserver);
     n->slirp = slirp_new(&cfg, &callbacks, n);
-    if (!n->slirp) { mrc_network_close(n); return NULL; }
+    if (!n->slirp) { mh_network_close(n); return NULL; }
     if (pcap) {
         n->pcap = fopen(pcap, "wb");
         /* Native-endian pcap header; magic tells readers the byte order. */
@@ -106,13 +106,13 @@ mrc_network *mrc_network_open(mrc_net_receive receive, void *opaque, const char 
         if (!n->pcap || fwrite(&magic, 4, 1, n->pcap) != 1 ||
             fwrite(version, 4, 1, n->pcap) != 1 || fwrite(fields, 16, 1, n->pcap) != 1) {
             fprintf(stderr, "network: cannot create capture %s\n", pcap);
-            mrc_network_close(n); return NULL;
+            mh_network_close(n); return NULL;
         }
     }
     fprintf(stderr, "network: libslirp %s NAT, guest 10.0.2.15/24, gateway/host 10.0.2.2, DNS 10.0.2.3\n", slirp_version_string());
     return n;
 }
-void mrc_network_close(mrc_network *n)
+void mh_network_close(mh_network *n)
 {
     if (!n) return;
     if (n->slirp) slirp_cleanup(n->slirp);
@@ -127,7 +127,7 @@ void mrc_network_close(mrc_network *n)
  * libslirp handles the resulting IP frames. Local-subnet ARP is left to
  * libslirp, so the guest's duplicate-address probe cannot receive a false
  * claim that its own address is occupied. */
-static void proxy_arp(mrc_network *n, const uint8_t *f, size_t len)
+static void proxy_arp(mh_network *n, const uint8_t *f, size_t len)
 {
     if (len < 42 || f[12] != 8 || f[13] != 6 || f[14] || f[15] != 1 ||
         f[16] != 8 || f[17] || f[18] != 6 || f[19] != 4 || f[20] || f[21] != 1)
@@ -144,21 +144,21 @@ static void proxy_arp(mrc_network *n, const uint8_t *f, size_t len)
     memcpy(reply + 32, f + 22, 6); memcpy(reply + 38, f + 28, 4);
     receive_packet(reply, sizeof(reply), n);
 }
-bool mrc_network_send(void *opaque, const uint8_t *frame, size_t len)
+bool mh_network_send(void *opaque, const uint8_t *frame, size_t len)
 {
-    mrc_network *n = opaque;
+    mh_network *n = opaque;
     if (!n || len < 14 || len > 1518) return false;
     capture(n, frame, len); n->tx++;
     slirp_input(n->slirp, frame, (int)len);
     proxy_arp(n, frame, len);
     return true;
 }
-static int add_poll(mrc_socket fd, int events, void *opaque)
+static int add_poll(mh_socket fd, int events, void *opaque)
 {
-    mrc_network *n = opaque;
+    mh_network *n = opaque;
     if (n->nfds == n->capacity) {
         unsigned cap = n->capacity ? n->capacity * 2 : 16;
-        mrc_pollfd *fds = realloc(n->fds, cap * sizeof(*fds));
+        mh_pollfd *fds = realloc(n->fds, cap * sizeof(*fds));
         if (!fds) { n->poll_error = true; return -1; }
         n->fds = fds; n->capacity = cap;
     }
@@ -169,12 +169,12 @@ static int add_poll(mrc_socket fd, int events, void *opaque)
     /* WSAPoll rejects the whole call when POLLPRI is asked for. */
     if (events & SLIRP_POLL_PRI) flags |= POLLPRI;
 #endif
-    n->fds[n->nfds] = (mrc_pollfd){ .fd = fd, .events = flags };
+    n->fds[n->nfds] = (mh_pollfd){ .fd = fd, .events = flags };
     return n->nfds++;
 }
 static int get_events(int idx, void *opaque)
 {
-    mrc_network *n = opaque;
+    mh_network *n = opaque;
     if (idx < 0 || (unsigned)idx >= n->nfds) return 0;
     short flags = n->fds[idx].revents;
     int events = 0;
@@ -185,7 +185,7 @@ static int get_events(int idx, void *opaque)
     if (flags & POLLHUP) events |= SLIRP_POLL_HUP;
     return events;
 }
-void mrc_network_poll(mrc_network *n, uint64_t now_ns)
+void mh_network_poll(mh_network *n, uint64_t now_ns)
 {
     if (!n) return;
     n->now = now_ns;
@@ -200,16 +200,16 @@ void mrc_network_poll(mrc_network *n, uint64_t now_ns)
     }
     uint32_t timeout = 0;
     n->nfds = 0; n->poll_error = false;
-    mrc_pollfds_fill(n->slirp, &timeout, add_poll, n);
+    mh_pollfds_fill(n->slirp, &timeout, add_poll, n);
     /* Never block emulation or SDL. WSAPoll fails on an empty set. */
-    int result = n->nfds ? mrc_poll(n->fds, n->nfds, 0) : 0;
+    int result = n->nfds ? mh_poll(n->fds, n->nfds, 0) : 0;
     slirp_pollfds_poll(n->slirp, n->poll_error || result < 0, get_events, n);
 }
 #else
-struct mrc_network { int unused; };
-mrc_network *mrc_network_open(mrc_net_receive receive, void *opaque, const char *pcap)
+struct mh_network { int unused; };
+mh_network *mh_network_open(mh_net_receive receive, void *opaque, const char *pcap)
 { fprintf(stderr, "network: rebuild with libslirp development files for --net user\n"); return NULL; }
-void mrc_network_close(mrc_network *n) { (void)n; }
-bool mrc_network_send(void *n, const uint8_t *f, size_t len) { return false; }
-void mrc_network_poll(mrc_network *n, uint64_t now_ns) { (void)n; (void)now_ns; }
+void mh_network_close(mh_network *n) { (void)n; }
+bool mh_network_send(void *n, const uint8_t *f, size_t len) { return false; }
+void mh_network_poll(mh_network *n, uint64_t now_ns) { (void)n; (void)now_ns; }
 #endif

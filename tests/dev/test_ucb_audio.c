@@ -16,7 +16,7 @@ static double tone(double input_f, double output_f, unsigned control)
     for (unsigned i = 0; i < count + 100000; i++) {
         int16_t input = (int16_t)lround(12000 * sin(2 * PI * input_f * i));
         int16_t out[2];
-        mrc_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA | control, (uint16_t)input, out);
+        mh_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA | control, (uint16_t)input, out);
         if (i < 100000) continue;
         for (unsigned p = 0; p < 2; p++) {
             double phase = 2 * PI * output_f * (i + p * .5);
@@ -28,29 +28,29 @@ static double tone(double input_f, double output_f, unsigned control)
 }
 int main(void)
 {
-    CHECK(mrc_ucb_audio_decode(0x7fff) == 32752);
-    CHECK(mrc_ucb_audio_decode(0x800f) == -32768);
-    CHECK(mrc_ucb_audio_decode(0xffff) == -16);
-    CHECK(mrc_ucb_audio_decode(0x000f) == 0);
+    CHECK(mh_ucb_audio_decode(0x7fff) == 32752);
+    CHECK(mh_ucb_audio_decode(0x800f) == -32768);
+    CHECK(mh_ucb_audio_decode(0xffff) == -16);
+    CHECK(mh_ucb_audio_decode(0x000f) == 0);
     for (unsigned i = 0; i < 24; i++)
-        CHECK(fabs(20 * log10(mrc_ucb_audio_gain(i)) + 3*i) < 1e-9);
-    CHECK(mrc_ucb_audio_gain(31) == mrc_ucb_audio_gain(23));
+        CHECK(fabs(20 * log10(mh_ucb_audio_gain(i)) + 3*i) < 1e-9);
+    CHECK(mh_ucb_audio_gain(31) == mh_ucb_audio_gain(23));
     ucb1100_audio a = {0}, b = {0};
     int16_t out[2], other[2];
     for (unsigned i = 0; i < 1000; i++) {
-        mrc_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA | UCB_AUDIO_MUTE, 0x432f, out);
-        mrc_ucb_audio_sample(&b, UCB_AUDIO_OUT_ENA, 0x4320, other);
+        mh_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA | UCB_AUDIO_MUTE, 0x432f, out);
+        mh_ucb_audio_sample(&b, UCB_AUDIO_OUT_ENA, 0x4320, other);
         CHECK(out[0] == 0 && out[1] == 0);
     }
     /* Mute must not freeze filters; low serial bits never affect them. */
     CHECK(memcmp(&a, &b, sizeof(a)) == 0);
-    mrc_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA, 0x4320, out);
-    mrc_ucb_audio_sample(&b, UCB_AUDIO_OUT_ENA, 0x4320, other);
+    mh_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA, 0x4320, out);
+    mh_ucb_audio_sample(&b, UCB_AUDIO_OUT_ENA, 0x4320, other);
     CHECK(out[0] == other[0] && out[1] == other[1]);
     for (unsigned i = 0; i < 100000; i++)
-        mrc_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA, 0xfd00, out);
+        mh_ucb_audio_sample(&a, UCB_AUDIO_OUT_ENA, 0xfd00, out);
     CHECK(abs(out[0]) <= 1 && abs(out[1]) <= 1); /* idle -768 DC removed */
-    mrc_ucb_audio_sample(&a, 0, 0x7fff, out);
+    mh_ucb_audio_sample(&a, 0, 0x7fff, out);
     CHECK(out[0] == 0 && out[1] == 0);
     memset(&b, 0, sizeof(b));
     CHECK(memcmp(&a, &b, sizeof(a)) == 0);

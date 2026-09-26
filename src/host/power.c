@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef MRC_HAVE_SDL
+#ifdef MH_HAVE_SDL
 #include <SDL2/SDL.h>
 #endif
 
@@ -11,15 +11,15 @@
 #include <windows.h>
 #endif
 
-#if defined(MRC_HAVE_SDL)
+#if defined(MH_HAVE_SDL)
 
 /*
  * SDL knows about power on Linux, macOS, Windows, Android and iOS, which is
  * every host this is likely to run on, so prefer it when it is present.
  */
-const char *mrc_host_power_source(void) { return "SDL"; }
+const char *mh_host_power_source(void) { return "SDL"; }
 
-bool mrc_host_power_read(mrc_host_power *out)
+bool mh_host_power_read(mh_host_power *out)
 {
     int secs, pct;
     SDL_PowerState st = SDL_GetPowerInfo(&secs, &pct);
@@ -47,9 +47,9 @@ bool mrc_host_power_read(mrc_host_power *out)
 
 #elif defined(_WIN32)
 
-const char *mrc_host_power_source(void) { return "GetSystemPowerStatus"; }
+const char *mh_host_power_source(void) { return "GetSystemPowerStatus"; }
 
-bool mrc_host_power_read(mrc_host_power *out)
+bool mh_host_power_read(mh_host_power *out)
 {
     SYSTEM_POWER_STATUS s;
     if (!GetSystemPowerStatus(&s))
@@ -64,7 +64,7 @@ bool mrc_host_power_read(mrc_host_power *out)
 
 #elif defined(__linux__)
 
-const char *mrc_host_power_source(void) { return "/sys/class/power_supply"; }
+const char *mh_host_power_source(void) { return "/sys/class/power_supply"; }
 
 static bool read_int(const char *path, int *v)
 {
@@ -76,7 +76,7 @@ static bool read_int(const char *path, int *v)
     return ok;
 }
 
-bool mrc_host_power_read(mrc_host_power *out)
+bool mh_host_power_read(mh_host_power *out)
 {
     memset(out, 0, sizeof(*out));
     out->percent = -1;
@@ -113,9 +113,9 @@ bool mrc_host_power_read(mrc_host_power *out)
 
 #else
 
-const char *mrc_host_power_source(void) { return "none"; }
+const char *mh_host_power_source(void) { return "none"; }
 
-bool mrc_host_power_read(mrc_host_power *out)
+bool mh_host_power_read(mh_host_power *out)
 {
     memset(out, 0, sizeof(*out));
     out->percent = -1;

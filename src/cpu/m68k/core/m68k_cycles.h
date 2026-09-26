@@ -22,8 +22,8 @@
  * The key is m68k_cycle_key(), which both this tool and the
  * decoder use, so the two cannot drift apart.
  */
-#ifndef MRC_M68K_CYCLES_H
-#define MRC_M68K_CYCLES_H
+#ifndef MH_M68K_CYCLES_H
+#define MH_M68K_CYCLES_H
 
 #include <stdint.h>
 
@@ -1556,4 +1556,4 @@ static const m68k_cycle_entry m68k_cycle_table[] = {
 
 #define M68K_CYCLE_TABLE_COUNT 1522
 
-#endif /* MRC_M68K_CYCLES_H */
+#endif /* MH_M68K_CYCLES_H */

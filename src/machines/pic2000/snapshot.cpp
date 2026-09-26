@@ -276,7 +276,7 @@ void merge(Mc68349Sim &live, const Mc68349Sim &loaded)
     FILE *log = live.log;
     void (*programmed)(void *) = live.boot_select_programmed;
     void *board = live.board;
-    mrc_bus *bus = live.bus;
+    mh_bus *bus = live.bus;
     Mc68349Duart *duart = live.duart;
     live = loaded;
     live.log = log;
@@ -380,7 +380,7 @@ void load_board(m68k_machine *m, const BoardState &b)
     m->hix_checksum_pending = b.hix_checksum_pending && m->hix_checksum_intercept;
     /* And the engine has to be told again, since a restored machine may
      * be either side of the interception. */
-    mrc_m68k_set_stop_at(m, m->hix_checksum_pending ? mrc_m68k_checksum_pc(m) : 0);
+    mh_m68k_set_stop_at(m, m->hix_checksum_pending ? mh_m68k_checksum_pc(m) : 0);
     m->sim.overlay_off = b.overlay_off != 0;
 }
 
@@ -397,18 +397,18 @@ void load_board(m68k_machine *m, const BoardState &b)
 void rewire(m68k_machine *m)
 {
     if (m->sim.board)
-        static_cast<mrc_region *>(m->sim.board)->size =
+        static_cast<mh_region *>(m->sim.board)->size =
             m->sim.overlay_off ? 0 : 0x01000000u;
     uint32_t base = m->cpu.mbar & 0xFFFFF000u;
     if (m->cpu.module_region && base) m->cpu.module_region->base = base;
-    mrc_bus_invalidate_lookup(&m->bus);
+    mh_bus_invalidate_lookup(&m->bus);
 }
 
 }  /* namespace */
 
 extern "C" {
 
-bool mrc_m68k_save_state(m68k_machine *m, const char *path)
+bool mh_m68k_save_state(m68k_machine *m, const char *path)
 {
     if (m->net_probe_enabled) {
         fprintf(m->log, "68k: cannot save with experimental NE2000 probe attached (NIC state is not serialized)\n");
@@ -461,7 +461,7 @@ bool mrc_m68k_save_state(m68k_machine *m, const char *path)
     return true;
 }
 
-bool mrc_m68k_load_state(m68k_machine *m, const char *path)
+bool mh_m68k_load_state(m68k_machine *m, const char *path)
 {
     FILE *f = fopen(path, "rb");
     if (!f) {

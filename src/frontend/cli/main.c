@@ -4,7 +4,7 @@
 
 #include <unistd.h>
 /*
- * mcap — a low-level emulator for the General Magic DataRover 840.
+ * mhat — a low-level emulator for the General Magic DataRover 840.
  *
  * Ground rule, enforced by review rather than by code: this program contains
  * no high-level emulation of the Magic Cap OS. There are no patches keyed on
@@ -26,7 +26,7 @@
 static void usage(FILE *f)
 {
     fprintf(f,
-"usage: mcap --rom <image> [options]\n"
+"usage: mhat --rom <image> [options]\n"
 "\n"
 "  --rom <path>          ROM image (MagicCap-USA.image)\n"
 "  --temporary           run without writing the device's state\n"
@@ -147,7 +147,7 @@ static uint32_t parse_u32(const char *s)
     return (uint32_t)strtoul(s, NULL, 0);
 }
 
-int mrc_datarover_main(int argc, char **argv)
+int mh_datarover_main(int argc, char **argv)
 {
     const char *rom_path = NULL;
     bool temporary = false, fresh = false;
@@ -182,7 +182,7 @@ int mrc_datarover_main(int argc, char **argv)
     int ne2000_slot = -1;
     int modem_slot = -1;
     bool modem_pty = false;
-    static mrc_serial modem_link;
+    static mh_serial modem_link;
     bool net_user = false;
     bool power_scheduled = false;
     uint64_t power_at = 0;
@@ -226,14 +226,14 @@ int mrc_datarover_main(int argc, char **argv)
         else if (!strcmp(a, "--monitor"))     boot_monitor = true;
         else if (!strcmp(a, "--reset-pc"))    { reset_pc = parse_u32(NEXT());
                                                 reset_pc_given = true; }
-        else if (!strcmp(a, "--audio"))         mrc_gui_audio = true;
-        else if (!strcmp(a, "--no-audio"))      mrc_gui_audio = false;
+        else if (!strcmp(a, "--audio"))         mh_gui_audio = true;
+        else if (!strcmp(a, "--no-audio"))      mh_gui_audio = false;
         else if (!strcmp(a, "--headless"))    { use_gui = false; gui_set = true; }
         else if (!strcmp(a, "--no-host-battery")) { host_battery = false;
                                                     host_battery_set = true; }
-        else if (!strcmp(a, "--smooth"))        mrc_gui_smooth = true;
-        else if (!strcmp(a, "--integer"))       mrc_gui_integer = true;
-        else if (!strcmp(a, "--touch-debug"))   mrc_gui_touch_debug = true;
+        else if (!strcmp(a, "--smooth"))        mh_gui_smooth = true;
+        else if (!strcmp(a, "--integer"))       mh_gui_integer = true;
+        else if (!strcmp(a, "--touch-debug"))   mh_gui_touch_debug = true;
         else if (!strcmp(a, "--serial")) {
             const char *w = NEXT();
             if (!strcmp(w, "a"))      link_uart = 0;
@@ -267,11 +267,11 @@ int mrc_datarover_main(int argc, char **argv)
             else if (!strcmp(slot, "2")) ne2000_slot = 1;
             else { fprintf(stderr, "--ne2000: 1|2\n"); return 2; }
         }
-        else if (!strcmp(a, "--lcd"))           mrc_gui_lcd = true;
+        else if (!strcmp(a, "--lcd"))           mh_gui_lcd = true;
         else if (!strcmp(a, "--tint")) {
-            int tint = mrc_tint_by_name(NEXT());
+            int tint = mh_tint_by_name(NEXT());
             if (tint < 0) { fprintf(stderr, "--tint: green|amber|grey|none\n"); return 2; }
-            mrc_gui_tint = tint;
+            mh_gui_tint = tint;
         }
         else if (!strcmp(a, "-n"))              { insns = strtoull(NEXT(), NULL, 0); insns_set = true; }
         else if (!strcmp(a, "--gui"))         { use_gui = true; gui_set = true; }
@@ -407,8 +407,8 @@ int mrc_datarover_main(int argc, char **argv)
      */
     bool have_device_state = !temporary && !load_state && !save_state &&
         !reset_pc_given && !boot_monitor &&
-        mrc_state_path_for(rom_path, device_state, sizeof(device_state));
-    if (have_device_state) mrc_state_set_path(device_state);
+        mh_state_path_for(rom_path, device_state, sizeof(device_state));
+    if (have_device_state) mh_state_set_path(device_state);
     /*
      * Whether the state about to be loaded is the device's own rather than
      * one somebody named. The two fail differently: a state a person asked
@@ -429,7 +429,7 @@ int mrc_datarover_main(int argc, char **argv)
         /* Unreadable here means unreadable below as well, so a device's own
          * stale state drops out now and the machine is built at its default
          * size rather than at one read out of a file that will not load. */
-        if (!mrc_snapshot_ram_size(load_state, &ram_bytes)) {
+        if (!mh_snapshot_ram_size(load_state, &ram_bytes)) {
             if (!state_is_the_device_s) return 1;
             fprintf(stderr, "snapshot: starting \"%s\" from its ROM instead\n",
                     rom_path);
@@ -440,7 +440,7 @@ int mrc_datarover_main(int argc, char **argv)
         fprintf(stderr, "RAM: %u bytes (%s)\n", ram_bytes,
                 ram_arg ? "--ram" : "saved state");
     machine m;
-    if (!mrc_machine_init(&m, rom_path, ram_bytes))
+    if (!mh_machine_init(&m, rom_path, ram_bytes))
         return 1;
 
     /* Accept \n escapes in --input so a command line can carry a newline. */
@@ -456,7 +456,7 @@ int mrc_datarover_main(int argc, char **argv)
         *o = 0;
     }
     if (use_console || input_cooked) {
-        mrc_console_init(&m.con, use_console, input_cooked, input_after);
+        mh_console_init(&m.con, use_console, input_cooked, input_after);
         m.con_active = true;
     }
 
@@ -474,9 +474,9 @@ int mrc_datarover_main(int argc, char **argv)
      * point of the run, and quietly booting something else instead would be
      * a worse answer than stopping.
      */
-    if (load_state && !mrc_snapshot_load(&m, load_state)) {
+    if (load_state && !mh_snapshot_load(&m, load_state)) {
         if (!state_is_the_device_s) {
-            mrc_machine_free(&m); free(input_cooked); return 1;
+            mh_machine_free(&m); free(input_cooked); return 1;
         }
         fprintf(stderr, "snapshot: starting \"%s\" from its ROM instead\n",
                 rom_path);
@@ -485,30 +485,30 @@ int mrc_datarover_main(int argc, char **argv)
     if (!load_state) {
         if (boot_monitor)
             m.soc.io_ctrl &= ~DR840_IO_BOOT_NORMAL;
-        mrc_machine_reset(&m, reset_pc);
+        mh_machine_reset(&m, reset_pc);
     }
 
     /*
      * After the snapshot, not before: a snapshot restores the whole
      * controller, so a card put in first is taken straight back out again.
      */
-    static mrc_serial link;
-    static mrc_pclink *installer;
+    static mh_serial link;
+    static mh_pclink *installer;
     if (install) {
         /*
          * The emulator is the computer. No pty, no second program: the far
          * end of the guest's serial port is a few hundred lines away in this
          * process, and the guest cannot tell the difference.
          */
-        installer = mrc_pclink_open(install);
+        installer = mh_pclink_open(install);
         if (!installer) return 1;
-        mrc_serial_attach(&link, installer);
-        mrc_uart_set_link(&m.soc.uart[link_uart < 0 ? 0 : link_uart], &link);
-        fprintf(stderr, "install: %s\n", mrc_pclink_message(installer));
+        mh_serial_attach(&link, installer);
+        mh_uart_set_link(&m.soc.uart[link_uart < 0 ? 0 : link_uart], &link);
+        fprintf(stderr, "install: %s\n", mh_pclink_message(installer));
     } else if (link_uart >= 0) {
-        if (!mrc_serial_open_pty(&link))
+        if (!mh_serial_open_pty(&link))
             return 1;
-        mrc_uart_set_link(&m.soc.uart[link_uart], &link);
+        mh_uart_set_link(&m.soc.uart[link_uart], &link);
     }
 
     if (net_pcap && !net_user) {
@@ -527,13 +527,13 @@ int mrc_datarover_main(int argc, char **argv)
     bool recalled[2] = { false, false };
     for (unsigned c = 0; c < 2; c++) {
         bool named = sram_path[c] || card_path[c] || (int)c == ne2000_slot;
-        if (named || m.card_kind[c] == MRC_CARD_NONE) continue;
+        if (named || m.card_kind[c] == MH_CARD_NONE) continue;
         const char *was = m.card_path[c];
         recalled[c] = true;
         switch (m.card_kind[c]) {
-        case MRC_CARD_SRAM:   sram_path[c] = was; break;
-        case MRC_CARD_MEMORY: card_path[c] = was; break;
-        case MRC_CARD_NE2000:
+        case MH_CARD_SRAM:   sram_path[c] = was; break;
+        case MH_CARD_MEMORY: card_path[c] = was; break;
+        case MH_CARD_NE2000:
             ne2000_slot = (int)c;
             /* And what it was plugged into, if anything. */
             if (was && !strcmp(was, "user")) net_user = true;
@@ -544,7 +544,7 @@ int mrc_datarover_main(int argc, char **argv)
             break;
         default: break;
         }
-        if (m.card_kind[c] == MRC_CARD_NE2000)
+        if (m.card_kind[c] == MH_CARD_NE2000)
             fprintf(stderr, "card: slot %u had a network card%s%s when this "
                     "device was put down\n", c + 1, was ? " on " : " with "
                     "nothing behind it", was ? was : "");
@@ -583,28 +583,28 @@ int mrc_datarover_main(int argc, char **argv)
             card_path[c] = NULL;
         }
         if (sram_path[c] &&
-            !mrc_machine_insert_sram(&m, c, sram_path[c], 2u*1024*1024)) {
+            !mh_machine_insert_sram(&m, c, sram_path[c], 2u*1024*1024)) {
             if (!recalled[c]) return 1;
             fprintf(stderr, "card: slot %u could not take %s; the slot is "
                     "empty\n", c + 1, sram_path[c]);
         }
-        if (card_path[c] && !mrc_machine_insert_card(&m, c, card_path[c])) {
+        if (card_path[c] && !mh_machine_insert_card(&m, c, card_path[c])) {
             if (!recalled[c]) return 1;
             fprintf(stderr, "card: slot %u could not take %s; the slot is "
                     "empty\n", c + 1, card_path[c]);
         }
-        if ((int)c == ne2000_slot && !mrc_machine_insert_ne2000(&m, c)) return 1;
+        if ((int)c == ne2000_slot && !mh_machine_insert_ne2000(&m, c)) return 1;
         if ((int)c == modem_slot) {
             void *far = NULL;
             if (modem_pty) {
-                if (!mrc_serial_open_pty(&modem_link)) return 1;
+                if (!mh_serial_open_pty(&modem_link)) return 1;
                 fprintf(stderr, "modem: far end at %s\n", modem_link.path);
                 far = &modem_link;
             }
-            if (!mrc_machine_insert_modem(&m, c, far)) return 1;
+            if (!mh_machine_insert_modem(&m, c, far)) return 1;
         }
         if (net_user && (int)c == ne2000_slot &&
-            !mrc_machine_network(&m, c, net_pcap)) {
+            !mh_machine_network(&m, c, net_pcap)) {
             /* The card is in; only what it plugs into is missing, which is a
              * network card with the cable out rather than a failure to run. */
             if (!recalled[c]) return 1;
@@ -622,34 +622,34 @@ int mrc_datarover_main(int argc, char **argv)
      * load restores the CPU and SoC structs wholesale and would otherwise
      * overwrite them with whatever was in force when the state was saved.
      */
-    if (trace_irq) mrc_cpu_trace_irq(trace_irq);
-    if (replay_dev) mrc_cpu_replay(replay_dev, replay_irq);
-    if (replay_take) mrc_cpu_replay_takes(replay_take);
+    if (trace_irq) mh_cpu_trace_irq(trace_irq);
+    if (replay_dev) mh_cpu_replay(replay_dev, replay_irq);
+    if (replay_take) mh_cpu_replay_takes(replay_take);
     m.cpu.trace          = trace;
     m.cpu.trace_after_pc = trace_after_pc; m.cpu.trace_after_hit = trace_after_hit;
     m.cpu.trace_after_n  = trace_after_n;
     m.cpu.trace_from     = trace_from;
     if (trace_state)
-        mrc_cpu_trace_state(trace_state, trace_state_count);
+        mh_cpu_trace_state(trace_state, trace_state_count);
     if (trace_bus) {
-        mrc_cpu_trace_bus_devices_only(trace_bus_dev);
-        mrc_cpu_trace_bus(trace_bus, trace_state_count);
+        mh_cpu_trace_bus_devices_only(trace_bus_dev);
+        mh_cpu_trace_bus(trace_bus, trace_state_count);
     }
     if (jit_cpu || auto_cpu) {
-        m.jit = mrc_cpu_jit_create();
+        m.jit = mh_cpu_jit_create();
         if (!m.jit && jit_cpu) {
             fprintf(stderr, "MIPS JIT requires x86-64 or AArch64 Linux and executable memory support\n");
-            mrc_machine_free(&m);
+            mh_machine_free(&m);
             return 1;
         }
         fprintf(stderr, "cpu: %s\n", m.jit ? "native engine"
                 : "interpreter (no executable memory for the native engine)");
     }
     if (decoded_cpu) {
-        m.decode_cache = mrc_cpu_decode_cache_create();
+        m.decode_cache = mh_cpu_decode_cache_create();
         if (!m.decode_cache) {
             fprintf(stderr, "cannot allocate MIPS decode cache\n");
-            mrc_machine_free(&m);
+            mh_machine_free(&m);
             return 1;
         }
     }
@@ -662,7 +662,7 @@ int mrc_datarover_main(int argc, char **argv)
     m.soc.sib.log_codec  = log_codec;
     m.cpu.watch_log      = watch_log;
     m.cpu.watch_after    = m.cpu.insn_count + watch_after;
-    mrc_cpu_watch_write(watch_write);
+    mh_cpu_watch_write(watch_write);
     if (coverage) {
         m.cpu.coverage_words = 512u * 1024u * 1024u / 4u;
         m.cpu.coverage = calloc(1, m.cpu.coverage_words / 8);
@@ -694,17 +694,17 @@ int mrc_datarover_main(int argc, char **argv)
      * override that without being asked for: no display to open it on, and
      * the diagnostics, which exist to be read from a terminal or a file.
      */
-    if (use_gui && !gui_set && !mrc_gui_available()) {
+    if (use_gui && !gui_set && !mh_gui_available()) {
         use_gui = false;
         fprintf(stderr, "no display; running headless\n");
     }
 
     if ((keyboard == 1 || (keyboard < 0 && use_gui && !boot_monitor)) && !m.soc.mbus_port)
-        mrc_mbus_connect(&m.soc.mbus,&m.keyboard.port);
+        mh_mbus_connect(&m.soc.mbus,&m.keyboard.port);
     if (keyboard == 0 && m.soc.mbus_port == &m.keyboard.port)
-        mrc_mbus_connect(&m.soc.mbus,NULL);
+        mh_mbus_connect(&m.soc.mbus,NULL);
     if (m.soc.mbus_port == &m.keyboard.port) {
-        mrc_dr_keyboard_release(&m.keyboard); /* host keys from previous session */
+        mh_dr_keyboard_release(&m.keyboard); /* host keys from previous session */
         fprintf(stderr,"Keyboard: Magic Bus AT accessory (reconstructed profile; SDL physical keys)\n");
     }
 
@@ -720,13 +720,13 @@ int mrc_datarover_main(int argc, char **argv)
         host_battery = use_gui;
 
     if (host_battery) {
-        mrc_host_power hp;
-        if (mrc_host_power_read(&hp) && hp.has_battery) {
+        mh_host_power hp;
+        if (mh_host_power_read(&hp) && hp.has_battery) {
             m.track_host_battery = true;
-            m.soc.sib.codec.aux[2] = (uint16_t)mrc_host_power_to_adc(hp.percent);
+            m.soc.sib.codec.aux[2] = (uint16_t)mh_host_power_to_adc(hp.percent);
             fprintf(stderr, "host battery: %d%%%s (via %s) -> AD2 %u\n",
                     hp.percent, hp.on_ac ? ", on AC" : "",
-                    mrc_host_power_source(), m.soc.sib.codec.aux[2]);
+                    mh_host_power_source(), m.soc.sib.codec.aux[2]);
             /*
              * The OS samples the battery about every eight seconds and only
              * repaints its title-bar gauge when it does. Starting from a
@@ -739,7 +739,7 @@ int mrc_datarover_main(int argc, char **argv)
         } else {
             fprintf(stderr, "host battery: none found (via %s); "
                     "leaving the emulated battery at its default\n",
-                    mrc_host_power_source());
+                    mh_host_power_source());
         }
     }
 
@@ -755,18 +755,18 @@ int mrc_datarover_main(int argc, char **argv)
                 pcmcia_fill & 0xFFFF);
     }
 
-    mrc_wav *wav = NULL;
+    mh_wav *wav = NULL;
     if (audio_wav) {
-        wav = mrc_wav_open(audio_wav, mrc_sib_output_rate_hz(&m.soc.sib));
+        wav = mh_wav_open(audio_wav, mh_sib_output_rate_hz(&m.soc.sib));
         if (!wav)
             return 1;
-        mrc_sib_set_audio_sink(&m.soc.sib, mrc_wav_sample, wav);
+        mh_sib_set_audio_sink(&m.soc.sib, mh_wav_sample, wav);
     }
 
     if (option_keys) {
         char buf[512];
         snprintf(buf, sizeof(buf), "%s", option_keys);
-        for (char *tok = strtok(buf, ";"); tok && m.option_n < MRC_MAX_TAPS;
+        for (char *tok = strtok(buf, ";"); tok && m.option_n < MH_MAX_TAPS;
              tok = strtok(NULL, ";")) {
             unsigned down;
             unsigned long long at;
@@ -781,7 +781,7 @@ int mrc_datarover_main(int argc, char **argv)
     if (gpios) {
         char buf[256];
         snprintf(buf, sizeof(buf), "%s", gpios);
-        for (char *tok = strtok(buf, ";"); tok && m.gpio_n < MRC_MAX_TAPS;
+        for (char *tok = strtok(buf, ";"); tok && m.gpio_n < MH_MAX_TAPS;
              tok = strtok(NULL, ";")) {
             unsigned long long lvl = 0, at = 0;
             if (sscanf(tok, "%llx,%llu", &lvl, &at) != 2) {
@@ -796,7 +796,7 @@ int mrc_datarover_main(int argc, char **argv)
     if (mfio_at) {
         char buf[256];
         snprintf(buf, sizeof(buf), "%s", mfio_at);
-        for (char *tok = strtok(buf, ";"); tok && m.mfio_n < MRC_MAX_TAPS;
+        for (char *tok = strtok(buf, ";"); tok && m.mfio_n < MH_MAX_TAPS;
              tok = strtok(NULL, ";")) {
             unsigned long long lvl = 0, at = 0;
             if (sscanf(tok, "%llx,%llu", &lvl, &at) != 2) {
@@ -811,7 +811,7 @@ int mrc_datarover_main(int argc, char **argv)
     if (pwrint_at) {
         char buf[256];
         snprintf(buf, sizeof(buf), "%s", pwrint_at);
-        for (char *tok = strtok(buf, ";"); tok && m.pwrint_n < MRC_MAX_TAPS;
+        for (char *tok = strtok(buf, ";"); tok && m.pwrint_n < MH_MAX_TAPS;
              tok = strtok(NULL, ";")) {
             unsigned long long lvl = 0, at = 0;
             if (sscanf(tok, "%llx,%llu", &lvl, &at) != 2) {
@@ -826,7 +826,7 @@ int mrc_datarover_main(int argc, char **argv)
     if (io_at) {
         char buf[256];
         snprintf(buf, sizeof(buf), "%s", io_at);
-        for (char *tok = strtok(buf, ";"); tok && m.io_n < MRC_MAX_TAPS;
+        for (char *tok = strtok(buf, ";"); tok && m.io_n < MH_MAX_TAPS;
              tok = strtok(NULL, ";")) {
             unsigned long long lvl = 0, at = 0;
             if (sscanf(tok, "%llx,%llu", &lvl, &at) != 2) {
@@ -849,8 +849,8 @@ int mrc_datarover_main(int argc, char **argv)
             fprintf(stderr, "bad --drag-px entry: %s\n", drag);
             return 2;
         }
-        mrc_panel_px_to_raw(x, y, &m.tap[0].x, &m.tap[0].y);
-        mrc_panel_px_to_raw(ex, ey, &m.tap[0].end_x, &m.tap[0].end_y);
+        mh_panel_px_to_raw(x, y, &m.tap[0].x, &m.tap[0].y);
+        mh_panel_px_to_raw(ex, ey, &m.tap[0].end_x, &m.tap[0].end_y);
         m.tap[0].at = at;
         m.tap[0].drag = true;
         m.tap_n = 1;
@@ -862,7 +862,7 @@ int mrc_datarover_main(int argc, char **argv)
     if (taps) {
         char buf[4096];
         snprintf(buf, sizeof(buf), "%s", taps);
-        for (char *tok = strtok(buf, ";"); tok && m.tap_n < MRC_MAX_TAPS;
+        for (char *tok = strtok(buf, ";"); tok && m.tap_n < MH_MAX_TAPS;
              tok = strtok(NULL, ";")) {
             unsigned x, y; unsigned long long at;
             if (sscanf(tok, "%u,%u,%llu", &x, &y, &at) != 3) {
@@ -870,7 +870,7 @@ int mrc_datarover_main(int argc, char **argv)
                 return 2;
             }
             if (taps_in_pixels)
-                mrc_panel_px_to_raw(x, y, &m.tap[m.tap_n].x, &m.tap[m.tap_n].y);
+                mh_panel_px_to_raw(x, y, &m.tap[m.tap_n].x, &m.tap[m.tap_n].y);
             else {
                 m.tap[m.tap_n].x = (uint16_t)x;
                 m.tap[m.tap_n].y = (uint16_t)y;
@@ -906,10 +906,10 @@ int mrc_datarover_main(int argc, char **argv)
     m.fb_watch_prefix    = fb_watch;
     m.fb_watch_every     = fb_watch ? fb_watch_every : 0;
 
-    fprintf(stderr, "mcap — DataRover 840 (TMPR3902U @ %u.%03u MHz)\n",
+    fprintf(stderr, "mhat — DataRover 840 (TMPR3902U @ %u.%03u MHz)\n",
             DR840_CPU_HZ / 1000000, (DR840_CPU_HZ / 1000) % 1000);
     fprintf(stderr, "ROM  : %s (%u bytes)\n", rom_path, m.rom_size);
-    mrc_bus_print_map(&m.bus, stderr);
+    mh_bus_print_map(&m.bus, stderr);
     if (load_state) fprintf(stderr, "Resumed from %s (no reset)\n", load_state);
     else fprintf(stderr, "Reset PC: %08X%s\n", reset_pc,
                  reset_pc_given ? "" : " (architectural default)");
@@ -925,19 +925,19 @@ int mrc_datarover_main(int argc, char **argv)
          * The headless default of a million instructions is about two
          * frames, which looked exactly like an instant crash.
          */
-        if (!mrc_shell_current()) {
+        if (!mh_shell_current()) {
             fprintf(stderr, "no window was opened for this machine\n");
             gui_result = 1;
         } else {
-            gui_result = mrc_gui_run(&m, insns_set ? insns : 0,
-                                     mrc_shell_current());
+            gui_result = mh_gui_run(&m, insns_set ? insns : 0,
+                                     mh_shell_current());
         }
     } else {
-        mrc_machine_run(&m, insns, 1024);
+        mh_machine_run(&m, insns, 1024);
     }
 
     fprintf(stderr, "\n---\n");
-    mrc_cpu_dump(&m.cpu, stderr);
+    mh_cpu_dump(&m.cpu, stderr);
     fprintf(stderr,
             "bus: %" PRIu64 " reads, %" PRIu64 " writes, %" PRIu64 " MMIO reads, "
             "%" PRIu64 " MMIO writes, %" PRIu64 " floating reads, "
@@ -954,7 +954,7 @@ int mrc_datarover_main(int argc, char **argv)
     fprintf(stderr, "tx39: %" PRIu64 " undecoded reads, %" PRIu64 " undecoded writes\n",
             m.soc.unknown_reads, m.soc.unknown_writes);
     for (unsigned sl = 0; sl < 2; sl++) {
-        mrc_pccard_report(&m.card[sl]);
+        mh_pccard_report(&m.card[sl]);
         if (log_card) {
             fprintf(stderr, "glacier%u registers:", sl + 1);
             for (unsigned r = 0; r < GLACIER_NREG / 2; r++)
@@ -989,26 +989,26 @@ int mrc_datarover_main(int argc, char **argv)
             fclose(cf);
             uint64_t n = 0;
             for (uint32_t i = 0; i < m.cpu.coverage_words / 8; i++)
-                n += (unsigned)MRC_POPCOUNT(m.cpu.coverage[i]);
+                n += (unsigned)MH_POPCOUNT(m.cpu.coverage[i]);
             fprintf(stderr, "coverage: %" PRIu64 " distinct instructions -> %s\n",
                     n, coverage);
         }
     }
 
-    bool save_ok = !save_state || mrc_snapshot_save(&m, save_state);
+    bool save_ok = !save_state || mh_snapshot_save(&m, save_state);
     /*
      * Putting the device down saves it, with nothing to press and nothing to
      * confirm: the next launch picks up here.
      *
      * Best effort, and deliberately not part of the exit status. A machine
      * with a writable SRAM card or a network card in it cannot be snapshotted
-     * -- mrc_snapshot_save says which -- and a run like that used to keep its
+     * -- mh_snapshot_save says which -- and a run like that used to keep its
      * retained memory instead. Failing the process over it would break those
      * runs for the sake of a save they never asked for.
      */
-    if (have_device_state && !gui_result) mrc_snapshot_save(&m, device_state);
+    if (have_device_state && !gui_result) mh_snapshot_save(&m, device_state);
     for (unsigned i = 0; i < 2; i++)
-        if (!mrc_card_image_flush(&m.storage[i])) save_ok = false;
+        if (!mh_card_image_flush(&m.storage[i])) save_ok = false;
 
     for (unsigned i = 0; i < m.cpu.watch_n; i++)
         fprintf(stderr, "watch %08X: %" PRIu64 " hits\n", m.cpu.watch_pc[i],
@@ -1016,17 +1016,17 @@ int mrc_datarover_main(int argc, char **argv)
 
     if (wav) {
         fprintf(stderr, "audio: %llu samples captured -> %s\n",
-                (unsigned long long)mrc_wav_samples(wav), audio_wav);
-        mrc_wav_close(wav);
+                (unsigned long long)mh_wav_samples(wav), audio_wav);
+        mh_wav_close(wav);
     }
 
     if (histogram) {
-        mrc_tx39_print_histogram(&m.soc, stderr, 16);
-        mrc_sib_print_codec_traffic(&m.soc.sib, stderr);
+        mh_tx39_print_histogram(&m.soc, stderr, 16);
+        mh_sib_print_codec_traffic(&m.soc.sib, stderr);
     }
 
     if (dump_fb)
-        mrc_machine_dump_fb(&m, dump_fb);
+        mh_machine_dump_fb(&m, dump_fb);
     if (dump_ram) {
         FILE *f = fopen(dump_ram, "wb");
         if (f) {
@@ -1037,16 +1037,16 @@ int mrc_datarover_main(int argc, char **argv)
     }
 
     if (m.con_active)
-        mrc_console_shutdown(&m.con);
+        mh_console_shutdown(&m.con);
     if (installer) {
         fprintf(stderr, "install: %s (%u of %u bytes sent)\n",
-                mrc_pclink_message(installer), mrc_pclink_sent(installer),
-                mrc_pclink_total(installer));
-        if (mrc_pclink_state_of(installer) != MRC_PCLINK_DONE) save_ok = false;
-        mrc_pclink_close(installer);
+                mh_pclink_message(installer), mh_pclink_sent(installer),
+                mh_pclink_total(installer));
+        if (mh_pclink_state_of(installer) != MH_PCLINK_DONE) save_ok = false;
+        mh_pclink_close(installer);
     }
     free(input_cooked);
     if (gui_result) save_ok = false;
-    mrc_machine_free(&m);
+    mh_machine_free(&m);
     return save_ok ? 0 : 1;
 }

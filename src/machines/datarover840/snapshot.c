@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SNAP_MAGIC   0x4D434150u    /* "MCAP" */
+#define SNAP_MAGIC   0x4D484154u    /* "MHAT" */
 /*
  * 5: the machine. 6: adds the Magic Bus keyboard. 7: adds what was in the
  * card slots -- which card and where its image is, never the image itself.
@@ -46,7 +46,7 @@ static bool rd(FILE *f, void *p, size_t n)
     return fread(p, 1, n, f) == n;
 }
 
-bool mrc_snapshot_ram_size(const char *path, uint32_t *size)
+bool mh_snapshot_ram_size(const char *path, uint32_t *size)
 {
     FILE *f = fopen(path, "rb");
     if (!f) {
@@ -58,7 +58,7 @@ bool mrc_snapshot_ram_size(const char *path, uint32_t *size)
     fclose(f);
     if (!ok || h.magic != SNAP_MAGIC || h.version < 5 || h.version > SNAP_VERSION ||
         !h.ram_size || h.ram_size > DR840_RAM_WINDOW ||
-        h.cpu_bytes != sizeof(r3900) || h.soc_bytes != MRC_TX39_STATE_BYTES ||
+        h.cpu_bytes != sizeof(r3900) || h.soc_bytes != MH_TX39_STATE_BYTES ||
         h.glacier_bytes != sizeof(((machine *)0)->pcmcia) ||
         h.unknown_bytes != sizeof(((machine *)0)->kseg3)) {
         fprintf(stderr, "snapshot: %s has an invalid or incompatible header\n", path);
@@ -68,7 +68,7 @@ bool mrc_snapshot_ram_size(const char *path, uint32_t *size)
     return true;
 }
 
-bool mrc_snapshot_save(machine *m, const char *path)
+bool mh_snapshot_save(machine *m, const char *path)
 {
     if (m->soc.mbus_port && m->soc.mbus_port != &m->keyboard.port) {
         fprintf(stderr, "snapshot: unknown Magic Bus peripheral serialization is not implemented\n");
@@ -102,7 +102,7 @@ bool mrc_snapshot_save(machine *m, const char *path)
     snap_header h = {
         .magic = SNAP_MAGIC, .version = SNAP_VERSION,
         .ram_size = m->ram_size, .rom_size = m->rom_size,
-        .cpu_bytes = sizeof(m->cpu), .soc_bytes = MRC_TX39_STATE_BYTES,
+        .cpu_bytes = sizeof(m->cpu), .soc_bytes = MH_TX39_STATE_BYTES,
         .glacier_bytes = sizeof(m->pcmcia), .unknown_bytes = sizeof(m->kseg3),
     };
 
@@ -112,13 +112,13 @@ bool mrc_snapshot_save(machine *m, const char *path)
                * contents are machine state rather than a copy of the file. */
               wr(f, m->rom, m->rom_size) &&
               wr(f, &m->cpu, sizeof(m->cpu)) &&
-              wr(f, &m->soc, MRC_TX39_STATE_BYTES) &&
+              wr(f, &m->soc, MH_TX39_STATE_BYTES) &&
               wr(f, m->pcmcia, sizeof(m->pcmcia)) &&
               wr(f, &m->kseg3, sizeof(m->kseg3));
 
     if (ok && h.version >= SNAP_KEYBOARD_FROM) {
-        uint8_t keyboard[MRC_DR_KEYBOARD_STATE_SIZE];
-        mrc_dr_keyboard_encode(&m->keyboard,keyboard);
+        uint8_t keyboard[MH_DR_KEYBOARD_STATE_SIZE];
+        mh_dr_keyboard_encode(&m->keyboard,keyboard);
         ok = wr(f,keyboard,sizeof(keyboard));
     }
     /*
@@ -149,7 +149,7 @@ bool mrc_snapshot_save(machine *m, const char *path)
     return true;
 }
 
-bool mrc_snapshot_load(machine *m, const char *path)
+bool mh_snapshot_load(machine *m, const char *path)
 {
     if (m->soc.mbus_port && m->soc.mbus_port != &m->keyboard.port) {
         fprintf(stderr, "snapshot: disconnect the unknown Magic Bus peripheral before loading\n");
@@ -180,7 +180,7 @@ bool mrc_snapshot_load(machine *m, const char *path)
      */
     if (h.ram_size != m->ram_size || h.rom_size != m->rom_size ||
         h.cpu_bytes != sizeof(m->cpu) ||
-        h.soc_bytes != MRC_TX39_STATE_BYTES ||
+        h.soc_bytes != MH_TX39_STATE_BYTES ||
         h.glacier_bytes != sizeof(m->pcmcia) ||
         h.unknown_bytes != sizeof(m->kseg3)) {
         fprintf(stderr, "snapshot: %s does not match this machine or build\n",
@@ -195,7 +195,7 @@ bool mrc_snapshot_load(machine *m, const char *path)
               rd(f, &m->soc, h.soc_bytes) &&
               rd(f, m->pcmcia, sizeof(m->pcmcia)) &&
               rd(f, &m->kseg3, sizeof(m->kseg3));
-    uint8_t keyboard[MRC_DR_KEYBOARD_STATE_SIZE] = {1};
+    uint8_t keyboard[MH_DR_KEYBOARD_STATE_SIZE] = {1};
     if (ok && h.version >= SNAP_KEYBOARD_FROM)
         ok = rd(f,keyboard,sizeof(keyboard));
     /*
@@ -205,7 +205,7 @@ bool mrc_snapshot_load(machine *m, const char *path)
      * and mapped files would be doing something a restore has no right to do
      * on its own.
      */
-    mrc_card_kind want_kind[2] = { MRC_CARD_NONE, MRC_CARD_NONE };
+    mh_card_kind want_kind[2] = { MH_CARD_NONE, MH_CARD_NONE };
     char *want_path[2] = { NULL, NULL };
     if (ok && h.version >= SNAP_CARDS_FROM) {
         for (unsigned slot = 0; slot < 2 && ok; slot++) {
@@ -216,12 +216,12 @@ bool mrc_snapshot_load(machine *m, const char *path)
                 want_path[slot] = calloc(1, len + 1);
                 ok = want_path[slot] && rd(f, want_path[slot], len);
             }
-            if (ok) want_kind[slot] = (mrc_card_kind)kind;
+            if (ok) want_kind[slot] = (mh_card_kind)kind;
         }
     }
     if (ok) {
-        mrc_machine_rebind(m);
-        ok = mrc_dr_keyboard_decode(&m->keyboard,keyboard);
+        mh_machine_rebind(m);
+        ok = mh_dr_keyboard_decode(&m->keyboard,keyboard);
     }
     fclose(f);
 
@@ -231,7 +231,7 @@ bool mrc_snapshot_load(machine *m, const char *path)
         return false;
     }
 
-    mrc_machine_rebind(m);
+    mh_machine_rebind(m);
     for (unsigned slot = 0; slot < 2; slot++) {
         free(m->card_path[slot]);
         m->card_path[slot] = want_path[slot];
@@ -261,9 +261,9 @@ bool mrc_snapshot_load(machine *m, const char *path)
      *
      * This was not theoretical: a state saved by a run with --coverage
      * segfaulted every later run without it, inside the coverage write in
-     * mrc_cpu_step, because the pointer was non-NULL and pointed at freed
+     * mh_cpu_step, because the pointer was non-NULL and pointed at freed
      * memory. The audio sink is the same bug with a worse ending, since it
-     * is a function pointer that mrc_sib_pump_audio would call.
+     * is a function pointer that mh_sib_pump_audio would call.
      *
      * Whatever the new run wants, it configures for itself after loading.
      */

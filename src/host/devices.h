@@ -44,8 +44,8 @@
  * particular machine: which board a device is, is decided by looking at its
  * ROM, the same way it is decided for a ROM given on the command line.
  */
-#ifndef MRC_HOST_DEVICES_H
-#define MRC_HOST_DEVICES_H
+#ifndef MH_HOST_DEVICES_H
+#define MH_HOST_DEVICES_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -54,29 +54,29 @@
 extern "C" {
 #endif
 
-#define MRC_DEVICE_ID_MAX   64
-#define MRC_DEVICE_NAME_MAX 96
-#define MRC_DEVICE_MAX      64      /* more than anyone will make by hand */
+#define MH_DEVICE_ID_MAX   64
+#define MH_DEVICE_NAME_MAX 96
+#define MH_DEVICE_MAX      64      /* more than anyone will make by hand */
 
-#define MRC_DEVICE_MACHINE_MAX 24
+#define MH_DEVICE_MACHINE_MAX 24
 
 typedef struct {
-    char id[MRC_DEVICE_ID_MAX];      /* the directory name */
-    char name[MRC_DEVICE_NAME_MAX];  /* what to show */
-    char machine[MRC_DEVICE_MACHINE_MAX]; /* pic2000, datarover840, ... */
+    char id[MH_DEVICE_ID_MAX];      /* the directory name */
+    char name[MH_DEVICE_NAME_MAX];  /* what to show */
+    char machine[MH_DEVICE_MACHINE_MAX]; /* pic2000, datarover840, ... */
     bool has_state;                  /* false until it has been run once */
-} mrc_device;
+} mh_device;
 
 /*
- * Where devices are kept. MRC_DEVICES_DIR overrides it; otherwise it is
+ * Where devices are kept. MH_DEVICES_DIR overrides it; otherwise it is
  * under the usual place for application data on this platform. Created on
  * first use. Returns NULL only when no directory can be established, which
  * leaves the program working exactly as it did before devices existed.
  */
-const char *mrc_devices_root(void);
+const char *mh_devices_root(void);
 
 /* Every device, newest first. Returns how many were written to `out`. */
-unsigned mrc_devices_list(mrc_device *out, unsigned max);
+unsigned mh_devices_list(mh_device *out, unsigned max);
 
 /*
  * Make a device from a ROM image, copying the firmware in.
@@ -93,25 +93,25 @@ unsigned mrc_devices_list(mrc_device *out, unsigned max);
  * Fails too if a device of that name already exists, across all machines --
  * two devices with one name is a choice nobody can make from a list.
  */
-bool mrc_device_create(const char *rom_path, const char *name, mrc_device *out);
+bool mh_device_create(const char *rom_path, const char *name, mh_device *out);
 
 /* Rename, keeping the id and so keeping the directory. */
-bool mrc_device_rename(const mrc_device *d, const char *name);
+bool mh_device_rename(const mh_device *d, const char *name);
 
 /* Remove a device and everything in it. There is no undo: the machine, its
  * firmware copy and its history all go. */
-bool mrc_device_delete(const mrc_device *d);
+bool mh_device_delete(const mh_device *d);
 
 /*
  * The files inside a device. Either pointer may be NULL when that path is
  * not wanted. The state path is returned whether or not it exists yet --
  * it is where the state will be written.
  */
-bool mrc_device_paths(const mrc_device *d, char *rom, size_t rom_cap,
+bool mh_device_paths(const mh_device *d, char *rom, size_t rom_cap,
                       char *state, size_t state_cap);
 
 /* Find one by id, for resuming whatever was last in use. */
-bool mrc_device_by_id(const char *id, mrc_device *out);
+bool mh_device_by_id(const char *id, mh_device *out);
 
 /*
  * Why the last thing failed, in words meant for a person.
@@ -123,9 +123,9 @@ bool mrc_device_by_id(const char *id, mrc_device *out);
  * until a device store was deleted underneath a running emulator and the
  * window sat there looking fine.
  */
-const char *mrc_devices_last_error(void);
+const char *mh_devices_last_error(void);
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* MRC_HOST_DEVICES_H */
+#endif /* MH_HOST_DEVICES_H */

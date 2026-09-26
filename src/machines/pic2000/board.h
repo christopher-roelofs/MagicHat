@@ -6,12 +6,12 @@
  * and putting that code in machine68k.cpp alongside everything else would
  * have buried it. Nothing outside src/machines/pic2000 should include it.
  */
-#ifndef MRC_PIC2000_BOARD_H
-#define MRC_PIC2000_BOARD_H
+#ifndef MH_PIC2000_BOARD_H
+#define MH_PIC2000_BOARD_H
 
 #include "machines/envoy/board.h"
 #include "soc/mc68349/bus.h"
-using Cpu = mrc::Mc68349Bus;
+using Cpu = mh::Mc68349Bus;
 #include "soc/mc68349/sim.h"
 #include "machines/pic2000/registers.h"
 #include "machines/pic2000/audio.h"
@@ -35,7 +35,7 @@ extern "C" {
 
 /* PIC-2000 board assembly and wiring. Register behavior lives in registers.*. */
 struct m68k_machine {
-    mrc_bus  bus;
+    mh_bus  bus;
     Mc68349Sim      sim;
     Pic2000Registers    dev21, dev0c;
     Pic2000Audio        audio;
@@ -45,7 +45,7 @@ struct m68k_machine {
     Cpu      cpu;
     Mc68349Duart duart;
     ne2000 net_probe_nic = {};
-    mrc_network *net_probe_link = nullptr;
+    mh_network *net_probe_link = nullptr;
     bool net_probe_enabled = false;
     uint8_t net_slot2_config = 0;
     unsigned net_probe_logged = 0;
@@ -56,11 +56,11 @@ struct m68k_machine {
     uint32_t ram_len = 0;
     uint8_t *xram = nullptr;
     uint32_t xram_len = 0;
-    mrc_region *xram_region = nullptr;
-    mrc_region *testimg_region = nullptr;
-    mrc_pccard card[2] = {};
-    mrc_pccard_port card_port[2][MRC_PCCARD_NWINDOW] = {};
-    mrc_card_image card_storage[2] = {MRC_CARD_IMAGE_CLOSED, MRC_CARD_IMAGE_CLOSED};
+    mh_region *xram_region = nullptr;
+    mh_region *testimg_region = nullptr;
+    mh_pccard card[2] = {};
+    mh_pccard_port card_port[2][MH_PCCARD_NWINDOW] = {};
+    mh_card_image card_storage[2] = {MH_CARD_IMAGE_CLOSED, MH_CARD_IMAGE_CLOSED};
     char *card_path[2] = {};
     bool card_present[2] = {};
     bool card_event[2] = {};
@@ -145,10 +145,10 @@ struct m68k_machine {
  * Defined in machine68k.cpp; shared because restoring a machine has to
  * arm it again.
  */
-extern "C" void mrc_m68k_set_stop_at(m68k_machine *m, uint32_t pc);
-#define MRC_M68K_HIX_CHECKSUM_PC 0x0E000A82u
-inline uint32_t mrc_m68k_checksum_pc(const m68k_machine *m) {
-    return m->envoy_mc31 ? 0x00400E88u : MRC_M68K_HIX_CHECKSUM_PC;
+extern "C" void mh_m68k_set_stop_at(m68k_machine *m, uint32_t pc);
+#define MH_M68K_HIX_CHECKSUM_PC 0x0E000A82u
+inline uint32_t mh_m68k_checksum_pc(const m68k_machine *m) {
+    return m->envoy_mc31 ? 0x00400E88u : MH_M68K_HIX_CHECKSUM_PC;
 }
 
-#endif /* MRC_PIC2000_BOARD_H */
+#endif /* MH_PIC2000_BOARD_H */

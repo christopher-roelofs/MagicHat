@@ -27,7 +27,7 @@ unsigned Pic2000Audio::divider_rate(uint16_t reg)
     return 88200 / (ticks ? ticks : 16);
 }
 
-void Pic2000Audio::tick(uint64_t now, unsigned clock, Pic2000Registers &r, mrc_bus &bus)
+void Pic2000Audio::tick(uint64_t now, unsigned clock, Pic2000Registers &r, mh_bus &bus)
 {
     if (now < cycles) { cycles = now; phase = 0; }
     phase += (now - cycles) * output_rate;
@@ -60,7 +60,7 @@ void Pic2000Audio::tick(uint64_t now, unsigned clock, Pic2000Registers &r, mrc_b
                 if ((r.reg[0x4e / 2] & 6) == 6) {
                     bool ok;
                     uint32_t address = ((uint32_t)r.reg[0x50 / 2] << 12) + offset;
-                    held = (int16_t)mrc_bus_read(&bus, address, 2, &ok);
+                    held = (int16_t)mh_bus_read(&bus, address, 2, &ok);
                     if (!ok) held = 0;
                     samples++;
                     offset = (offset + 2) & 0xfff;

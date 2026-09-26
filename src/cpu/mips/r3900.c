@@ -23,7 +23,7 @@ static void raise_exc(r3900 *c, unsigned code, uint32_t bad_vaddr,
                       bool have_bad);
 static void raise_exc_refill(r3900 *c, unsigned code, uint32_t bad_vaddr);
 
-void mrc_cpu_init(r3900 *c, mrc_bus *bus)
+void mh_cpu_init(r3900 *c, mh_bus *bus)
 {
     memset(c, 0, sizeof(*c));
     c->bus = bus;
@@ -31,7 +31,7 @@ void mrc_cpu_init(r3900 *c, mrc_bus *bus)
     c->has_mmu = true;      /* the architectural default; boards override it */
 }
 
-void mrc_cpu_reset(r3900 *c, uint32_t reset_pc)
+void mh_cpu_reset(r3900 *c, uint32_t reset_pc)
 {
     memset(c->r, 0, sizeof(c->r));
     c->hi = c->lo = 0;
@@ -59,7 +59,7 @@ void mrc_cpu_reset(r3900 *c, uint32_t reset_pc)
     c->cp0[CP0_RANDOM] = R3900_TLB_ENTRIES - 1;
 }
 
-void mrc_cpu_set_irq(r3900 *c, unsigned line, bool asserted)
+void mh_cpu_set_irq(r3900 *c, unsigned line, bool asserted)
 {
     if (line > 7)
         return;
@@ -103,7 +103,7 @@ static bool tlb_lookup(r3900 *c, uint32_t va, bool write, uint32_t *pa,
     return false;
 }
 
-bool mrc_cpu_translate(r3900 *c, uint32_t va, bool write, uint32_t *pa)
+bool mh_cpu_translate(r3900 *c, uint32_t va, bool write, uint32_t *pa)
 {
     unsigned exc;
     bool refill;
@@ -126,7 +126,7 @@ static bool translate(r3900 *c, uint32_t va, bool write, uint32_t *pa)
     /* DataRover's TX39 runs without a TLB. Keep that common case as one
      * short segment-map branch instead of carrying the MMU checks through
      * every load, store, and instruction fetch. */
-    if (MRC_LIKELY(!c->has_mmu)) {
+    if (MH_LIKELY(!c->has_mmu)) {
         *pa = (va >= 0x80000000u && va < 0xC0000000u)
             ? va & 0x1FFFFFFFu : va;
         return true;
@@ -246,7 +246,7 @@ static uint32_t  *g_take;      static size_t g_take_n, g_take_i;
 
 static bool bus_is_device(uint32_t pa);
 
-void mrc_cpu_replay(const char *dev_path, const char *irq_path)
+void mh_cpu_replay(const char *dev_path, const char *irq_path)
 {
     FILE *f = fopen(dev_path, "rb");
     if (!f) { fprintf(stderr, "replay: cannot open %s\n", dev_path); return; }
@@ -269,7 +269,7 @@ void mrc_cpu_replay(const char *dev_path, const char *irq_path)
 /* The other machine's interrupts, each as the count of the instruction it
  * was taken in front of. With these, an interrupt is taken here exactly
  * there and nowhere else; the level trace then only says what Cause reads. */
-void mrc_cpu_replay_takes(const char *path)
+void mh_cpu_replay_takes(const char *path)
 {
     FILE *f = fopen(path, "rb");
     if (!f) { fprintf(stderr, "replay: cannot open %s\n", path); return; }
@@ -406,14 +406,14 @@ static uint64_t g_bus_trace_left;
  * said, because that is what it cannot work out for itself. */
 static bool     g_bus_trace_dev;
 
-void mrc_cpu_trace_bus_devices_only(bool on) { g_bus_trace_dev = on; }
+void mh_cpu_trace_bus_devices_only(bool on) { g_bus_trace_dev = on; }
 
-void mrc_cpu_trace_irq(const char *path)
+void mh_cpu_trace_irq(const char *path)
 {
     if (g_irq_trace) { fclose(g_irq_trace); g_irq_trace = NULL; }
     if (path) g_irq_trace = fopen(path, "wb");
 }
-void mrc_cpu_trace_irq_close(void)
+void mh_cpu_trace_irq_close(void)
 {
     if (g_irq_trace) { fclose(g_irq_trace); g_irq_trace = NULL; }
 }
@@ -428,7 +428,7 @@ static bool bus_is_device(uint32_t pa)
         || (pa >= 0xFF000000u && pa <  0xFF001000u);
 }
 
-void mrc_cpu_trace_bus(const char *path, uint64_t count)
+void mh_cpu_trace_bus(const char *path, uint64_t count)
 {
     if (g_bus_trace) {
         fclose(g_bus_trace);
@@ -447,7 +447,7 @@ void mrc_cpu_trace_bus(const char *path, uint64_t count)
     g_bus_trace_left = count;
 }
 
-void mrc_cpu_trace_bus_close(void)
+void mh_cpu_trace_bus_close(void)
 {
     if (!g_bus_trace)
         return;
@@ -484,7 +484,7 @@ static void bus_trace_emit(const r3900 *c, uint32_t pa, unsigned size,
     rec[3] = (size & 0xFFu) | flags;
     fwrite(rec, sizeof rec, 1, g_bus_trace);
     if (--g_bus_trace_left == 0)
-        mrc_cpu_trace_bus_close();
+        mh_cpu_trace_bus_close();
 }
 
 static bool load(r3900 *c, uint32_t va, unsigned size, uint32_t *out)
@@ -497,16 +497,16 @@ static bool load(r3900 *c, uint32_t va, unsigned size, uint32_t *out)
     if (!translate(c, va, false, &pa))
         return false;
     bool ok;
-    if (MRC_UNLIKELY(g_rep != NULL) && replay_access(c, pa, size, false, out))
+    if (MH_UNLIKELY(g_rep != NULL) && replay_access(c, pa, size, false, out))
         return !g_rep_bad;
-    *out = mrc_bus_read(c->bus, pa, size, &ok);
+    *out = mh_bus_read(c->bus, pa, size, &ok);
     if (!ok) {
-        if (MRC_UNLIKELY(g_bus_trace != NULL))
+        if (MH_UNLIKELY(g_bus_trace != NULL))
             bus_trace_emit(c, pa, size, 0, BUS_F_ERROR);
         raise_exc(c, EXC_DBE, va, true);
         return false;
     }
-    if (MRC_UNLIKELY(g_bus_trace != NULL))
+    if (MH_UNLIKELY(g_bus_trace != NULL))
         bus_trace_emit(c, pa, size, *out, 0);
     return true;
 }
@@ -514,7 +514,7 @@ static bool load(r3900 *c, uint32_t va, unsigned size, uint32_t *out)
 static uint32_t g_watch_write;
 static unsigned g_watch_write_log;
 
-void mrc_cpu_watch_write(uint32_t pa)
+void mh_cpu_watch_write(uint32_t pa)
 {
     g_watch_write = pa;
     g_watch_write_log = pa ? 1000000u : 0;
@@ -541,7 +541,7 @@ void mrc_cpu_watch_write(uint32_t pa)
 static FILE    *g_trace_state;
 static uint64_t g_trace_state_left;
 
-void mrc_cpu_trace_state(const char *path, uint64_t count)
+void mh_cpu_trace_state(const char *path, uint64_t count)
 {
     if (g_trace_state) {
         fclose(g_trace_state);
@@ -561,7 +561,7 @@ void mrc_cpu_trace_state(const char *path, uint64_t count)
     g_trace_state_left = count;
 }
 
-void mrc_cpu_trace_state_close(void)
+void mh_cpu_trace_state_close(void)
 {
     if (!g_trace_state)
         return;
@@ -582,7 +582,7 @@ static void trace_state_emit(const r3900 *c, uint32_t insn)
     memcpy(&rec[5], &c->r[1], 31 * sizeof(uint32_t));
     fwrite(rec, sizeof rec, 1, g_trace_state);
     if (--g_trace_state_left == 0)
-        mrc_cpu_trace_state_close();
+        mh_cpu_trace_state_close();
 }
 
 static bool store(r3900 *c, uint32_t va, unsigned size, uint32_t val)
@@ -600,16 +600,16 @@ static bool store(r3900 *c, uint32_t va, unsigned size, uint32_t val)
                 va, (int)size * 2, val, size, c->cur_pc, c->r[31], (unsigned long long)c->insn_count);
     }
     bool ok;
-    if (MRC_UNLIKELY(g_rep != NULL) && replay_access(c, pa, size, true, &val))
+    if (MH_UNLIKELY(g_rep != NULL) && replay_access(c, pa, size, true, &val))
         return !g_rep_bad;
-    mrc_bus_write(c->bus, pa, size, val, &ok);
+    mh_bus_write(c->bus, pa, size, val, &ok);
     if (!ok) {
-        if (MRC_UNLIKELY(g_bus_trace != NULL))
+        if (MH_UNLIKELY(g_bus_trace != NULL))
             bus_trace_emit(c, pa, size, val, BUS_F_WRITE | BUS_F_ERROR);
         raise_exc(c, EXC_DBE, va, true);
         return false;
     }
-    if (MRC_UNLIKELY(g_bus_trace != NULL))
+    if (MH_UNLIKELY(g_bus_trace != NULL))
         bus_trace_emit(c, pa, size, val, BUS_F_WRITE);
     return true;
 }
@@ -744,11 +744,11 @@ static void branch(r3900 *c, uint32_t target)
 /* Instantiate the same semantics with raw and predecoded operands. */
 #define SPECIAL_OP(n) (n)
 #define DISPATCH(i) OP(i)
-#define MRC_INSN uint32_t
+#define MH_INSN uint32_t
 #define WORD(i) (i)
 #define JTARGET(i) (((i) & 0x03FFFFFFu) << 2)
 #include "cpu/mips/execute.inc"
-#undef MRC_INSN
+#undef MH_INSN
 #undef WORD
 #undef JTARGET
 
@@ -787,8 +787,8 @@ static decoded_instruction decode(uint32_t word)
 #undef DISPATCH
 #define SPECIAL_OP(n) (64 + (n))
 #define DISPATCH(i) ((i)->dispatch)
-#define MRC_FLAT_DISPATCH
-#define MRC_INSN const decoded_instruction *
+#define MH_FLAT_DISPATCH
+#define MH_INSN const decoded_instruction *
 #define branch_rel decoded_branch_rel
 #define exec_special decoded_exec_special
 #define exec_regimm decoded_exec_regimm
@@ -798,9 +798,9 @@ static decoded_instruction decode(uint32_t word)
 #undef exec_regimm
 #undef exec_special
 #undef branch_rel
-#undef MRC_INSN
+#undef MH_INSN
 
-#undef MRC_FLAT_DISPATCH
+#undef MH_FLAT_DISPATCH
 #undef SPECIAL_OP
 #undef DISPATCH
 #undef RS
@@ -828,12 +828,12 @@ struct r3900_decode_cache {
     } block[DECODE_BLOCK_COUNT];
 };
 
-r3900_decode_cache *mrc_cpu_decode_cache_create(void)
+r3900_decode_cache *mh_cpu_decode_cache_create(void)
 {
     return calloc(1, sizeof(r3900_decode_cache));
 }
 
-void mrc_cpu_decode_cache_free(r3900_decode_cache *cache)
+void mh_cpu_decode_cache_free(r3900_decode_cache *cache)
 {
     free(cache);
 }
@@ -877,7 +877,7 @@ typedef struct {
 #undef STEP_PARAMETERS
 #undef EXECUTE_INSTRUCTION
 
-void mrc_cpu_step(r3900 *c)
+void mh_cpu_step(r3900 *c)
 {
     cpu_step(c, NULL);
 }
@@ -885,7 +885,7 @@ void mrc_cpu_step(r3900 *c)
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((flatten))
 #endif
-void mrc_cpu_run(r3900 *c, uint64_t insns)
+void mh_cpu_run(r3900 *c, uint64_t insns)
 {
     fetch_span span = {0};
     for (uint64_t i = 0; i < insns && !c->halted; i++)
@@ -895,7 +895,7 @@ void mrc_cpu_run(r3900 *c, uint64_t insns)
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline))
 #endif
-void mrc_cpu_run_decoded(r3900 *c, uint64_t insns, r3900_decode_cache *cache)
+void mh_cpu_run_decoded(r3900 *c, uint64_t insns, r3900_decode_cache *cache)
 {
     fetch_span span = {0};
     for (uint64_t i = 0; i < insns && !c->halted; i++)
@@ -936,7 +936,7 @@ static uint32_t jit_finish(r3900 *c, uint32_t expected_pc, uint32_t k,
 }
 
 /* Which instructions reach the helpers is what decides the next thing
- * worth compiling natively; MRC_JIT_STATS=1 prints the histogram at exit. */
+ * worth compiling natively; MH_JIT_STATS=1 prints the histogram at exit. */
 static uint64_t jit_helper_histogram[128];
 static void jit_print_helper_histogram(void)
 {
@@ -960,13 +960,13 @@ static void jit_count_helper(uint32_t word)
 {
     static int enabled = -1;
     if (enabled < 0) {
-        enabled = getenv("MRC_JIT_STATS") != NULL;
+        enabled = getenv("MH_JIT_STATS") != NULL;
         if (enabled) atexit(jit_print_helper_histogram);
     }
     if (enabled) jit_helper_histogram[(word >> 26) ? word >> 26 : 64 + (word & 63)]++;
 }
 
-uint32_t mrc_jit_exec(r3900 *c, uint32_t word, uint32_t pc, uint32_t k)
+uint32_t mh_jit_exec(r3900 *c, uint32_t word, uint32_t pc, uint32_t k)
 {
     jit_count_helper(word);
     uint8_t irq_before = c->irq_lines;
@@ -980,7 +980,7 @@ uint32_t mrc_jit_exec(r3900 *c, uint32_t word, uint32_t pc, uint32_t k)
     return jit_finish(c, pc + 4, k, irq_before, generation);
 }
 
-uint32_t mrc_jit_exec_delay(r3900 *c, uint32_t word, uint32_t pc, uint32_t k,
+uint32_t mh_jit_exec_delay(r3900 *c, uint32_t word, uint32_t pc, uint32_t k,
                             uint32_t target)
 {
     jit_count_helper(word);
@@ -1008,7 +1008,7 @@ uint32_t mrc_jit_exec_delay(r3900 *c, uint32_t word, uint32_t pc, uint32_t k,
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((flatten))
 #endif
-void mrc_cpu_run_jit(r3900 *c, uint64_t slots, r3900_jit *jit)
+void mh_cpu_run_jit(r3900 *c, uint64_t slots, r3900_jit *jit)
 {
     fetch_span span = {0};
     bool observed = c->trace || c->trace_after_pc || c->trace_from || g_rep || g_take || c->coverage || c->watch_n || g_trace_state ||
@@ -1016,23 +1016,23 @@ void mrc_cpu_run_jit(r3900 *c, uint64_t slots, r3900_jit *jit)
     for (uint64_t done = 0; done < slots && !c->halted;) {
         /* Page tables and code follow the bus map; a device write can
          * change it inside this call. Cheap when nothing changed. */
-        mrc_jit_prepare(jit, c);
+        mh_jit_prepare(jit, c);
         bool eligible = !observed && !c->power_stopped && !c->branch_pending &&
             !(c->pc & 3) && !c->r[0] &&
             (!c->has_mmu || (c->pc >= 0x80000000u && c->pc < 0xc0000000u &&
                             !(c->cp0[CP0_STATUS] & SR_KUc)));
-        const mrc_jit_entry *entry = eligible ? mrc_jit_find(jit, c, c->pc, false) : NULL;
+        const mh_jit_entry *entry = eligible ? mh_jit_find(jit, c, c->pc, false) : NULL;
         if (!entry || entry->n > slots - done) {
             /* No block here, or the budget cannot take a whole one. */
             cpu_step(c, &span);
-            mrc_jit_account(jit, 0, 1);
+            mh_jit_account(jit, 0, 1);
             done++;
             continue;
         }
         c->cur_pc = c->pc;
         c->in_delay = false;
         if (check_interrupts(c)) {
-            mrc_jit_account(jit, 0, 1);
+            mh_jit_account(jit, 0, 1);
             done++;
             continue;
         }
@@ -1041,10 +1041,10 @@ void mrc_cpu_run_jit(r3900 *c, uint64_t slots, r3900_jit *jit)
         uint64_t result = entry->code(c, jit, budget);
         uint32_t retired = budget - (uint32_t)result;
         unsigned status = (unsigned)(result >> 32);
-        mrc_jit_account(jit, retired, 0);
+        mh_jit_account(jit, retired, 0);
         done += retired;
-        if (mrc_jit_tables_of(jit)->link)
-            mrc_jit_resolve_link(jit, c, status == MRC_JIT_STALE);
+        if (mh_jit_tables_of(jit)->link)
+            mh_jit_resolve_link(jit, c, status == MH_JIT_STALE);
     }
 }
 
@@ -1055,7 +1055,7 @@ static const char *const regname[32] = {
     "t8",   "t9", "k0", "k1", "gp", "sp", "s8", "ra",
 };
 
-void mrc_cpu_dump(const r3900 *c, FILE *f)
+void mh_cpu_dump(const r3900 *c, FILE *f)
 {
     fprintf(f, "pc=%08X  hi=%08X lo=%08X  insns=%" PRIu64 "\n",
             c->cur_pc, c->hi, c->lo, c->insn_count);

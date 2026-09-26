@@ -33,15 +33,15 @@ struct Mc68349Duart {
     uint64_t *insns = nullptr;
     unsigned clock_hz = 0;
     bool dirty = false;
-    mrc_serial link = {-1, {}, nullptr};
-    mrc_serial link_a = {-1, {}, nullptr};
-    mrc_ppp *ppp = nullptr;
+    mh_serial link = {-1, {}, nullptr};
+    mh_serial link_a = {-1, {}, nullptr};
+    mh_ppp *ppp = nullptr;
 
     bool open_a();
-    void attach_ppp(mrc_ppp *);
+    void attach_ppp(mh_ppp *);
     void detach_ppp();
     bool active() const;
-    void attach(struct mrc_pclink *peer);
+    void attach(struct mh_pclink *peer);
     void detach();
     void tick();
     bool irq() const;

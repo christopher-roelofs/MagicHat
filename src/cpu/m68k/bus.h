@@ -25,11 +25,11 @@ extern "C" {
 #include <cstring>
 #include <cstdlib>
 
-namespace mrc {
+namespace mh {
 
 struct M68kBus {
 
-    mrc_bus *bus = nullptr;
+    mh_bus *bus = nullptr;
     FILE *log = stderr;
 
     uint64_t insns = 0;
@@ -130,7 +130,7 @@ struct M68kBus {
     std::map<uint32_t, uint64_t> watch_write_pcs;
     unsigned watch_write_shown = 0;
     /*
-     * PC watchpoints, the same idea as mcap's --watch-pc. Counting how often
+     * PC watchpoints, the same idea as mhat's --watch-pc. Counting how often
      * a named address executes, and printing the registers the first few
      * times, is what turns "the OS asserts" into "these are the ids it did
      * register, and 0x28 is not among them".
@@ -218,7 +218,7 @@ struct M68kBus {
      * engine uses; writes additionally require RAM so ROM writes still
      * reach the bus and are counted as ignored. Accesses that cross a page
      * or land on MMIO, floating or unmapped space take the bus path, so the
-     * counters and diagnostics are the same either way. MRC_68K_DIRECT=0
+     * counters and diagnostics are the same either way. MH_68K_DIRECT=0
      * disables it for an exact A/B.
      */
     mutable std::vector<uint8_t *> direct_rd, direct_wr;
@@ -228,17 +228,17 @@ struct M68kBus {
 
     void direct_prepare() const
     {
-        if (MRC_LIKELY(direct_generation == bus->lookup_generation)) return;
+        if (MH_LIKELY(direct_generation == bus->lookup_generation)) return;
         if (direct_rd.empty()) {
             direct_rd.assign(1u << 20, nullptr);
             direct_wr.assign(1u << 20, nullptr);
         }
         for (uint32_t page = 0; page < (1u << 20); page++) {
-            direct_rd[page] = mrc_bus_page_host(bus, page << 12, false);
-            direct_wr[page] = mrc_bus_page_host(bus, page << 12, true);
+            direct_rd[page] = mh_bus_page_host(bus, page << 12, false);
+            direct_wr[page] = mh_bus_page_host(bus, page << 12, true);
         }
         direct_generation = bus->lookup_generation;
-        if (getenv("MRC_68K_DIRECT_DEBUG")) {
+        if (getenv("MH_68K_DIRECT_DEBUG")) {
             unsigned rd = 0, wr = 0;
             for (uint32_t page = 0; page < (1u << 20); page++) {
                 rd += direct_rd[page] != nullptr;
@@ -247,7 +247,7 @@ struct M68kBus {
             fprintf(log, "68k: direct tables rebuilt at generation %llu: "
                     "%u readable, %u writable pages\n",
                     (unsigned long long)direct_generation, rd, wr);
-            mrc_bus_print_map(bus, log);
+            mh_bus_print_map(bus, log);
         }
     }
 
@@ -270,11 +270,11 @@ struct M68kBus {
     {
         auto *self = const_cast<M68kBus *>(this);
         bool ok = true;
-        if (MRC_LIKELY(direct_enabled && !self->watch_read && !self->readheat)) {
+        if (MH_LIKELY(direct_enabled && !self->watch_read && !self->readheat)) {
             direct_prepare();
             const uint8_t *p = direct_rd[addr >> 12];
             unsigned off = addr & 0xFFFu;
-            if (MRC_LIKELY(p && off + size <= 4096)) {
+            if (MH_LIKELY(p && off + size <= 4096)) {
                 self->bus->reads++;
                 self->direct_hits++;
                 return load_be(p + off, size);
@@ -287,7 +287,7 @@ struct M68kBus {
         if (self->readheat && addr < 0x01000000u &&
             self->read_addrs.size() < 200000)
             self->read_addrs[addr]++;
-        uint32_t v = mrc_bus_read(self->bus, addr, size, &ok);
+        uint32_t v = mh_bus_read(self->bus, addr, size, &ok);
         if (!ok) {
             self->unknown_reads++;
             self->unknown_at[addr & ~0xFFFu]++;
@@ -308,11 +308,11 @@ struct M68kBus {
     {
         auto *self = const_cast<M68kBus *>(this);
         bool ok = true;
-        if (MRC_LIKELY(direct_enabled && !self->heat && !self->watch_write_hi)) {
+        if (MH_LIKELY(direct_enabled && !self->heat && !self->watch_write_hi)) {
             direct_prepare();
             uint8_t *p = direct_wr[addr >> 12];
             unsigned off = addr & 0xFFFu;
-            if (MRC_LIKELY(p && off + size <= 4096)) {
+            if (MH_LIKELY(p && off + size <= 4096)) {
                 self->bus->writes++;
                 store_be(p + off, size, val);
                 return;
@@ -337,7 +337,7 @@ struct M68kBus {
             }
         }
         uint64_t before = self->bus->faults;
-        mrc_bus_write(self->bus, addr, size, val, &ok);
+        mh_bus_write(self->bus, addr, size, val, &ok);
         if (ok && self->bus->faults != before) {
             self->ignored_writes++;
             self->ignored_at[addr & ~0xFFFFFu]++;

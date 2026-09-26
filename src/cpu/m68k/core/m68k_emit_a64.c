@@ -2,7 +2,7 @@
 #include "cpu/m68k/core/m68k_block.h"
 #include "cpu/m68k/core/m68k_emit_policy.h"
 
-#if defined(MRC_M68K_EMIT_A64)
+#if defined(MH_M68K_EMIT_A64)
 #include <stddef.h>
 #include <string.h>
 
@@ -1031,7 +1031,7 @@ static void emit_memory_alu(emitter *e, const m68k_insn *insn,
  * instructions later.
  */
 #define MAX_EXITS (M68K_BLOCK_MAX * 3 + \
-                   (M68K_BLOCK_MAX * MRC_JIT_M68K_MAX_BYTES) / 8 + 16)
+                   (M68K_BLOCK_MAX * MH_JIT_M68K_MAX_BYTES) / 8 + 16)
 
 size_t m68k_emit(uint8_t *out, const uint8_t *exec, size_t cap,
                  const m68k_insn *insn, unsigned count, uint32_t va,

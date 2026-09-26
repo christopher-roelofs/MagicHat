@@ -6,20 +6,20 @@
  * would elsewhere: "audio works" should be something you can inspect rather
  * than something I claim.
  */
-#ifndef MRC_WAV_H
-#define MRC_WAV_H
+#ifndef MH_WAV_H
+#define MH_WAV_H
 
 #include <stdint.h>
 
 /* Fallback only. The caller supplies the actual output rate; DataRover's
- * mrc_sib_output_rate_hz() includes 2x codec reconstruction. */
-#define MRC_AUDIO_RATE_FALLBACK 11025u
+ * mh_sib_output_rate_hz() includes 2x codec reconstruction. */
+#define MH_AUDIO_RATE_FALLBACK 11025u
 
-typedef struct mrc_wav mrc_wav;
+typedef struct mh_wav mh_wav;
 
-mrc_wav *mrc_wav_open(const char *path, unsigned rate);
-void     mrc_wav_sample(void *ctx, int16_t sample);   /* an mrc_audio_sink */
-uint32_t mrc_wav_samples(const mrc_wav *w);
-void     mrc_wav_close(mrc_wav *w);
+mh_wav *mh_wav_open(const char *path, unsigned rate);
+void     mh_wav_sample(void *ctx, int16_t sample);   /* an mh_audio_sink */
+uint32_t mh_wav_samples(const mh_wav *w);
+void     mh_wav_close(mh_wav *w);
 
 #endif

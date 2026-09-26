@@ -8,7 +8,7 @@
 
 #include "host/import.h"
 
-int mrc_launch_main(int, char **);
+int mh_launch_main(int, char **);
 /* SDL invokes this in its native thread after the Android surface is ready. */
 int SDL_main(int argc, char **argv)
 {
@@ -34,7 +34,7 @@ int SDL_main(int argc, char **argv)
     SDL_SetHint(SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "0");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
-    SDL_setenv("MRC_FULLSCREEN", "1", 1);
+    SDL_setenv("MH_FULLSCREEN", "1", 1);
     /*
      * Where devices live. An app has no home directory -- HOME is "/" here,
      * which is not ours to write to -- so the usual desktop places do not
@@ -46,10 +46,10 @@ int SDL_main(int argc, char **argv)
         char devices[1024];
         if (files && snprintf(devices, sizeof(devices), "%s/devices", files) <
             (int)sizeof(devices))
-            SDL_setenv("MRC_DEVICES_DIR", devices, 0);
+            SDL_setenv("MH_DEVICES_DIR", devices, 0);
     }
-    int result = mrc_launch_main(argc, argv);
-    if (result) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Magic Cap",
+    int result = mh_launch_main(argc, argv);
+    if (result) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "MagicHat",
         "The emulator could not start or save successfully. Open the session log from the ROM list for details.", NULL);
     return result;
 }
@@ -63,7 +63,7 @@ int SDL_main(int argc, char **argv)
  * that Android owns is the back gesture. Menus handle it first; without a
  * menu, the frontend closes and saves the machine on the way out.
  */
-JNIEXPORT void JNICALL Java_org_magicrecomp_app_EmulatorActivity_command(
+JNIEXPORT void JNICALL Java_org_magichat_app_EmulatorActivity_command(
     JNIEnv *env, jclass cls, jint code)
 {
     (void)env; (void)cls;
@@ -88,17 +88,17 @@ JNIEXPORT void JNICALL Java_org_magicrecomp_app_EmulatorActivity_command(
  */
 static char g_imported[4096], g_import_error[256];
 static bool g_have_import, g_import_pending, g_discard_import;
-static mrc_import_kind g_import_kind;
+static mh_import_kind g_import_kind;
 static SDL_SpinLock g_import_lock;
 
-bool mrc_import_available(void) { return true; }
-bool mrc_import_pending(mrc_import_kind kind) {
+bool mh_import_available(void) { return true; }
+bool mh_import_pending(mh_import_kind kind) {
     SDL_AtomicLock(&g_import_lock);
     bool pending = g_import_pending && g_import_kind == kind && !g_discard_import;
     SDL_AtomicUnlock(&g_import_lock);
     return pending;
 }
-bool mrc_import_request(mrc_import_kind kind)
+bool mh_import_request(mh_import_kind kind)
 {
     SDL_AtomicLock(&g_import_lock);
     if (g_import_pending || g_have_import) {
@@ -125,7 +125,7 @@ bool mrc_import_request(mrc_import_kind kind)
     }
     return ok;
 }
-bool mrc_import_result(mrc_import_kind kind, char *path, size_t path_size,
+bool mh_import_result(mh_import_kind kind, char *path, size_t path_size,
                        char *error, size_t error_size)
 {
     SDL_AtomicLock(&g_import_lock);
@@ -138,13 +138,13 @@ bool mrc_import_result(mrc_import_kind kind, char *path, size_t path_size,
     SDL_AtomicUnlock(&g_import_lock);
     return ready;
 }
-void mrc_import_cancel(mrc_import_kind kind)
+void mh_import_cancel(mh_import_kind kind)
 {
     SDL_AtomicLock(&g_import_lock);
     if (g_import_kind == kind) { g_discard_import = true; g_have_import = false; }
     SDL_AtomicUnlock(&g_import_lock);
 }
-JNIEXPORT void JNICALL Java_org_magicrecomp_app_EmulatorActivity_imported(
+JNIEXPORT void JNICALL Java_org_magichat_app_EmulatorActivity_imported(
     JNIEnv *env, jclass cls, jstring path, jstring error)
 {
     (void)cls;

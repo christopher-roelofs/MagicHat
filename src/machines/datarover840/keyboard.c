@@ -12,31 +12,31 @@ static const uint16_t codes[] = {
 };
 static const uint16_t addresses[] = {0xc00,0xa00,0x804,0x600,0x404,0x204,0,0xe04};
 
-static void release_keys(mrc_dr_keyboard *k);
+static void release_keys(mh_dr_keyboard *k);
 
-static void request_line(mrc_dr_keyboard *k)
+static void request_line(mh_dr_keyboard *k)
 {
     if (k->assigned)
-        mrc_mbus_input(k->controller, k->keys.count && !k->notified);
+        mh_mbus_input(k->controller, k->keys.count && !k->notified);
 }
 
 static void command(void *ctx, uint16_t word)
 {
-    mrc_dr_keyboard *k = ctx;
+    mh_dr_keyboard *k = ctx;
     for (unsigned a = 0; a < 8; ++a) {
         for (unsigned op = 1; op < 33; ++op) {
             if ((codes[op] ^ addresses[a]) != word) continue;
             if (op == 31 && a == 7) {
                 k->assigned = k->notified = false;
                 k->selection = k->pending_read = k->write_size = 0;
-                mrc_mbus_input(k->controller, true);
+                mh_mbus_input(k->controller, true);
                 return;
             }
             if (op == 24 && a == 0) { k->assigned = true; return; }
             if (!k->assigned || (a != 0 && a != 7)) return;
             if (op == 21 && a == 0) {
                 /* Single peripheral: no next device in the discovery chain. */
-                mrc_mbus_input(k->controller, false);
+                mh_mbus_input(k->controller, false);
                 return;
             }
             if (op == 28) { request_line(k); return; }
@@ -55,7 +55,7 @@ static void command(void *ctx, uint16_t word)
 
 static void transmit(void *ctx, uint32_t word, unsigned bits)
 {
-    mrc_dr_keyboard *k = ctx;
+    mh_dr_keyboard *k = ctx;
     if (k->selection != 5 || bits != 32 || k->write_size > 4) {
         k->rejected_writes++;
         return;
@@ -63,7 +63,7 @@ static void transmit(void *ctx, uint32_t word, unsigned bits)
     for (unsigned i = 0; i < 4; ++i)
         k->write_data[k->write_size++] = (uint8_t)(word >> (24 - 8*i));
     if (k->write_size == 8) {
-        if (!mrc_mb_keyboard_write(&k->keys, k->write_data, 8)) k->rejected_writes++;
+        if (!mh_mb_keyboard_write(&k->keys, k->write_data, 8)) k->rejected_writes++;
         k->selection = 0;
         if (!k->keys.count) k->notified = false;
         request_line(k);
@@ -79,12 +79,12 @@ static unsigned information(uint8_t *data)
 {
     /* Constructed emulated accessory profile, not a physical keyboard dump.
      * Format/checksum verified by stock PeripheralInfo at 13C29284. */
-    put32(data,4,MRC_MBKEY_ID);
+    put32(data,4,MH_MBKEY_ID);
     put32(data,0xc,256000); put32(data,0x14,256000); put32(data,0x1c,256000);
     put32(data,0x24,16); put32(data,0x28,16);
     put32(data,0x2c,10000000); put32(data,0x30,10000000);
     data[0x40] = 16;
-    const char *names[] = {"Emulated AT keyboard", "Keyboard", "magicrecomp"};
+    const char *names[] = {"Emulated AT keyboard", "Keyboard", "MagicHat"};
     unsigned at = 0x50;
     for (unsigned i = 0; i < 3; ++i) {
         unsigned n = (unsigned)strlen(names[i]);
@@ -98,7 +98,7 @@ static unsigned information(uint8_t *data)
     return size;
 }
 
-void mrc_dr_keyboard_init(mrc_dr_keyboard *k, tx39_mbus *controller)
+void mh_dr_keyboard_init(mh_dr_keyboard *k, tx39_mbus *controller)
 {
     memset(k,0,sizeof(*k));
     k->controller = controller;
@@ -107,14 +107,14 @@ void mrc_dr_keyboard_init(mrc_dr_keyboard *k, tx39_mbus *controller)
     k->port.input_high = false;
 }
 
-bool mrc_dr_keyboard_key(mrc_dr_keyboard *k, uint8_t code, bool extended, bool down)
+bool mh_dr_keyboard_key(mh_dr_keyboard *k, uint8_t code, bool extended, bool down)
 {
-    if (!mrc_mb_keyboard_key(&k->keys, code, extended, down)) return false;
+    if (!mh_mb_keyboard_key(&k->keys, code, extended, down)) return false;
     request_line(k);
     return true;
 }
 
-void mrc_dr_keyboard_service(mrc_dr_keyboard *k)
+void mh_dr_keyboard_service(mh_dr_keyboard *k)
 {
     tx39_mbus *m = k->controller;
     if (m->soc->mbus_port != &k->port) return;
@@ -124,7 +124,7 @@ void mrc_dr_keyboard_service(mrc_dr_keyboard *k)
     uint8_t data[256] = {0};
     unsigned size;
     /* Prepare without consuming scan bytes until controller accepts them. */
-    mrc_mb_keyboard after = k->keys;
+    mh_mb_keyboard after = k->keys;
     bool scan_read = false, request = k->pending_read == 1;
     if (request) {
         /* Request header byte 1=0E: stock PeripheralRequest at 13C27B20.
@@ -132,11 +132,11 @@ void mrc_dr_keyboard_service(mrc_dr_keyboard *k)
         data[1] = k->keys.count ? 0x0e : 0;
         size = 4;
     } else if (k->selection == 12) {
-        put32(data,0,MRC_MBKEY_ID); size = 4;
+        put32(data,0,MH_MBKEY_ID); size = 4;
     } else if (k->selection == 13) {
         size = information(data);
     } else if (k->selection == 0) {
-        size = (unsigned)mrc_mb_keyboard_read(&after,data,16);
+        size = (unsigned)mh_mb_keyboard_read(&after,data,16);
         scan_read = true;
     } else {
         k->receive_errors++; k->pending_read = 0; return;
@@ -153,13 +153,13 @@ void mrc_dr_keyboard_service(mrc_dr_keyboard *k)
     for (unsigned at = 0; at < rounded; at += 4) {
         uint32_t word = 0;
         for (unsigned i = 0; i < 4; ++i) word = (word << 8) | data[at+i];
-        if (!mrc_mbus_receive_word(m,word)) {
+        if (!mh_mbus_receive_word(m,word)) {
             k->receive_errors++; k->pending_read = 0; return;
         }
     }
     /* Peripheral end command inferred from ROM encoding; verified by fresh
      * boot through discovery, request queue, and DispatchATKeys. */
-    if (!mrc_mbus_receive_command(m,0xdcf8)) {
+    if (!mh_mbus_receive_command(m,0xdcf8)) {
         k->receive_errors++; k->pending_read = 0; return;
     }
     k->pending_read = 0;
@@ -171,10 +171,10 @@ void mrc_dr_keyboard_service(mrc_dr_keyboard *k)
     request_line(k);
 }
 
-bool mrc_dr_keyboard_host_key(mrc_dr_keyboard *k, unsigned usage, bool down, bool repeat)
+bool mh_dr_keyboard_host_key(mh_dr_keyboard *k, unsigned usage, bool down, bool repeat)
 {
     uint8_t code; bool ext;
-    if (!mrc_mb_keyboard_usage(usage,&code,&ext)) return false;
+    if (!mh_mb_keyboard_usage(usage,&code,&ext)) return false;
     uint8_t mask = (uint8_t)(1u << (usage & 7)); unsigned at = usage / 8;
     if (!down) {
         if (k->held[at] & mask) {
@@ -188,33 +188,33 @@ bool mrc_dr_keyboard_host_key(mrc_dr_keyboard *k, unsigned usage, bool down, boo
     if (k->release[at] & mask) return false;
     if ((k->held[at] & mask) && !repeat) return true;
     if (repeat && !(k->held[at] & mask)) return true;
-    if (!mrc_dr_keyboard_key(k,code,ext,true)) return false;
+    if (!mh_dr_keyboard_key(k,code,ext,true)) return false;
     k->held[at] |= mask;
     return true;
 }
 
-void mrc_dr_keyboard_release(mrc_dr_keyboard *k)
+void mh_dr_keyboard_release(mh_dr_keyboard *k)
 {
     for (unsigned i=0;i<32;++i) { k->release[i] |= k->held[i]; k->held[i]=0; }
 }
 
-static void release_keys(mrc_dr_keyboard *k)
+static void release_keys(mh_dr_keyboard *k)
 {
     for (unsigned usage=0;usage<256;++usage) {
         unsigned at=usage/8; uint8_t mask=(uint8_t)(1u<<(usage&7));
         if (!(k->release[at]&mask)) continue;
         uint8_t code; bool ext;
-        if (mrc_mb_keyboard_usage(usage,&code,&ext) &&
-            MRC_MBKEY_CAPACITY-k->keys.count < (ext?3u:2u)) break;
-        if (!mrc_mb_keyboard_usage(usage,&code,&ext) ||
-            mrc_dr_keyboard_key(k,code,ext,false)) k->release[at]&=(uint8_t)~mask;
+        if (mh_mb_keyboard_usage(usage,&code,&ext) &&
+            MH_MBKEY_CAPACITY-k->keys.count < (ext?3u:2u)) break;
+        if (!mh_mb_keyboard_usage(usage,&code,&ext) ||
+            mh_dr_keyboard_key(k,code,ext,false)) k->release[at]&=(uint8_t)~mask;
         else break; /* Queue full: retry next service, never drop a release. */
     }
 }
 
-void mrc_dr_keyboard_encode(const mrc_dr_keyboard *k, uint8_t *d)
+void mh_dr_keyboard_encode(const mh_dr_keyboard *k, uint8_t *d)
 {
-    memset(d,0,MRC_DR_KEYBOARD_STATE_SIZE);
+    memset(d,0,MH_DR_KEYBOARD_STATE_SIZE);
     d[0]=1;
     d[1]=(k->controller->soc->mbus_port==&k->port);
     d[2]=k->assigned; d[3]=k->notified; d[4]=k->selection;
@@ -224,26 +224,26 @@ void mrc_dr_keyboard_encode(const mrc_dr_keyboard *k, uint8_t *d)
     d[12]=(uint8_t)(k->keys.count>>8); d[13]=(uint8_t)k->keys.count;
     put32(d,16,k->port.rx_bytes);
     for (unsigned i=0;i<k->keys.count;++i)
-        d[24+i]=k->keys.queue[(k->keys.head+i)%MRC_MBKEY_CAPACITY];
+        d[24+i]=k->keys.queue[(k->keys.head+i)%MH_MBKEY_CAPACITY];
     memcpy(d+280,k->write_data,8);
     memcpy(d+288,k->held,32); memcpy(d+320,k->release,32);
 }
 
-bool mrc_dr_keyboard_decode(mrc_dr_keyboard *k, const uint8_t *d)
+bool mh_dr_keyboard_decode(mh_dr_keyboard *k, const uint8_t *d)
 {
     unsigned count=((unsigned)d[12]<<8)|d[13];
     uint32_t rx=((uint32_t)d[16]<<24)|((uint32_t)d[17]<<16)|((uint32_t)d[18]<<8)|d[19];
     if (d[0]!=1 || d[1]>1 || d[2]>1 || d[3]>1 ||
         (d[4]!=0 && d[4]!=5 && d[4]!=12 && d[4]!=13) || d[5]>2 ||
         d[6]>8 || (d[6]&3) || d[7]>1 || d[8]>1 || d[9]>7 || d[10]>127 ||
-        count>MRC_MBKEY_CAPACITY || rx>0x100000 || (rx&3)) return false;
+        count>MH_MBKEY_CAPACITY || rx>0x100000 || (rx&3)) return false;
     for (unsigned u=0;u<256;++u) {
         uint8_t code; bool ext;
         if (((d[288+u/8]|d[320+u/8])&(1u<<(u&7))) &&
-            !mrc_mb_keyboard_usage(u,&code,&ext)) return false;
+            !mh_mb_keyboard_usage(u,&code,&ext)) return false;
     }
     tx39_mbus *controller=k->controller;
-    mrc_dr_keyboard_init(k,controller);
+    mh_dr_keyboard_init(k,controller);
     k->assigned=d[2]; k->notified=d[3]; k->selection=d[4];
     k->pending_read=d[5]; k->write_size=d[6];
     k->port.input_high=d[7]; k->port.rx_complete=d[8]; k->port.rx_bytes=rx;

@@ -19,7 +19,7 @@ actually sends.
 import argparse, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MCAP = os.environ.get("MCAP", os.path.join(ROOT, "build", "mcap"))
+MHAT = os.environ.get("MHAT", os.path.join(ROOT, "build", "mhat"))
 ROM = os.path.join(ROOT, "roms", "MagicCap-USA.image")
 W, H = 480, 320
 
@@ -74,7 +74,7 @@ def find_target(px):
 
 
 def run(state_in, state_out, fb, taps, insns):
-    cmd = [MCAP, "--rom", ROM, "--load-state", state_in,
+    cmd = [MHAT, "--rom", ROM, "--load-state", state_in,
            "-n", str(insns), "--dump-fb", fb, "--save-state", state_out]
     if taps:
         cmd += ["--taps-px", taps, "--tap-hold", "20000000"]
@@ -86,7 +86,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--from", dest="src", default="states/bootscreen.state")
     ap.add_argument("--out", default="states/calibrate.state")
-    ap.add_argument("--work", default="/tmp/mrc-cal")
+    ap.add_argument("--work", default="/tmp/mh-cal")
     ap.add_argument("--max-targets", type=int, default=8)
     ap.add_argument("--settle", type=int, default=120_000_000)
     a = ap.parse_args()

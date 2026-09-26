@@ -1,6 +1,6 @@
 # ROM identification and machine selection
 
-The main `mcap` launcher identifies the ROM contents before constructing a
+The main `mhat` launcher identifies the ROM contents before constructing a
 machine. It calls the selected board's CLI in the same process; it does not
 run a sibling executable or inspect the ROM filename, extension, or hash.
 
@@ -22,7 +22,7 @@ Supported machines open a GUI by default when SDL can initialize video.
 `--headless` disables it; `--gui` explicitly requests it. Board-specific
 options still belong to their respective parsers. For example, the 68k
 machines do not implement every DataRover networking option. Request 68k
-options with `mcap --device hix300 --help`, `--device envoy --help`, or
+options with `mhat --device hix300 --help`, `--device envoy --help`, or
 `--device pic2000 --help`.
 
 ## Evidence used
@@ -65,7 +65,7 @@ to use a supported board. A known
 conflicting device is rejected, including attempts to run identified
 PIC-1000/HIX-300/Envoy images as PIC-2000 through the unified launcher.
 
-There is one `mcap` executable. It selects the DataRover, PIC-2000, HIX-300,
+There is one `mhat` executable. It selects the DataRover, PIC-2000, HIX-300,
 or Envoy board from the ROM, unless `--device` explicitly selects a compatible
 board. PIC-1000 is identified but has no runnable board yet.
 

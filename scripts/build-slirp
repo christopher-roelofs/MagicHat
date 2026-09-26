@@ -35,9 +35,9 @@ else
         echo "Unexpected libslirp edits in $src; leaving them untouched." >&2; exit 1;
     }
 fi
-# Static as well as shared, for MRC_STATIC_DEPENDENCIES. Windows has no
+# Static as well as shared, for MH_STATIC_DEPENDENCIES. Windows has no
 # system GLib to share, so there GLib is built into libslirp itself.
-options="-Ddefault_library=both -Dversion_suffix=-mrc-mss1"
+options="-Ddefault_library=both -Dversion_suffix=-mh-mss1"
 case "$(uname -s)" in
     MINGW*) options="$options -Dprefer_static=true -Dc_args=-DGLIB_STATIC_COMPILATION" ;;
 esac

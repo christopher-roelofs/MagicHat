@@ -13,8 +13,8 @@
  * Instruction exception AND is logged. We never silently treat an unknown
  * encoding as a NOP.
  */
-#ifndef MRC_R3900_H
-#define MRC_R3900_H
+#ifndef MH_R3900_H
+#define MH_R3900_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -96,7 +96,7 @@ struct r3900 {
     uint32_t cp0[32];
     r3900_tlb_entry tlb[R3900_TLB_ENTRIES];
 
-    mrc_bus *bus;
+    mh_bus *bus;
 
     /*
      * External interrupt lines IP2..IP7 (hardware). Devices set/clear bits
@@ -179,55 +179,55 @@ struct r3900 {
     bool     has_mmu;
 };
 
-void mrc_cpu_init(r3900 *c, mrc_bus *bus);
-void mrc_cpu_reset(r3900 *c, uint32_t reset_pc);
-void mrc_cpu_step(r3900 *c);
-void mrc_cpu_run(r3900 *c, uint64_t insns);
+void mh_cpu_init(r3900 *c, mh_bus *bus);
+void mh_cpu_reset(r3900 *c, uint32_t reset_pc);
+void mh_cpu_step(r3900 *c);
+void mh_cpu_run(r3900 *c, uint64_t insns);
 /* Host-only decode cache; never part of a CPU snapshot. Word guards cover
  * writable code and direct DMA/host writes without serializing cache state. */
 typedef struct r3900_decode_cache r3900_decode_cache;
 /* Optional host-native engine; CPU/snapshot layouts remain unchanged. */
 typedef struct r3900_jit r3900_jit;
-r3900_jit *mrc_cpu_jit_create(void);
-void mrc_cpu_jit_free(r3900_jit *jit);
-void mrc_cpu_run_jit(r3900 *c, uint64_t slots, r3900_jit *jit);
-void mrc_cpu_jit_report(const r3900_jit *jit, FILE *f);
-uint64_t mrc_cpu_jit_native_count(const r3900_jit *jit);
+r3900_jit *mh_cpu_jit_create(void);
+void mh_cpu_jit_free(r3900_jit *jit);
+void mh_cpu_run_jit(r3900 *c, uint64_t slots, r3900_jit *jit);
+void mh_cpu_jit_report(const r3900_jit *jit, FILE *f);
+uint64_t mh_cpu_jit_native_count(const r3900_jit *jit);
 
-r3900_decode_cache *mrc_cpu_decode_cache_create(void);
-void mrc_cpu_decode_cache_free(r3900_decode_cache *cache);
-void mrc_cpu_run_decoded(r3900 *c, uint64_t insns, r3900_decode_cache *cache);
+r3900_decode_cache *mh_cpu_decode_cache_create(void);
+void mh_cpu_decode_cache_free(r3900_decode_cache *cache);
+void mh_cpu_run_decoded(r3900 *c, uint64_t insns, r3900_decode_cache *cache);
 
 /* Raise/clear a hardware interrupt line. line is 2..6 (IP2..IP6). */
-void mrc_cpu_set_irq(r3900 *c, unsigned line, bool asserted);
+void mh_cpu_set_irq(r3900 *c, unsigned line, bool asserted);
 
-void mrc_cpu_dump(const r3900 *c, FILE *f);
+void mh_cpu_dump(const r3900 *c, FILE *f);
 
 /*
  * Write a fixed-size architectural-state record for each of the next `count`
  * retired instructions. Used to validate a second implementation of this
  * part against this one; see the comment in r3900.c for the layout.
  */
-void mrc_cpu_trace_state(const char *path, uint64_t count);
-void mrc_cpu_trace_state_close(void);
+void mh_cpu_trace_state(const char *path, uint64_t count);
+void mh_cpu_trace_state_close(void);
 
 /*
  * Write one record per data-bus access, so that a second implementation can
  * replay reads and have its writes checked before it has any devices.
  */
-void mrc_cpu_trace_bus(const char *path, uint64_t count);
-void mrc_cpu_trace_bus_devices_only(bool on);
-void mrc_cpu_trace_irq(const char *path);
-void mrc_cpu_replay(const char *dev_path, const char *irq_path);
-void mrc_cpu_replay_takes(const char *path);
-void mrc_cpu_trace_irq_close(void);
-void mrc_cpu_trace_bus_close(void);
+void mh_cpu_trace_bus(const char *path, uint64_t count);
+void mh_cpu_trace_bus_devices_only(bool on);
+void mh_cpu_trace_irq(const char *path);
+void mh_cpu_replay(const char *dev_path, const char *irq_path);
+void mh_cpu_replay_takes(const char *path);
+void mh_cpu_trace_irq_close(void);
+void mh_cpu_trace_bus_close(void);
 
 /* Translate a virtual address for debug/inspection. Returns false on failure. */
-bool mrc_cpu_translate(r3900 *c, uint32_t va, bool write, uint32_t *pa);
+bool mh_cpu_translate(r3900 *c, uint32_t va, bool write, uint32_t *pa);
 
-#endif /* MRC_R3900_H */
+#endif /* MH_R3900_H */
 
 /* Diagnostic: log the first 64 stores that touch this word (0 = off).  Kept
  * outside the CPU struct so saved states stay layout-compatible. */
-void mrc_cpu_watch_write(uint32_t pa);
+void mh_cpu_watch_write(uint32_t pa);

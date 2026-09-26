@@ -11,7 +11,7 @@
  *
  * Register use inside a block:
  *   x19 r3900 *c          x21 write page table   x23 branch destination
- *   x20 read page table   x22 mrc_bus *          w24 remaining budget
+ *   x20 read page table   x22 mh_bus *          w24 remaining budget
  *   x25 r3900_jit *       w4-w8, w10-w15 guest register cache
  *   w0-w3, w9, w16, w17 scratch
  *
@@ -34,11 +34,11 @@ typedef struct {
     uint32_t *out, *p, *end;
     bool overflow;
     unsigned n;
-    unsigned fail_fixups[MRC_JIT_MAX_INSNS + 1], nfail;
-    unsigned done_fixups[MRC_JIT_MAX_INSNS * 4], ndone;
+    unsigned fail_fixups[MH_JIT_MAX_INSNS + 1], nfail;
+    unsigned done_fixups[MH_JIT_MAX_INSNS * 4], ndone;
     struct { unsigned site, stub; } links[3];
     unsigned nlinks;
-    struct { unsigned insn; uint64_t value; } literals[MRC_JIT_MAX_INSNS / 2 + 1];
+    struct { unsigned insn; uint64_t value; } literals[MH_JIT_MAX_INSNS / 2 + 1];
     unsigned nliterals;
     regcache rc;
 } emitter;
@@ -219,7 +219,7 @@ static void link_site(emitter *e, unsigned site)
 }
 /* Helper call for instruction k: guest state goes to memory first, and
  * nothing is cached afterwards. Exits with k + 1 retired when told to. */
-static void helper(emitter *e, const mrc_jit_block *b, unsigned k)
+static void helper(emitter *e, const mh_jit_block *b, unsigned k)
 {
     rc_writeback(e);
     rc_invalidate(e);
@@ -229,15 +229,15 @@ static void helper(emitter *e, const mrc_jit_block *b, unsigned k)
     mov_w(e, 3, k);
     if (b->delay && k == b->n - 1) {
         mov_rr(e, 4, X23);
-        call(e, (const void *)mrc_jit_exec_delay);
-    } else call(e, (const void *)mrc_jit_exec);
+        call(e, (const void *)mh_jit_exec_delay);
+    } else call(e, (const void *)mh_jit_exec);
     unsigned over = here(e);
     insn(e, 0x34000000u);                               /* cbz w0, over */
     exit_block(e, k + 1);
     patch(e, over, here(e));
 }
 /* Out-of-line slow path that rejoins the fast path's cache state. */
-static void slow_path(emitter *e, const mrc_jit_block *b, unsigned k,
+static void slow_path(emitter *e, const mh_jit_block *b, unsigned k,
                       const regcache *at_branch)
 {
     regcache join = e->rc;
@@ -247,7 +247,7 @@ static void slow_path(emitter *e, const mrc_jit_block *b, unsigned k,
 }
 
 /* w1 = address, x3 = host page, or branch to the slow path. */
-static void address(emitter *e, const mrc_jit_ir *i, bool write, unsigned *slow, unsigned *slow2)
+static void address(emitter *e, const mh_jit_ir *i, bool write, unsigned *slow, unsigned *slow2)
 {
     unsigned base = rc_read(e, i->left, 1);
     if (i->value) add_imm32(e, 1, base, i->value);
@@ -263,9 +263,9 @@ static void address(emitter *e, const mrc_jit_ir *i, bool write, unsigned *slow,
     insn(e, 0x12002C21u);                               /* and w1, w1, #0xfff */
 }
 
-static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
+static void memory_op(emitter *e, const mh_jit_block *b, unsigned k)
 {
-    const mrc_jit_ir *i = &b->ir[k];
+    const mh_jit_ir *i = &b->ir[k];
     unsigned slow = 0, slow2 = 0, done = 0;
     bool write = i->op == J_STORE;
     address(e, i, write, &slow, &slow2);
@@ -281,13 +281,13 @@ static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
             if (i->sign) insn(e, 0x13003C00u | (d << 5) | d); /* sxth */
         } else insn(e, (i->sign ? 0x38E16860u : 0x38616860u) | d);
         rc_written(e, i->dst, d);
-        add_counter(e, X22, (uint32_t)offsetof(mrc_bus, reads), 1);
+        add_counter(e, X22, (uint32_t)offsetof(mh_bus, reads), 1);
     } else {
         unsigned v = rc_read(e, i->right, 9);
         if (i->size == 4) { insn(e, 0x5AC00800u | (v << 5) | 9); insn(e, 0xB8216860u | 9); }
         else if (i->size == 2) { insn(e, 0x5AC00400u | (v << 5) | 9); insn(e, 0x78216860u | 9); }
         else insn(e, 0x38216860u | v);                  /* strb wv,[x3,x1] */
-        add_counter(e, X22, (uint32_t)offsetof(mrc_bus, writes), 1);
+        add_counter(e, X22, (uint32_t)offsetof(mh_bus, writes), 1);
     }
     jump(e, &done);
     if (slow) patch(e, slow, here(e));
@@ -298,9 +298,9 @@ static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
 
 /* ADD/SUB/ADDI: on signed overflow the reference path raises the
  * exception; the result register is untouched either way until then. */
-static void trapping_alu(emitter *e, const mrc_jit_block *b, unsigned k)
+static void trapping_alu(emitter *e, const mh_jit_block *b, unsigned k)
 {
-    const mrc_jit_ir *i = &b->ir[k];
+    const mh_jit_ir *i = &b->ir[k];
     unsigned overflow, done;
     unsigned l = rc_read(e, i->left, 1), r;
     if (i->immediate) { mov_w(e, 2, i->value); r = 2; }
@@ -317,7 +317,7 @@ static void trapping_alu(emitter *e, const mrc_jit_block *b, unsigned k)
     patch(e, done, here(e));
 }
 
-static void alu(emitter *e, const mrc_jit_ir *i)
+static void alu(emitter *e, const mh_jit_ir *i)
 {
     if (!i->dst) return;
     unsigned l, r, d;
@@ -382,7 +382,7 @@ static void alu(emitter *e, const mrc_jit_ir *i)
     }
 }
 
-static void hilo(emitter *e, const mrc_jit_ir *i)
+static void hilo(emitter *e, const mh_jit_ir *i)
 {
     unsigned l, r;
     switch (i->op) {
@@ -400,7 +400,7 @@ static void hilo(emitter *e, const mrc_jit_ir *i)
     }
 }
 
-static void branch(emitter *e, const mrc_jit_ir *i, uint32_t pc)
+static void branch(emitter *e, const mh_jit_ir *i, uint32_t pc)
 {
     uint32_t fallthrough = pc + 8;
     if (i->op == J_JUMP) mov_w(e, X23, ((pc + 4) & 0xF0000000u) | i->value);
@@ -429,11 +429,11 @@ static void status_exit(emitter *e, unsigned status, unsigned *to_ret)
 static void record_site(emitter *e, uint8_t *out_bytes, unsigned site)
 {
     mov_x(e, 9, (uint64_t)(uintptr_t)(out_bytes + site * 4));
-    str_x(e, 9, X25, (uint32_t)offsetof(mrc_jit_tables, link));
+    str_x(e, 9, X25, (uint32_t)offsetof(mh_jit_tables, link));
 }
 
-size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
-                    const mrc_jit_block *b, unsigned *chain)
+size_t mh_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
+                    const mh_jit_block *b, unsigned *chain)
 {
     (void)exec;
     emitter e = {.out = (uint32_t *)out, .p = (uint32_t *)out,
@@ -450,8 +450,8 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
         0x2A0203F8,     /* mov w24, w2 */
     };
     for (unsigned k = 0; k < sizeof(prologue) / 4; k++) insn(&e, prologue[k]);
-    ldr_x(&e, X20, 1, (uint32_t)offsetof(mrc_jit_tables, read));
-    ldr_x(&e, X21, 1, (uint32_t)offsetof(mrc_jit_tables, write));
+    ldr_x(&e, X20, 1, (uint32_t)offsetof(mh_jit_tables, read));
+    ldr_x(&e, X21, 1, (uint32_t)offsetof(mh_jit_tables, write));
     ldr_x(&e, X22, X19, (uint32_t)offsetof(r3900, bus));
     *chain = here(&e) * 4;
 
@@ -480,9 +480,9 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     strb_imm(&e, XZR, X19, (uint32_t)offsetof(r3900, in_delay));
 
     for (unsigned k = 0; k < b->n; k++) {
-        const mrc_jit_ir *i = &b->ir[k];
+        const mh_jit_ir *i = &b->ir[k];
         uint32_t pc = b->va + k * 4;
-        if (mrc_jit_is_branch(i)) branch(&e, i, pc);
+        if (mh_jit_is_branch(i)) branch(&e, i, pc);
         else if (i->op == J_LOAD || i->op == J_STORE) memory_op(&e, b, k);
         else if (i->op == J_ADD_OV || i->op == J_SUB_OV) trapping_alu(&e, b, k);
         else if (i->op == J_EXEC) helper(&e, b, k);
@@ -491,13 +491,13 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     }
     rc_writeback(&e);
 
-    const mrc_jit_ir *last = &b->ir[b->n - 1];
+    const mh_jit_ir *last = &b->ir[b->n - 1];
     bool needs_check = last->op == J_EXEC && last->ends_block;
     mov_w(&e, 9, b->va + (b->n - 1) * 4);
     str_w(&e, 9, X19, (uint32_t)offsetof(r3900, cur_pc));
     add_counter(&e, X19, (uint32_t)offsetof(r3900, insn_count), b->n);
     add_counter(&e, X19, (uint32_t)offsetof(r3900, cycle_count), b->n);
-    add_counter(&e, X22, (uint32_t)offsetof(mrc_bus, reads), b->n);
+    add_counter(&e, X22, (uint32_t)offsetof(mh_bus, reads), b->n);
     if (!b->branch) {
         mov_w(&e, 9, b->va + b->n * 4);
         str_w(&e, 9, X19, (uint32_t)offsetof(r3900, pc));
@@ -505,7 +505,7 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
         str_w(&e, 9, X19, (uint32_t)offsetof(r3900, next_pc));
         if (!needs_check) { unsigned site; jump(&e, &site); link_site(&e, site); }
     } else if (b->delay) {
-        const mrc_jit_ir *br = &b->ir[b->branch - 1];
+        const mh_jit_ir *br = &b->ir[b->branch - 1];
         uint32_t bpc = b->va + (b->branch - 1) * 4;
         mov_w(&e, 9, 1);
         strb_imm(&e, 9, X19, (uint32_t)offsetof(r3900, in_delay));
@@ -521,15 +521,15 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
             insn(&e, 0x4A574021u);                      /* eor w1, w1, w23, lsr #16 */
             insn(&e, 0x12003421u);                      /* and w1, w1, #0x3fff */
             insn(&e, 0xD379E021u);                      /* lsl x1, x1, #7 */
-            ldr_x(&e, 9, X25, (uint32_t)offsetof(mrc_jit_tables, slots));
+            ldr_x(&e, 9, X25, (uint32_t)offsetof(mh_jit_tables, slots));
             insn(&e, 0x8B010129u);                      /* add x9, x9, x1 */
-            for (unsigned way = 0; way < MRC_JIT_WAYS; way++) {
-                uint32_t at = (uint32_t)(way * sizeof(mrc_jit_slot));
+            for (unsigned way = 0; way < MH_JIT_WAYS; way++) {
+                uint32_t at = (uint32_t)(way * sizeof(mh_jit_slot));
                 unsigned miss1, miss2;
-                ldr_w(&e, 2, 9, at + (uint32_t)offsetof(mrc_jit_slot, va));
+                ldr_w(&e, 2, 9, at + (uint32_t)offsetof(mh_jit_slot, va));
                 cmp_rr(&e, 2, X23);
                 b_cond(&e, NE, &miss1);
-                ldr_x(&e, 2, 9, at + (uint32_t)offsetof(mrc_jit_slot, chain));
+                ldr_x(&e, 2, 9, at + (uint32_t)offsetof(mh_jit_slot, chain));
                 miss2 = here(&e);
                 insn(&e, 0xB4000002u);                  /* cbz x2, miss2 */
                 insn(&e, 0xD61F0040u);                  /* br x2 */
@@ -573,9 +573,9 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     unsigned stale_label = here(&e), stale_site, to_ret, to_ret2;
     jump(&e, &stale_site);
     record_site(&e, out, stale_site);
-    status_exit(&e, MRC_JIT_STALE, &to_ret);
+    status_exit(&e, MH_JIT_STALE, &to_ret);
     unsigned budget_label = here(&e);
-    status_exit(&e, MRC_JIT_BUDGET, &to_ret2);
+    status_exit(&e, MH_JIT_BUDGET, &to_ret2);
 
     /* Literal pool, 8-byte aligned. */
     if (here(&e) & 1) insn(&e, 0xD503201Fu);            /* nop */
@@ -596,7 +596,7 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     return (size_t)here(&e) * 4;
 }
 
-void mrc_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
+void mh_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
                         const uint8_t *target)
 {
     int64_t rel = (target - site_exec) / 4;
@@ -604,5 +604,5 @@ void mrc_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
     memcpy(site, &w, 4);
 }
 
-bool mrc_jit_host_supported(void) { return true; }
+bool mh_jit_host_supported(void) { return true; }
 #endif

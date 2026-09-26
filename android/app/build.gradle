@@ -1,10 +1,10 @@
 plugins { id 'com.android.application' }
 android {
-    namespace 'org.magicrecomp.app'
+    namespace 'org.magichat.app'
     compileSdk 35
     ndkVersion '27.2.12479018'
     defaultConfig {
-        applicationId 'org.magicrecomp.app'
+        applicationId 'org.magichat.app'
         minSdk 26
         targetSdk 35
         versionCode 1
@@ -12,7 +12,7 @@ android {
         ndk { abiFilters 'arm64-v8a' }
         externalNativeBuild { cmake {
             arguments '-DANDROID_STL=c++_static', '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
-            targets 'mcap', 'SDL2'
+            targets 'mhat', 'SDL2'
         } }
     }
     externalNativeBuild { cmake { path '../CMakeLists.txt'; version '3.22.1' } }

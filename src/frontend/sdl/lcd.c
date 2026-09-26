@@ -4,10 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool mrc_gui_lcd = false;
-int  mrc_gui_tint = MRC_TINT_NONE;
-bool mrc_gui_smooth = false;
-bool mrc_gui_integer = false;
+bool mh_gui_lcd = false;
+int  mh_gui_tint = MH_TINT_NONE;
+bool mh_gui_smooth = false;
+bool mh_gui_integer = false;
 
 #define LCD_CELL_MAX 8u        /* keeps the texture sane when maximised */
 #define LCD_GAP    0.78f       /* how much darker a cell's edge is */
@@ -19,10 +19,10 @@ typedef struct { uint8_t lit[3], ink[3]; } lcd_palette;
  * series' mint-green backlight, the amber variant, and a plain grey STN. */
 static const lcd_palette lcd_palettes[] = {
     /* No tint is the panel's own greyscale, unchanged. */
-    [MRC_TINT_NONE]  = {{0xFF, 0xFF, 0xFF}, {0x00, 0x00, 0x00}},
-    [MRC_TINT_GREEN] = {{0x6E, 0xDC, 0x9A}, {0x10, 0x3A, 0x28}},
-    [MRC_TINT_AMBER] = {{0xF0, 0xC0, 0x50}, {0x38, 0x22, 0x08}},
-    [MRC_TINT_GREY]  = {{0xC8, 0xCC, 0xC0}, {0x20, 0x22, 0x1E}},
+    [MH_TINT_NONE]  = {{0xFF, 0xFF, 0xFF}, {0x00, 0x00, 0x00}},
+    [MH_TINT_GREEN] = {{0x6E, 0xDC, 0x9A}, {0x10, 0x3A, 0x28}},
+    [MH_TINT_AMBER] = {{0xF0, 0xC0, 0x50}, {0x38, 0x22, 0x08}},
+    [MH_TINT_GREY]  = {{0xC8, 0xCC, 0xC0}, {0x20, 0x22, 0x1E}},
 };
 
 static uint32_t lcd_mix(const lcd_palette *p, float ink, float dim)
@@ -34,27 +34,27 @@ static uint32_t lcd_mix(const lcd_palette *p, float ink, float dim)
            ((uint32_t)(g + 0.5f) << 8) | (uint32_t)(b + 0.5f);
 }
 
-const char *mrc_tint_name(int tint)
+const char *mh_tint_name(int tint)
 {
     switch (tint) {
-    case MRC_TINT_GREEN: return "green";
-    case MRC_TINT_AMBER: return "amber";
-    case MRC_TINT_GREY:  return "grey";
+    case MH_TINT_GREEN: return "green";
+    case MH_TINT_AMBER: return "amber";
+    case MH_TINT_GREY:  return "grey";
     default:             return "none";
     }
 }
 
-int mrc_tint_by_name(const char *name)
+int mh_tint_by_name(const char *name)
 {
     if (!name) return -1;
-    if (!strcmp(name, "green")) return MRC_TINT_GREEN;
-    if (!strcmp(name, "amber")) return MRC_TINT_AMBER;
-    if (!strcmp(name, "grey"))  return MRC_TINT_GREY;
-    if (!strcmp(name, "none"))  return MRC_TINT_NONE;
+    if (!strcmp(name, "green")) return MH_TINT_GREEN;
+    if (!strcmp(name, "amber")) return MH_TINT_AMBER;
+    if (!strcmp(name, "grey"))  return MH_TINT_GREY;
+    if (!strcmp(name, "none"))  return MH_TINT_NONE;
     return -1;
 }
 
-struct mrc_lcd {
+struct mh_lcd {
     uint8_t *prev;             /* the last frame, for the ghost */
     size_t   prev_size;
     bool     have_prev;
@@ -63,19 +63,19 @@ struct mrc_lcd {
     bool     smooth_known;     /* false after a new texture, which defaults */
 };
 
-mrc_lcd *mrc_lcd_create(void)
+mh_lcd *mh_lcd_create(void)
 {
-    return calloc(1, sizeof(mrc_lcd));
+    return calloc(1, sizeof(mh_lcd));
 }
 
-void mrc_lcd_free(mrc_lcd *lcd)
+void mh_lcd_free(mh_lcd *lcd)
 {
     if (!lcd) return;
     free(lcd->prev);
     free(lcd);
 }
 
-void mrc_lcd_forget(mrc_lcd *lcd)
+void mh_lcd_forget(mh_lcd *lcd)
 {
     if (lcd) lcd->have_prev = false;
 }
@@ -90,7 +90,7 @@ void mrc_lcd_forget(mrc_lcd *lcd)
  *
  * Boards do not all hand over the same thing. The DataRover gives eight-bit
  * grey; the PIC-2000 gives a two-bit level, nought to three, darker as it
- * rises. The plain path has always gone through mrc_sdl_display_gray, which
+ * rises. The plain path has always gone through mh_sdl_display_gray, which
  * knows the difference -- but the tint and structure paths did not, and
  * divided a level of three by 255. Every pixel came out as full ink and the
  * PIC-2000 showed a flat green rectangle with the machine nowhere in it.
@@ -99,30 +99,30 @@ void mrc_lcd_forget(mrc_lcd *lcd)
  * only ever saw one format, and it survived my own offscreen check because
  * that harness decoded the framebuffer itself and passed eight-bit grey.
  */
-static unsigned frame_gray(uint8_t value, mrc_frame_format format)
+static unsigned frame_gray(uint8_t value, mh_frame_format format)
 {
-    return format == MRC_FRAME_LCD2 ? 255u - (value & 3u) * 85u : value;
+    return format == MH_FRAME_LCD2 ? 255u - (value & 3u) * 85u : value;
 }
 
 static unsigned cell_for(unsigned drawn_width, unsigned panel_width)
 {
-    if (!mrc_gui_lcd || !panel_width) return 1;
+    if (!mh_gui_lcd || !panel_width) return 1;
     unsigned want = (drawn_width + panel_width / 2) / panel_width;
     if (want < 2) want = 2;
     if (want > LCD_CELL_MAX) want = LCD_CELL_MAX;
     return want;
 }
 
-bool mrc_lcd_render(mrc_lcd *lcd, mrc_sdl_display *display,
+bool mh_lcd_render(mh_lcd *lcd, mh_sdl_display *display,
                     const uint8_t *gray, unsigned w, unsigned h,
-                    mrc_frame_format format, unsigned drawn_width,
-                    mrc_lcd_frame *out)
+                    mh_frame_format format, unsigned drawn_width,
+                    mh_lcd_frame *out)
 {
     if (!lcd || !display || !w || !h) return false;
     unsigned cell = cell_for(drawn_width, w);
 
     if (cell != lcd->cell) {
-        if (!mrc_sdl_display_resize(display, w * cell, h * cell)) return false;
+        if (!mh_sdl_display_resize(display, w * cell, h * cell)) return false;
         lcd->cell = cell;
         lcd->have_prev = false;
         lcd->smooth_known = false;     /* a new texture takes the default */
@@ -139,10 +139,10 @@ bool mrc_lcd_render(mrc_lcd *lcd, mrc_sdl_display *display,
      * it on the texture takes effect on the next frame and allocates
      * nothing.
      */
-    if (!lcd->smooth_known || mrc_gui_smooth != lcd->smooth) {
-        SDL_SetTextureScaleMode(display->texture, mrc_gui_smooth
+    if (!lcd->smooth_known || mh_gui_smooth != lcd->smooth) {
+        SDL_SetTextureScaleMode(display->texture, mh_gui_smooth
                                 ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
-        lcd->smooth = mrc_gui_smooth;
+        lcd->smooth = mh_gui_smooth;
         lcd->smooth_known = true;
     }
 
@@ -161,20 +161,20 @@ bool mrc_lcd_render(mrc_lcd *lcd, mrc_sdl_display *display,
         return true;
     }
 
-    if (!mrc_gui_lcd && mrc_gui_tint == MRC_TINT_NONE) {
+    if (!mh_gui_lcd && mh_gui_tint == MH_TINT_NONE) {
         /*
          * Default: the panel exactly as the machine drew it. Taking the
          * palette path here instead cost 16680 pixels an off-by-one from
          * float truncation -- invisible, but the plain view ought to be the
          * framebuffer and not a re-derivation of it.
          */
-        mrc_sdl_display_gray(argb, gray, w * h, format);
+        mh_sdl_display_gray(argb, gray, w * h, format);
         lcd->have_prev = false;
         return true;
     }
 
-    const lcd_palette *pal = &lcd_palettes[mrc_gui_tint];
-    if (!mrc_gui_lcd) {
+    const lcd_palette *pal = &lcd_palettes[mh_gui_tint];
+    if (!mh_gui_lcd) {
         /* Tint without structure: one pixel each, recoloured. */
         for (unsigned i = 0; i < w * h; i++)
             argb[i] = lcd_mix(pal, 1.0f - frame_gray(gray[i], format) / 255.0f,

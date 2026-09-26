@@ -82,7 +82,7 @@ static void queue_free(queue *q)
     *q = (queue){0};
 }
 
-struct mrc_pclink {
+struct mh_pclink {
     /* Outgoing, already framed and ready for the wire. */
     queue out;
 
@@ -116,7 +116,7 @@ struct mrc_pclink {
     bool     m68k_package;
     char     name[128];
 
-    mrc_pclink_state state;
+    mh_pclink_state state;
     char             message[160];
     uint32_t         sent;      /* package bytes handed to the wire */
     bool             offered;   /* the offer has been queued */
@@ -139,13 +139,13 @@ struct mrc_pclink {
  * enough that the guest is never answering pings instead of working. */
 #define IDLE_PING 20000u
 
-static void fail(mrc_pclink *l, const char *fmt, ...)
+static void fail(mh_pclink *l, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
     vsnprintf(l->message, sizeof(l->message), fmt, args);
     va_end(args);
-    l->state = MRC_PCLINK_FAILED;
+    l->state = MH_PCLINK_FAILED;
 }
 
 static uint16_t ppp_fcs(const uint8_t *p, size_t n)
@@ -186,7 +186,7 @@ static bool ppp_wire_byte(queue *q, uint8_t b)
     return queue_push(q, &b, 1);
 }
 
-static bool ppp_queue_wire(mrc_pclink *l, const uint8_t *wire, size_t wire_len,
+static bool ppp_queue_wire(mh_pclink *l, const uint8_t *wire, size_t wire_len,
                            const uint8_t *data)
 {
     if (data[0] == 4)
@@ -208,7 +208,7 @@ static bool ppp_queue_wire(mrc_pclink *l, const uint8_t *wire, size_t wire_len,
            queue_push(&l->ppp_pending, wire, wire_len);
 }
 
-static bool ppp_datagram(mrc_pclink *l, const uint8_t *data, size_t len)
+static bool ppp_datagram(mh_pclink *l, const uint8_t *data, size_t len)
 {
     /* HIX transmits a length-prefixed bootstrap record but its ROM receive
      * handler requires an ordinary UDP/IPv4 packet on the return path. */
@@ -250,7 +250,7 @@ static bool ppp_datagram(mrc_pclink *l, const uint8_t *data, size_t len)
     return ok;
 }
 
-static void ppp_acked(mrc_pclink *l, uint16_t next_block)
+static void ppp_acked(mh_pclink *l, uint16_t next_block)
 {
     const uint16_t advance = (uint16_t)(next_block - (uint16_t)l->gmtp_acked);
     if (!advance || advance > l->gmtp_sent - l->gmtp_acked) return;
@@ -275,7 +275,7 @@ static void ppp_acked(mrc_pclink *l, uint16_t next_block)
     l->ppp_waiting_ack = l->gmtp_sent != l->gmtp_acked;
 }
 
-static bool emit_ppp(mrc_pclink *l, const uint8_t *data, size_t len)
+static bool emit_ppp(mh_pclink *l, const uint8_t *data, size_t len)
 {
     /* GMTPStream joins consecutive messages into a byte stream. Sending
      * complete messages lets each block be acknowledged independently. */
@@ -301,7 +301,7 @@ static bool emit_ppp(mrc_pclink *l, const uint8_t *data, size_t len)
         const uint16_t sum = gmtp_checksum(pdu, header + n);
         pdu[6] = (uint8_t)(sum >> 8);
         pdu[7] = (uint8_t)sum;
-        if (getenv("MRC_PCLINK_TRACE")) {
+        if (getenv("MH_PCLINK_TRACE")) {
             fprintf(stderr, "[pclink] -> GMTP");
             for (size_t i = 0; i < header; i++)
                 fprintf(stderr, " %02x", pdu[i]);
@@ -320,7 +320,7 @@ static bool emit_ppp(mrc_pclink *l, const uint8_t *data, size_t len)
  * Quote the stream bytes and cut the result into independently checked
  * blocks. Everything that goes out goes through here.
  */
-static bool emit(mrc_pclink *l, const uint8_t *data, size_t len)
+static bool emit(mh_pclink *l, const uint8_t *data, size_t len)
 {
     if (l->ppp) return emit_ppp(l, data, len);
     uint8_t quoted[BLOCK_MAX];
@@ -350,10 +350,10 @@ static bool emit(mrc_pclink *l, const uint8_t *data, size_t len)
 }
 
 /* A command: four-byte tag, big-endian length, payload. */
-static bool command(mrc_pclink *l, const char tag[4], const uint8_t *payload,
+static bool command(mh_pclink *l, const char tag[4], const uint8_t *payload,
                     uint32_t len)
 {
-    if (getenv("MRC_PCLINK_TRACE"))
+    if (getenv("MH_PCLINK_TRACE"))
         fprintf(stderr, "[pclink] -> %c%c%c%c (%u bytes)\n",
                 tag[0], tag[1], tag[2], tag[3], len);
     uint8_t head[8];
@@ -373,7 +373,7 @@ static bool command(mrc_pclink *l, const char tag[4], const uint8_t *payload,
  * ClassName's OctetString field is typed, so it carries its length and bytes
  * without an object tag. FrozenPackage has one defined class with two fields:
  * the package cluster and a nil changes cluster. */
-static bool wrap_68k_package(mrc_pclink *l)
+static bool wrap_68k_package(mh_pclink *l)
 {
     static const uint8_t object[] = {
         1, 0,                 /* Wireline version */
@@ -408,7 +408,7 @@ static bool wrap_68k_package(mrc_pclink *l)
     return true;
 }
 
-static bool offer_package(mrc_pclink *l)
+static bool offer_package(mh_pclink *l)
 {
     if (l->ppp) {
         if (l->m68k_package && !wrap_68k_package(l)) return false;
@@ -420,7 +420,7 @@ static bool offer_package(mrc_pclink *l)
         const size_t chars = strlen(l->name);
         memcpy(info + 4, l->name, chars + 1);
         if (!command(l, "SPkg", info, (uint32_t)(5 + chars))) return false;
-        l->state = MRC_PCLINK_SENDING;
+        l->state = MH_PCLINK_SENDING;
         snprintf(l->message, sizeof(l->message), "offering %s", l->name);
         return true;
     }
@@ -451,21 +451,21 @@ static bool offer_package(mrc_pclink *l)
     static const uint8_t zero[4] = {0};
     if (!emit(l, l->package, l->package_len)) return false;
     if (!emit(l, zero, sizeof(zero))) return false;
-    l->state = MRC_PCLINK_SENDING;
+    l->state = MH_PCLINK_SENDING;
     snprintf(l->message, sizeof(l->message), "sending %s", l->name);
     return true;
 }
 
 /* Everything the guest can say that we act on. Notifications it sends and
  * WinPcLink deliberately ignores are consumed and dropped. */
-static void handle(mrc_pclink *l, const char tag[4], const uint8_t *payload,
+static void handle(mh_pclink *l, const char tag[4], const uint8_t *payload,
                    uint32_t len)
 {
     (void)payload;
-    /* MRC_PCLINK_TRACE prints the conversation. A transfer that stalls looks
+    /* MH_PCLINK_TRACE prints the conversation. A transfer that stalls looks
      * identical to one that is merely slow, and the only way to tell them
      * apart is to see which side spoke last. */
-    if (getenv("MRC_PCLINK_TRACE"))
+    if (getenv("MH_PCLINK_TRACE"))
         fprintf(stderr, "[pclink] <- %c%c%c%c (%u bytes)\n",
                 tag[0], tag[1], tag[2], tag[3], len);
     (void)len;
@@ -490,7 +490,7 @@ static void handle(mrc_pclink *l, const char tag[4], const uint8_t *payload,
             command(l, "Cntd", NULL, 0);
         }
         if (!l->offered) {
-            l->state = MRC_PCLINK_CONNECTED;
+            l->state = MH_PCLINK_CONNECTED;
             snprintf(l->message, sizeof(l->message), "linked");
             l->offered = true;
             offer_package(l);
@@ -515,9 +515,9 @@ static void handle(mrc_pclink *l, const char tag[4], const uint8_t *payload,
     if (!memcmp(tag, "Ping", 4)) { command(l, "Pong", NULL, 0); return; }
     if (!memcmp(tag, "Pong", 4)) {
         /* It answers again once it has finished taking the package. */
-        if (l->state == MRC_PCLINK_SENDING &&
+        if (l->state == MH_PCLINK_SENDING &&
             (l->ppp ? l->ppp_package_acked : l->out.at >= l->out.len)) {
-            l->state = MRC_PCLINK_DONE;
+            l->state = MH_PCLINK_DONE;
             snprintf(l->message, sizeof(l->message),
                      l->ppp ? "%s transfer complete; check the guest for installation errors"
                             : "%s is in the guest's Storeroom", l->name);
@@ -525,19 +525,19 @@ static void handle(mrc_pclink *l, const char tag[4], const uint8_t *payload,
         return;
     }
     if (!memcmp(tag, "GBye", 4)) {
-        if (l->state != MRC_PCLINK_DONE)
+        if (l->state != MH_PCLINK_DONE)
             fail(l, "the guest hung up before taking the package");
         return;
     }
     if (!memcmp(tag, "Abrt", 4)) {
-        if (l->state != MRC_PCLINK_DONE) fail(l, "the guest stopped the transfer");
+        if (l->state != MH_PCLINK_DONE) fail(l, "the guest stopped the transfer");
         return;
     }
     /* APkg, Free, Flsh, Baud and anything else: consumed, no action. */
 }
 
 /* Pull whole commands out of the unescaped stream. */
-static void drain_stream(mrc_pclink *l)
+static void drain_stream(mh_pclink *l)
 {
     for (;;) {
         size_t have = l->stream.len - l->stream.at;
@@ -555,20 +555,20 @@ static void drain_stream(mrc_pclink *l)
         handle(l, tag, p + 8, len);
         l->stream.at += 8u + len;
         if (l->stream.at == l->stream.len) l->stream.at = l->stream.len = 0;
-        if (l->state == MRC_PCLINK_FAILED) return;
+        if (l->state == MH_PCLINK_FAILED) return;
     }
 }
 
-static void ppp_frame_received(mrc_pclink *l)
+static void ppp_frame_received(mh_pclink *l)
 {
     uint8_t *p = l->ppp_frame.data;
     const size_t n = l->ppp_frame.len;
-    if (getenv("MRC_PCLINK_TRACE"))
+    if (getenv("MH_PCLINK_TRACE"))
         fprintf(stderr, "[pclink] <- PPP frame (%zu bytes)\n", n);
     if (n < 4 + 8 + 8 + 2) return;
     const uint16_t got_fcs = (uint16_t)(p[n - 2] | (uint16_t)p[n - 1] << 8);
     if (ppp_fcs(p, n - 2) != got_fcs) {
-        if (getenv("MRC_PCLINK_TRACE"))
+        if (getenv("MH_PCLINK_TRACE"))
             fprintf(stderr, "[pclink] PPP frame has a bad FCS\n");
         return;
     }
@@ -602,7 +602,7 @@ static void ppp_frame_received(mrc_pclink *l)
         payload_len = packet_len - 28;
         l->ppp_direct = true;
     }
-    if (getenv("MRC_PCLINK_TRACE")) {
+    if (getenv("MH_PCLINK_TRACE")) {
         fprintf(stderr, "[pclink] <- GMTP");
         for (size_t i = 0; i < payload_len; i++)
             fprintf(stderr, " %02x", payload[i]);
@@ -649,11 +649,11 @@ static void ppp_frame_received(mrc_pclink *l)
         }
         l->greeted = true;
         drain_stream(l);
-        if (l->state == MRC_PCLINK_FAILED) return;
+        if (l->state == MH_PCLINK_FAILED) return;
     }
 }
 
-static void ppp_feed(mrc_pclink *l, uint8_t byte)
+static void ppp_feed(mh_pclink *l, uint8_t byte)
 {
     if (byte == 0x7E) {
         if (l->ppp_frame.len) ppp_frame_received(l);
@@ -672,9 +672,9 @@ static void ppp_feed(mrc_pclink *l, uint8_t byte)
         fail(l, "out of memory receiving a PPP frame");
 }
 
-void mrc_pclink_from_guest(mrc_pclink *l, uint8_t byte)
+void mh_pclink_from_guest(mh_pclink *l, uint8_t byte)
 {
-    if (!l || l->state == MRC_PCLINK_FAILED) return;
+    if (!l || l->state == MH_PCLINK_FAILED) return;
     if (l->ppp || (!l->greeted && byte == 0x7E)) {
         l->ppp = true;
         ppp_feed(l, byte);
@@ -732,22 +732,22 @@ void mrc_pclink_from_guest(mrc_pclink *l, uint8_t byte)
         l->wire.at += n + 6u;
         if (l->wire.at == l->wire.len) l->wire.at = l->wire.len = 0;
         drain_stream(l);
-        if (l->state == MRC_PCLINK_FAILED) return;
+        if (l->state == MH_PCLINK_FAILED) return;
     }
 }
 
-bool mrc_pclink_to_guest(mrc_pclink *l, uint8_t *byte)
+bool mh_pclink_to_guest(mh_pclink *l, uint8_t *byte)
 {
     if (!l) return false;
     if (queue_take(&l->out, byte)) {
         l->idle = 0;
-        if (l->state == MRC_PCLINK_SENDING && l->sent < l->package_len)
+        if (l->state == MH_PCLINK_SENDING && l->sent < l->package_len)
             l->sent++;
         return true;
     }
     if (l->ppp && l->ppp_waiting_ack) return false;
     /* Nothing to send. Ask the guest how it is getting on, now and then. */
-    if ((l->state == MRC_PCLINK_CONNECTED || l->state == MRC_PCLINK_SENDING) &&
+    if ((l->state == MH_PCLINK_CONNECTED || l->state == MH_PCLINK_SENDING) &&
         ++l->idle >= IDLE_PING) {
         l->idle = 0;
         static const uint8_t zero = 0;
@@ -757,7 +757,7 @@ bool mrc_pclink_to_guest(mrc_pclink *l, uint8_t *byte)
     return false;
 }
 
-mrc_pclink *mrc_pclink_open(const char *package_path)
+mh_pclink *mh_pclink_open(const char *package_path)
 {
     if (!package_path) return NULL;
     FILE *f = fopen(package_path, "rb");
@@ -772,13 +772,13 @@ mrc_pclink *mrc_pclink_open(const char *package_path)
         fclose(f);
         return NULL;
     }
-    mrc_pclink *l = calloc(1, sizeof(*l));
+    mh_pclink *l = calloc(1, sizeof(*l));
     if (!l) { fclose(f); return NULL; }
     l->package = malloc((size_t)size);
     if (!l->package || fread(l->package, 1, (size_t)size, f) != (size_t)size) {
         fprintf(stderr, "pclink: cannot read %s\n", package_path);
         fclose(f);
-        mrc_pclink_close(l);
+        mh_pclink_close(l);
         return NULL;
     }
     fclose(f);
@@ -831,12 +831,12 @@ mrc_pclink *mrc_pclink_open(const char *package_path)
 
     /* The name the guest shows: the filename without its directory or its
      * extension, which is what WinPcLink offers too. */
-    const char *base = mrc_path_base(package_path);
+    const char *base = mh_path_base(package_path);
     snprintf(l->name, sizeof(l->name), "%s", base);
     char *dot = strrchr(l->name, '.');
     if (dot && dot != l->name) *dot = 0;
 
-    l->state = MRC_PCLINK_WAITING;
+    l->state = MH_PCLINK_WAITING;
     snprintf(l->message, sizeof(l->message),
              "waiting for the guest to link; open the Storeroom and tap the "
              "computer");
@@ -844,11 +844,11 @@ mrc_pclink *mrc_pclink_open(const char *package_path)
 
 invalid_package:
     fprintf(stderr, "pclink: %s is not a Magic Cap package\n", package_path);
-    mrc_pclink_close(l);
+    mh_pclink_close(l);
     return NULL;
 }
 
-void mrc_pclink_close(mrc_pclink *l)
+void mh_pclink_close(mh_pclink *l)
 {
     if (!l) return;
     queue_free(&l->out);
@@ -860,15 +860,15 @@ void mrc_pclink_close(mrc_pclink *l)
     free(l);
 }
 
-mrc_pclink_state mrc_pclink_state_of(const mrc_pclink *l)
+mh_pclink_state mh_pclink_state_of(const mh_pclink *l)
 {
-    return l ? l->state : MRC_PCLINK_FAILED;
+    return l ? l->state : MH_PCLINK_FAILED;
 }
 
-const char *mrc_pclink_message(const mrc_pclink *l)
+const char *mh_pclink_message(const mh_pclink *l)
 {
     return l && l->message[0] ? l->message : "no transfer";
 }
 
-uint32_t mrc_pclink_sent(const mrc_pclink *l) { return l ? l->sent : 0; }
-uint32_t mrc_pclink_total(const mrc_pclink *l) { return l ? l->package_len : 0; }
+uint32_t mh_pclink_sent(const mh_pclink *l) { return l ? l->sent : 0; }
+uint32_t mh_pclink_total(const mh_pclink *l) { return l ? l->package_len : 0; }

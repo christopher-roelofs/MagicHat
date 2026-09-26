@@ -10,8 +10,8 @@
  * everything else on the system: Wine will map a COM port onto it, and so
  * will minicom or a Python script.
  */
-#ifndef MRC_SERIAL_H
-#define MRC_SERIAL_H
+#ifndef MH_SERIAL_H
+#define MH_SERIAL_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -22,21 +22,21 @@
  * away. Both are just bytes in and bytes out, so the UART never learns which
  * it is talking to.
  */
-typedef struct mrc_pclink mrc_pclink;
+typedef struct mh_pclink mh_pclink;
 
 typedef struct {
     int   fd;           /* master side; -1 when not a pty */
     char  path[128];    /* the slave device to point other programs at */
-    mrc_pclink *peer;   /* in-process instead; NULL when a pty */
-} mrc_serial;
+    mh_pclink *peer;   /* in-process instead; NULL when a pty */
+} mh_serial;
 
-bool mrc_serial_open_pty(mrc_serial *s);
+bool mh_serial_open_pty(mh_serial *s);
 /* Attach the emulator's own link instead of a port. */
-void mrc_serial_attach(mrc_serial *s, mrc_pclink *peer);
-void mrc_serial_close(mrc_serial *s);
+void mh_serial_attach(mh_serial *s, mh_pclink *peer);
+void mh_serial_close(mh_serial *s);
 
 /* Non-blocking: true when a byte was waiting. */
-bool mrc_serial_read(mrc_serial *s, uint8_t *byte);
-void mrc_serial_write(mrc_serial *s, uint8_t byte);
+bool mh_serial_read(mh_serial *s, uint8_t *byte);
+void mh_serial_write(mh_serial *s, uint8_t byte);
 
-#endif /* MRC_SERIAL_H */
+#endif /* MH_SERIAL_H */

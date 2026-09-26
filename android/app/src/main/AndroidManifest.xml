@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <application android:label="Magic Cap" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+    <application android:label="MagicHat" android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:enableOnBackInvokedCallback="true" android:allowBackup="false" android:supportsRtl="true">
         <!--
             The emulator is the app. There used to be a screen in front of it

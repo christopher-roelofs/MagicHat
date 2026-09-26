@@ -4,31 +4,31 @@
 /* Clockwise host-only rotation; guest framebuffer and pen coordinates stay
  * in their native orientation. Read once per call so all translation units
  * use the same setting without frontend-specific state. */
-static inline unsigned mrc_sdl_rotation(void)
+static inline unsigned mh_sdl_rotation(void)
 {
-    const char *value = SDL_getenv("MRC_DISPLAY_ROTATION");
+    const char *value = SDL_getenv("MH_DISPLAY_ROTATION");
     if (!value) return 0;
     if (!SDL_strcmp(value, "90")) return 90;
     if (!SDL_strcmp(value, "180")) return 180;
     if (!SDL_strcmp(value, "270")) return 270;
     return 0;
 }
-static inline bool mrc_sdl_sideways(void)
+static inline bool mh_sdl_sideways(void)
 {
-    return mrc_sdl_rotation() % 180 != 0;
+    return mh_sdl_rotation() % 180 != 0;
 }
 /* Inverse of the clockwise presentation transform, including letterboxing. */
-static inline bool mrc_sdl_panel_point(const SDL_Rect *dst, int x, int y,
+static inline bool mh_sdl_panel_point(const SDL_Rect *dst, int x, int y,
                                        unsigned width, unsigned height,
                                        unsigned *px, unsigned *py)
 {
     if (dst->w <= 0 || dst->h <= 0 || x < dst->x || y < dst->y ||
         x >= dst->x + dst->w || y >= dst->y + dst->h) return false;
-    unsigned rw = mrc_sdl_sideways() ? height : width;
-    unsigned rh = mrc_sdl_sideways() ? width : height;
+    unsigned rw = mh_sdl_sideways() ? height : width;
+    unsigned rh = mh_sdl_sideways() ? width : height;
     unsigned u = (unsigned)((int64_t)(x - dst->x) * rw / dst->w);
     unsigned v = (unsigned)((int64_t)(y - dst->y) * rh / dst->h);
-    switch (mrc_sdl_rotation()) {
+    switch (mh_sdl_rotation()) {
     case 90: *px = v; *py = height - 1 - u; break;
     case 180: *px = width - 1 - u; *py = height - 1 - v; break;
     case 270: *px = width - 1 - v; *py = u; break;
@@ -36,16 +36,16 @@ static inline bool mrc_sdl_panel_point(const SDL_Rect *dst, int x, int y,
     }
     return true;
 }
-static inline void mrc_sdl_panel_to_output(const SDL_Rect *dst,
+static inline void mh_sdl_panel_to_output(const SDL_Rect *dst,
     unsigned x, unsigned y, unsigned width, unsigned height, int *ox, int *oy)
 {
     unsigned u=x, v=y, rw=width, rh=height;
-    switch (mrc_sdl_rotation()) {
+    switch (mh_sdl_rotation()) {
     case 90: u=height-1-y; v=x; break;
     case 180: u=width-1-x; v=height-1-y; break;
     case 270: u=y; v=width-1-x; break;
     }
-    if (mrc_sdl_sideways()) { rw=height; rh=width; }
+    if (mh_sdl_sideways()) { rw=height; rh=width; }
     *ox=dst->x+(int)(((int64_t)u*2+1)*dst->w/(2*rw));
     *oy=dst->y+(int)(((int64_t)v*2+1)*dst->h/(2*rh));
 }
@@ -68,12 +68,12 @@ static inline void mrc_sdl_panel_to_output(const SDL_Rect *dst,
  * on the window, not on the region. So it is centred on the window and
  * then held clear of the rail, which leaves it flush against the rail
  * exactly when the guest is wide enough that there was no choice anyway. */
-static inline void mrc_sdl_panel_rect(SDL_Renderer *renderer, unsigned width,
+static inline void mh_sdl_panel_rect(SDL_Renderer *renderer, unsigned width,
                                      unsigned height, bool integer,
                                      int inset_left, int inset_right,
                                      SDL_Rect *dst)
 {
-    if (mrc_sdl_sideways()) { unsigned tmp=width; width=height; height=tmp; }
+    if (mh_sdl_sideways()) { unsigned tmp=width; width=height; height=tmp; }
     int w=0,h=0;
     SDL_GetRendererOutputSize(renderer,&w,&h);
     if(w<=0 || h<=0) { w=(int)width; h=(int)height; }
@@ -91,7 +91,7 @@ static inline void mrc_sdl_panel_rect(SDL_Renderer *renderer, unsigned width,
     dst->y=(h-dst->h)/2;
 }
 /* Preserve the existing performance-counter pacing conversion. */
-static inline uint64_t mrc_sdl_owed_slots(Uint64 now, Uint64 start,
+static inline uint64_t mh_sdl_owed_slots(Uint64 now, Uint64 start,
                                          Uint64 frequency, uint32_t rate)
 {
     return (uint64_t)((double)(now-start)/(double)frequency*(double)rate);

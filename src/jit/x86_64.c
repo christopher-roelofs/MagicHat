@@ -6,7 +6,7 @@
  * x86-64 backend, System V or Windows x64.
  *
  * Register use inside a block:
- *   rbx  r3900 *c            r13  read page table    r15  mrc_bus *
+ *   rbx  r3900 *c            r13  read page table    r15  mh_bus *
  *   r12d branch destination  r14  write page table   ebp  remaining budget
  *   [rsp + TABLES_AT] r3900_jit *
  *   esi, edi, r8d-r11d: guest register cache
@@ -47,8 +47,8 @@ typedef struct {
     bool overflow;
     unsigned n;                                  /* block length */
     regcache rc;
-    unsigned fail_fixups[MRC_JIT_MAX_INSNS + 1], nfail;
-    unsigned done_fixups[MRC_JIT_MAX_INSNS * 4], ndone;
+    unsigned fail_fixups[MH_JIT_MAX_INSNS + 1], nfail;
+    unsigned done_fixups[MH_JIT_MAX_INSNS * 4], ndone;
     struct { unsigned site, stub; } links[3];    /* rel32 field, stub jump */
     unsigned nlinks;
 } emitter;
@@ -300,7 +300,7 @@ static void link_site(emitter *e, unsigned site)
 
 /* Helper call for instruction k: guest state goes to memory first and
  * nothing is cached afterwards. Exits with k + 1 retired when told to. */
-static void helper(emitter *e, const mrc_jit_block *b, unsigned k)
+static void helper(emitter *e, const mh_jit_block *b, unsigned k)
 {
     rc_writeback(e);
     rc_invalidate(e);
@@ -314,14 +314,14 @@ static void helper(emitter *e, const mrc_jit_block *b, unsigned k)
 #else
         mov_rr(e, ARG4, R12);
 #endif
-        call_abs(e, (const void *)mrc_jit_exec_delay);
-    } else call_abs(e, (const void *)mrc_jit_exec);
+        call_abs(e, (const void *)mh_jit_exec_delay);
+    } else call_abs(e, (const void *)mh_jit_exec);
     byte(e, 0x85); modrm_reg(e, RAX, RAX);              /* test eax,eax */
     byte(e, 0x74); unsigned at = here(e); byte(e, 0);   /* je over */
     exit_block(e, k + 1);
     if (!e->overflow) e->out[at] = (uint8_t)(here(e) - at - 1);
 }
-static void slow_path(emitter *e, const mrc_jit_block *b, unsigned k,
+static void slow_path(emitter *e, const mh_jit_block *b, unsigned k,
                       const regcache *at_branch)
 {
     regcache join = e->rc;
@@ -331,7 +331,7 @@ static void slow_path(emitter *e, const mrc_jit_block *b, unsigned k,
 }
 
 /* Effective address in ecx, host page in rax, or jump to the slow path. */
-static void address(emitter *e, const mrc_jit_ir *i, bool write, unsigned *slow, unsigned *slow2)
+static void address(emitter *e, const mh_jit_ir *i, bool write, unsigned *slow, unsigned *slow2)
 {
     unsigned base = rc_read(e, i->left, RCX);
     mov_rr(e, RCX, base);
@@ -349,9 +349,9 @@ static void address(emitter *e, const mrc_jit_ir *i, bool write, unsigned *slow,
     alu_ri(e, ALU_AND, RCX, 0xFFF);
 }
 
-static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
+static void memory_op(emitter *e, const mh_jit_block *b, unsigned k)
 {
-    const mrc_jit_ir *i = &b->ir[k];
+    const mh_jit_ir *i = &b->ir[k];
     unsigned slow = 0, slow2 = 0, done = 0;
     bool write = i->op == J_STORE;
     address(e, i, write, &slow, &slow2);
@@ -368,7 +368,7 @@ static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
             byte(e, 0x0F); byte(e, i->sign ? 0xBE : 0xB6); mem_index(e, d, RAX, RCX, 0);
         }
         rc_written(e, i->dst, d);
-        inc_counter64(e, R15, (int32_t)offsetof(mrc_bus, reads));
+        inc_counter64(e, R15, (int32_t)offsetof(mh_bus, reads));
     } else {
         unsigned v = rc_read(e, i->right, RDX);
         if (i->size == 4) { mov_rr(e, RDX, v); bswap(e, RDX); v = RDX; }
@@ -379,7 +379,7 @@ static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
         rex(e, false, v, RCX, RAX);
         byte(e, i->size == 1 ? 0x88 : 0x89);
         mem_index(e, v, RAX, RCX, 0);
-        inc_counter64(e, R15, (int32_t)offsetof(mrc_bus, writes));
+        inc_counter64(e, R15, (int32_t)offsetof(mh_bus, writes));
     }
     jmp32(e, &done);
     if (slow) patch(e, slow, here(e));
@@ -390,9 +390,9 @@ static void memory_op(emitter *e, const mrc_jit_block *b, unsigned k)
 
 /* ADD/SUB/ADDI: the sum is discarded and the reference path raises the
  * overflow exception whenever the host flags say so. */
-static void trapping_alu(emitter *e, const mrc_jit_block *b, unsigned k)
+static void trapping_alu(emitter *e, const mh_jit_block *b, unsigned k)
 {
-    const mrc_jit_ir *i = &b->ir[k];
+    const mh_jit_ir *i = &b->ir[k];
     unsigned overflow, done;
     unsigned l = rc_read(e, i->left, RAX);
     mov_rr(e, RAX, l);
@@ -410,7 +410,7 @@ static void trapping_alu(emitter *e, const mrc_jit_block *b, unsigned k)
     patch(e, done, here(e));
 }
 
-static void alu(emitter *e, const mrc_jit_ir *i)
+static void alu(emitter *e, const mh_jit_ir *i)
 {
     if (!i->dst) return;                  /* no side effects: skip */
     unsigned l, r, d;
@@ -468,7 +468,7 @@ static void alu(emitter *e, const mrc_jit_ir *i)
     }
 }
 
-static void hilo(emitter *e, const mrc_jit_ir *i)
+static void hilo(emitter *e, const mh_jit_ir *i)
 {
     unsigned l;
     switch (i->op) {
@@ -493,7 +493,7 @@ static void hilo(emitter *e, const mrc_jit_ir *i)
 
 /* Leaves the destination in r12d. Link writes happen here, before the delay
  * slot, as in the reference sequence. */
-static void branch(emitter *e, const mrc_jit_ir *i, uint32_t pc)
+static void branch(emitter *e, const mh_jit_ir *i, uint32_t pc)
 {
     uint32_t fallthrough = pc + 8;
     if (i->op == J_JUMP) mov_imm(e, R12, ((pc + 4) & 0xF0000000u) | i->value);
@@ -521,8 +521,8 @@ static void status_exit(emitter *e, unsigned status, unsigned *to_ret)
     jmp32(e, to_ret);
 }
 
-size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
-                    const mrc_jit_block *b, unsigned *chain)
+size_t mh_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
+                    const mh_jit_block *b, unsigned *chain)
 {
     (void)exec;
     emitter e = {.out = out, .p = out, .end = out + cap, .n = b->n};
@@ -545,8 +545,8 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     };
 #endif
     bytes(&e, prologue, sizeof(prologue));
-    load_mem64(&e, R13, ARG1, (int32_t)offsetof(mrc_jit_tables, read));
-    load_mem64(&e, R14, ARG1, (int32_t)offsetof(mrc_jit_tables, write));
+    load_mem64(&e, R13, ARG1, (int32_t)offsetof(mh_jit_tables, read));
+    load_mem64(&e, R14, ARG1, (int32_t)offsetof(mh_jit_tables, write));
     load_mem64(&e, R15, RBX, (int32_t)offsetof(r3900, bus));
     *chain = here(&e);
 
@@ -566,9 +566,9 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     store_imm8(&e, RBX, (int32_t)offsetof(r3900, in_delay), 0);
 
     for (unsigned k = 0; k < b->n; k++) {
-        const mrc_jit_ir *i = &b->ir[k];
+        const mh_jit_ir *i = &b->ir[k];
         uint32_t pc = b->va + k * 4;
-        if (mrc_jit_is_branch(i)) branch(&e, i, pc);
+        if (mh_jit_is_branch(i)) branch(&e, i, pc);
         else if (i->op == J_LOAD || i->op == J_STORE) memory_op(&e, b, k);
         else if (i->op == J_ADD_OV || i->op == J_SUB_OV) trapping_alu(&e, b, k);
         else if (i->op == J_EXEC) helper(&e, b, k);
@@ -581,12 +581,12 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
      * Successors known here get link sites; the rest return to the caller.
      * A block ending in an instruction that must be followed by an
      * interrupt check (J_EXEC with ends_block) never links. */
-    const mrc_jit_ir *last = &b->ir[b->n - 1];
+    const mh_jit_ir *last = &b->ir[b->n - 1];
     bool needs_check = last->op == J_EXEC && last->ends_block;
     store_imm32(&e, RBX, (int32_t)offsetof(r3900, cur_pc), b->va + (b->n - 1) * 4);
     add_counter64(&e, RBX, (int32_t)offsetof(r3900, insn_count), b->n);
     add_counter64(&e, RBX, (int32_t)offsetof(r3900, cycle_count), b->n);
-    add_counter64(&e, R15, (int32_t)offsetof(mrc_bus, reads), b->n);
+    add_counter64(&e, R15, (int32_t)offsetof(mh_bus, reads), b->n);
     if (!b->branch) {
         store_imm32(&e, RBX, (int32_t)offsetof(r3900, pc), b->va + b->n * 4);
         store_imm32(&e, RBX, (int32_t)offsetof(r3900, next_pc), b->va + b->n * 4 + 4);
@@ -595,7 +595,7 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
             jmp32(&e, &site); link_site(&e, site);
         }
     } else if (b->delay) {
-        const mrc_jit_ir *br = &b->ir[b->branch - 1];
+        const mh_jit_ir *br = &b->ir[b->branch - 1];
         uint32_t bpc = b->va + (b->branch - 1) * 4;
         store_imm8(&e, RBX, (int32_t)offsetof(r3900, in_delay), 1);
         store_mem32(&e, RBX, (int32_t)offsetof(r3900, pc), R12);
@@ -612,18 +612,18 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
             mov_rr(&e, RAX, R12); shift_imm(&e, SH_SHR, RAX, 2);
             mov_rr(&e, RCX, R12); shift_imm(&e, SH_SHR, RCX, 16);
             rex(&e, false, RCX, 0, RAX); byte(&e, 0x31); modrm_reg(&e, RCX, RAX); /* xor eax,ecx */
-            alu_ri(&e, ALU_AND, RAX, MRC_JIT_SETS - 1);
+            alu_ri(&e, ALU_AND, RAX, MH_JIT_SETS - 1);
             shift_imm(&e, SH_SHL, RAX, 7);           /* * 4 ways * 32 bytes */
             load_mem64(&e, RCX, RSP, TABLES_AT);
-            load_mem64(&e, RCX, RCX, (int32_t)offsetof(mrc_jit_tables, slots));
+            load_mem64(&e, RCX, RCX, (int32_t)offsetof(mh_jit_tables, slots));
             rex(&e, true, RAX, 0, RCX); byte(&e, 0x01); modrm_reg(&e, RAX, RCX); /* add rcx,rax */
-            for (unsigned way = 0; way < MRC_JIT_WAYS; way++) {
-                int32_t at = (int32_t)(way * sizeof(mrc_jit_slot));
+            for (unsigned way = 0; way < MH_JIT_WAYS; way++) {
+                int32_t at = (int32_t)(way * sizeof(mh_jit_slot));
                 unsigned miss1, miss2;
                 rex(&e, false, R12, 0, RCX); byte(&e, 0x39);
-                mem(&e, R12, RCX, at + (int32_t)offsetof(mrc_jit_slot, va)); /* cmp [slot.va],r12d */
+                mem(&e, R12, RCX, at + (int32_t)offsetof(mh_jit_slot, va)); /* cmp [slot.va],r12d */
                 jcc32(&e, CC_NE, &miss1);
-                load_mem64(&e, RAX, RCX, at + (int32_t)offsetof(mrc_jit_slot, chain));
+                load_mem64(&e, RAX, RCX, at + (int32_t)offsetof(mh_jit_slot, chain));
                 rex(&e, true, RAX, 0, RAX); byte(&e, 0x85); modrm_reg(&e, RAX, RAX);
                 jcc32(&e, CC_E, &miss2);
                 byte(&e, 0xFF); byte(&e, 0xE0);      /* jmp rax */
@@ -660,7 +660,7 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
         mov_imm64(&e, RAX, (uint64_t)(uintptr_t)(out + e.links[k].site));
         load_mem64(&e, RCX, RSP, TABLES_AT);
         rex(&e, true, RAX, 0, RCX); byte(&e, 0x89);
-        mem(&e, RAX, RCX, (int32_t)offsetof(mrc_jit_tables, link));
+        mem(&e, RAX, RCX, (int32_t)offsetof(mh_jit_tables, link));
         unsigned j; jmp32(&e, &j); patch(&e, j, done_label);
     }
     /* Stale guard: a link site too, so a recompiled block replaces this one
@@ -670,10 +670,10 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     mov_imm64(&e, RAX, (uint64_t)(uintptr_t)(out + stale_site));
     load_mem64(&e, RCX, RSP, TABLES_AT);
     rex(&e, true, RAX, 0, RCX); byte(&e, 0x89);
-    mem(&e, RAX, RCX, (int32_t)offsetof(mrc_jit_tables, link));
-    status_exit(&e, MRC_JIT_STALE, &to_ret);
+    mem(&e, RAX, RCX, (int32_t)offsetof(mh_jit_tables, link));
+    status_exit(&e, MH_JIT_STALE, &to_ret);
     unsigned budget_label = here(&e), to_ret2;
-    status_exit(&e, MRC_JIT_BUDGET, &to_ret2);
+    status_exit(&e, MH_JIT_BUDGET, &to_ret2);
 
     if (e.overflow) return 0;
     patch(&e, stale_site, stale_site + 4);      /* falls into its stub */
@@ -686,12 +686,12 @@ size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
     return (size_t)(e.p - out);
 }
 
-void mrc_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
+void mh_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
                         const uint8_t *target)
 {
     int32_t rel = (int32_t)(target - (site_exec + 4));
     memcpy(site, &rel, 4);
 }
 
-bool mrc_jit_host_supported(void) { return true; }
+bool mh_jit_host_supported(void) { return true; }
 #endif

@@ -1,5 +1,5 @@
-#ifndef MRC_JIT_IR_H
-#define MRC_JIT_IR_H
+#ifndef MH_JIT_IR_H
+#define MH_JIT_IR_H
 #include <stdbool.h>
 #include <stdint.h>
 /*
@@ -25,9 +25,9 @@ typedef enum {
     J_EXEC,                          /* reference interpreter runs word */
     J_BEQ, J_BNE, J_BLEZ, J_BGTZ, J_BLTZ, J_BGEZ,
     J_JUMP, J_JUMPR
-} mrc_jit_op;
+} mh_jit_op;
 typedef struct {
-    mrc_jit_op op;
+    mh_jit_op op;
     uint8_t dst, left, right;
     bool immediate;     /* ALU: right operand is `value`                      */
     uint8_t size;       /* J_LOAD/J_STORE: 1, 2 or 4                          */
@@ -35,7 +35,7 @@ typedef struct {
     bool ends_block;    /* J_EXEC: exit after this instruction unconditionally */
     uint32_t value;     /* immediate, branch displacement or jump target      */
     uint32_t word;      /* the original instruction, for J_EXEC              */
-} mrc_jit_ir;
-static inline bool mrc_jit_is_branch(const mrc_jit_ir *i) { return i->op >= J_BEQ; }
-bool mrc_jit_decode_mips(uint32_t word, mrc_jit_ir *ir);
+} mh_jit_ir;
+static inline bool mh_jit_is_branch(const mh_jit_ir *i) { return i->op >= J_BEQ; }
+bool mh_jit_decode_mips(uint32_t word, mh_jit_ir *ir);
 #endif

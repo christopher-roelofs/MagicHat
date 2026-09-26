@@ -15,9 +15,9 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}/sdl-include")
 add_subdirectory(.. core)
 # CMake 3.22's IPO probe selects host gold in an NDK try-compile. Use the
 # NDK's supported thin-LTO flags explicitly for our core.
-foreach(target mrc_common mrc_cpu_mips mrc_tx39 mrc_devices mrc_host mrc_state
-        mrc_rom mrc_datarover840 mrc_sdl_datarover mrc_sdl_display mrc_mc68349
-        mrc_pic2000 mrc_sdl_pic2000 mrc_cli_pic2000 mcap)
+foreach(target mh_common mh_cpu_mips mh_tx39 mh_devices mh_host mh_state
+        mh_rom mh_datarover840 mh_sdl_datarover mh_sdl_display mh_mc68349
+        mh_pic2000 mh_sdl_pic2000 mh_cli_pic2000 mhat)
     target_compile_options(${target} PRIVATE -flto=thin)
 endforeach()
-target_link_options(mcap PRIVATE -flto=thin -fuse-ld=lld)
+target_link_options(mhat PRIVATE -flto=thin -fuse-ld=lld)

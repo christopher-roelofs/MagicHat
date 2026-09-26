@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-void mrc_tx39_init(tx39 *s, r3900 *cpu, uint32_t cpu_hz)
+void mh_tx39_init(tx39 *s, r3900 *cpu, uint32_t cpu_hz)
 {
     memset(s, 0, sizeof(*s));
     s->cpu    = cpu;
@@ -22,7 +22,7 @@ void mrc_tx39_init(tx39 *s, r3900 *cpu, uint32_t cpu_hz)
     }
     s->uart[0].console = true;   /* UART A is the IDT monitor console */
 
-    mrc_ucb_init(&s->sib.codec);
+    mh_ucb_init(&s->sib.codec);
 }
 
 static void unknown(tx39 *s, const char *dir, uint32_t off, uint32_t val)
@@ -32,7 +32,7 @@ static void unknown(tx39 *s, const char *dir, uint32_t off, uint32_t val)
                 dir, off, val);
 }
 
-uint32_t mrc_tx39_read(void *ctx, uint32_t off, unsigned size)
+uint32_t mh_tx39_read(void *ctx, uint32_t off, unsigned size)
 {
     tx39 *s = ctx;
     bool decoded = true;
@@ -54,19 +54,19 @@ uint32_t mrc_tx39_read(void *ctx, uint32_t off, unsigned size)
     if (off <= TX39_MEMCONFIG8)
         v = s->memconfig[off / 4];
     else if (off >= TX39_VIDEOCTRL1 && off <= TX39_VIDEOCTRL14)
-        v = mrc_video_read(&s->video, off, &decoded);
+        v = mh_video_read(&s->video, off, &decoded);
     else if (off >= TX39_SIBSIZE && off <= TX39_SIBDMACTRL)
-        v = mrc_sib_read(&s->sib, off, &decoded);
+        v = mh_sib_read(&s->sib, off, &decoded);
     else if (off >= TX39_UARTA_BASE && off < TX39_UARTB_BASE)
-        v = mrc_uart_read(&s->uart[0], off - TX39_UARTA_BASE, &decoded);
+        v = mh_uart_read(&s->uart[0], off - TX39_UARTA_BASE, &decoded);
     else if (off >= TX39_UARTB_BASE && off <= TX39_UARTB_BASE + 0x14)
-        v = mrc_uart_read(&s->uart[1], off - TX39_UARTB_BASE, &decoded);
+        v = mh_uart_read(&s->uart[1], off - TX39_UARTB_BASE, &decoded);
     else if (off >= TX39_MBUS_FIRST && off <= TX39_MBUS_LAST)
-        v = mrc_mbus_read(&s->mbus, off, &decoded);
+        v = mh_mbus_read(&s->mbus, off, &decoded);
     else if (off >= 0x100 && off <= 0x13C)
-        v = mrc_icu_read(&s->icu, off, &decoded);
+        v = mh_icu_read(&s->icu, off, &decoded);
     else if (off >= TX39_TIMERRTCHI && off <= TX39_TIMERPERIODIC)
-        v = mrc_timer_read(&s->timer, off, &decoded);
+        v = mh_timer_read(&s->timer, off, &decoded);
     else switch (off) {
     case TX39_IRCTRL1:        v = s->irctrl1; break;
     case TX39_IRCTRL2:        v = s->irctrl2; break;
@@ -93,7 +93,7 @@ uint32_t mrc_tx39_read(void *ctx, uint32_t off, unsigned size)
             decoded = false;
         }
         break;
-    case TX39_POWERCTRL:      v = mrc_power_read(&s->power, off, &decoded); break;
+    case TX39_POWERCTRL:      v = mh_power_read(&s->power, off, &decoded); break;
     }
 
     if (!decoded) {
@@ -103,7 +103,7 @@ uint32_t mrc_tx39_read(void *ctx, uint32_t off, unsigned size)
     return v;
 }
 
-void mrc_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
+void mh_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
 {
     tx39 *s = ctx;
     bool decoded = true;
@@ -120,19 +120,19 @@ void mrc_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
     if (off <= TX39_MEMCONFIG8)
         s->memconfig[off / 4] = val;
     else if (off >= TX39_VIDEOCTRL1 && off <= TX39_VIDEOCTRL14)
-        decoded = mrc_video_write(&s->video, off, val);
+        decoded = mh_video_write(&s->video, off, val);
     else if (off >= TX39_SIBSIZE && off <= TX39_SIBDMACTRL)
-        decoded = mrc_sib_write(&s->sib, off, val);
+        decoded = mh_sib_write(&s->sib, off, val);
     else if (off >= TX39_UARTA_BASE && off < TX39_UARTB_BASE)
-        decoded = mrc_uart_write(&s->uart[0], off - TX39_UARTA_BASE, val);
+        decoded = mh_uart_write(&s->uart[0], off - TX39_UARTA_BASE, val);
     else if (off >= TX39_UARTB_BASE && off <= TX39_UARTB_BASE + 0x14)
-        decoded = mrc_uart_write(&s->uart[1], off - TX39_UARTB_BASE, val);
+        decoded = mh_uart_write(&s->uart[1], off - TX39_UARTB_BASE, val);
     else if (off >= TX39_MBUS_FIRST && off <= TX39_MBUS_LAST)
-        decoded = mrc_mbus_write(&s->mbus, off, val);
+        decoded = mh_mbus_write(&s->mbus, off, val);
     else if (off >= 0x100 && off <= 0x13C)
-        decoded = mrc_icu_write(&s->icu, off, val);
+        decoded = mh_icu_write(&s->icu, off, val);
     else if (off >= TX39_TIMERRTCHI && off <= TX39_TIMERPERIODIC)
-        decoded = mrc_timer_write(&s->timer, off, val);
+        decoded = mh_timer_write(&s->timer, off, val);
     else switch (off) {
     case TX39_IRCTRL1:        s->irctrl1 = val; break;
     case TX39_IRCTRL2:        s->irctrl2 = val; break;
@@ -157,7 +157,7 @@ void mrc_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
             decoded = false;
         }
         break;
-    case TX39_POWERCTRL:      decoded = mrc_power_write(&s->power, off, val); break;
+    case TX39_POWERCTRL:      decoded = mh_power_write(&s->power, off, val); break;
     }
 
     if (!decoded) {
@@ -166,16 +166,16 @@ void mrc_tx39_write(void *ctx, uint32_t off, unsigned size, uint32_t val)
     }
 }
 
-void mrc_tx39_tick(tx39 *s)
+void mh_tx39_tick(tx39 *s)
 {
-    mrc_timer_tick(&s->timer);
+    mh_timer_tick(&s->timer);
     /* Advance serial transmission; completed transfers latch interrupts. */
-    mrc_uart_update(&s->uart[0]);
-    mrc_uart_update(&s->uart[1]);
-    mrc_mbus_update(&s->mbus);
-    mrc_sib_update(&s->sib);
-    mrc_sib_pump_audio(&s->sib);
-    mrc_power_tick(&s->power);
+    mh_uart_update(&s->uart[0]);
+    mh_uart_update(&s->uart[1]);
+    mh_mbus_update(&s->mbus);
+    mh_sib_update(&s->sib);
+    mh_sib_pump_audio(&s->sib);
+    mh_power_tick(&s->power);
 }
 
 /* Names for the registers a histogram is likely to show. */
@@ -219,7 +219,7 @@ static const char *reg_name(uint32_t off)
     return "";
 }
 
-void mrc_tx39_print_histogram(const tx39 *s, FILE *f, unsigned top)
+void mh_tx39_print_histogram(const tx39 *s, FILE *f, unsigned top)
 {
     typedef struct { uint32_t off; uint64_t r, w; uint32_t pc; } row;
     row rows[TX39_CFG_SIZE / 4];

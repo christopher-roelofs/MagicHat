@@ -41,7 +41,7 @@ static const uint8_t cis[] = {
 #define COR_ADDR 0xff80u
 #define BYTE_NS  86806u                /* a 10-bit frame at 115200 */
 
-static void rxq(mrc_modem *m, const char *s)
+static void rxq(mh_modem *m, const char *s)
 {
     for (; *s; s++) {
         unsigned next = (m->rx_head + 1) % sizeof(m->rx);
@@ -50,7 +50,7 @@ static void rxq(mrc_modem *m, const char *s)
         m->rx_head = next;
     }
 }
-static void result(mrc_modem *m, const char *word, const char *code)
+static void result(mh_modem *m, const char *word, const char *code)
 {
     char buf[64];
     if (m->verbose) snprintf(buf, sizeof buf, "\r\n%s\r\n", word);
@@ -58,7 +58,7 @@ static void result(mrc_modem *m, const char *word, const char *code)
     rxq(m, buf);
 }
 
-static uint16_t io_base(const mrc_pccard *c)
+static uint16_t io_base(const mh_pccard *c)
 {
     switch (c->config & 0x3f) {
     case 0x0f: return 0x3f8;
@@ -69,9 +69,9 @@ static uint16_t io_base(const mrc_pccard *c)
     }
 }
 
-static void command(mrc_pccard *c)
+static void command(mh_pccard *c)
 {
-    mrc_modem *m = &c->modem;
+    mh_modem *m = &c->modem;
     m->line[m->line_len] = 0;
     char up[sizeof m->line];
     for (unsigned i = 0; i <= m->line_len; i++) up[i] = (char)toupper((unsigned char)m->line[i]);
@@ -102,9 +102,9 @@ static void command(mrc_pccard *c)
     result(m, "OK", "0");
 }
 
-static void thr(mrc_pccard *c, uint8_t b, uint64_t now)
+static void thr(mh_pccard *c, uint8_t b, uint64_t now)
 {
-    mrc_modem *m = &c->modem;
+    mh_modem *m = &c->modem;
     m->tx_bytes++;
     if (m->online) {
         if (m->log_data) {
@@ -116,7 +116,7 @@ static void thr(mrc_pccard *c, uint8_t b, uint64_t now)
         if (b == '+' && (m->plus || now - m->last_tx_ns > 1000000000ull)) m->plus++;
         else m->plus = 0;
         m->last_tx_ns = now;
-        if (m->link) mrc_serial_write(m->link, b);
+        if (m->link) mh_serial_write(m->link, b);
         return;
     }
     m->last_tx_ns = now;
@@ -126,23 +126,23 @@ static void thr(mrc_pccard *c, uint8_t b, uint64_t now)
     else if (b != '\n' && m->line_len + 1 < sizeof m->line) m->line[m->line_len++] = (char)b;
 }
 
-static bool rx_ready(const mrc_modem *m, uint64_t now)
+static bool rx_ready(const mh_modem *m, uint64_t now)
 {
     return m->rx_head != m->rx_tail && now >= m->next_rx_ns;
 }
 
-bool mrc_modem_irq(const mrc_pccard *c)
+bool mh_modem_irq(const mh_pccard *c)
 {
-    const mrc_modem *m = &c->modem;
+    const mh_modem *m = &c->modem;
     if (!(m->mcr & 8)) return false;              /* OUT2 gates the interrupt */
     return ((m->ier & 1) && rx_ready(m, m->now_ns)) ||
            ((m->ier & 2) && m->thre_pending) ||
            ((m->ier & 8) && m->msr_delta);
 }
 
-void mrc_modem_tick(mrc_pccard *c, uint64_t now_ns)
+void mh_modem_tick(mh_pccard *c, uint64_t now_ns)
 {
-    mrc_modem *m = &c->modem;
+    mh_modem *m = &c->modem;
     m->now_ns = now_ns;
     uint8_t dcd = m->online ? 0x80 : 0;
     if (dcd != m->dcd) { m->dcd = dcd; m->msr_delta |= 0x08; }
@@ -152,15 +152,15 @@ void mrc_modem_tick(mrc_pccard *c, uint64_t now_ns)
     }
     uint8_t b;
     while (m->online && m->link && ((m->rx_head + 1) % sizeof(m->rx)) != m->rx_tail &&
-           mrc_serial_read(m->link, &b)) {
+           mh_serial_read(m->link, &b)) {
         m->rx[m->rx_head] = b;
         m->rx_head = (m->rx_head + 1) % sizeof(m->rx);
     }
 }
 
-static uint8_t uart_read(mrc_pccard *c, unsigned r)
+static uint8_t uart_read(mh_pccard *c, unsigned r)
 {
-    mrc_modem *m = &c->modem;
+    mh_modem *m = &c->modem;
     uint64_t now = m->now_ns;
     switch (r) {
     case 0:
@@ -193,9 +193,9 @@ static uint8_t uart_read(mrc_pccard *c, unsigned r)
     }
 }
 
-static void uart_write(mrc_pccard *c, unsigned r, uint8_t v)
+static void uart_write(mh_pccard *c, unsigned r, uint8_t v)
 {
-    mrc_modem *m = &c->modem;
+    mh_modem *m = &c->modem;
     switch (r) {
     case 0:
         if (m->lcr & 0x80) { m->dll = v; return; }
@@ -215,10 +215,10 @@ static void uart_write(mrc_pccard *c, unsigned r, uint8_t v)
     }
 }
 
-static bool read_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off, unsigned size, uint32_t *out)
+static bool read_card(mh_pccard *c, mh_pccard_window w, uint32_t off, unsigned size, uint32_t *out)
 {
     uint16_t base = io_base(c);
-    if (w != MRC_PCCARD_WINDOW_A) return false;
+    if (w != MH_PCCARD_WINDOW_A) return false;
     if (base && off >= base && off < base + 8u && size == 1) {
         *out = uart_read(c, off - base);
         if (c->modem.log_io) { c->modem.log_io--; fprintf(c->log, "modem: R +%X = %02X\n", off - base, *out); }
@@ -231,10 +231,10 @@ static bool read_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off, unsigned
     return false;
 }
 
-static bool write_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off, unsigned size, uint32_t val)
+static bool write_card(mh_pccard *c, mh_pccard_window w, uint32_t off, unsigned size, uint32_t val)
 {
     uint16_t base = io_base(c);
-    if (w != MRC_PCCARD_WINDOW_A) return false;
+    if (w != MH_PCCARD_WINDOW_A) return false;
     if (base && off >= base && off < base + 8u && size == 1) {
         if (c->modem.log_io) { c->modem.log_io--; fprintf(c->log, "modem: W +%X = %02X\n", off - base, val & 0xff); }
         uart_write(c, off - base, (uint8_t)val);
@@ -250,7 +250,7 @@ static bool write_card(mrc_pccard *c, mrc_pccard_window w, uint32_t off, unsigne
     return false;
 }
 
-void mrc_modem_init(mrc_pccard *c)
+void mh_modem_init(mh_pccard *c)
 {
     memset(&c->modem, 0, sizeof c->modem);
     c->modem.echo = true;
@@ -259,6 +259,6 @@ void mrc_modem_init(mrc_pccard *c)
     c->modem.log_data = 64;
 }
 
-const mrc_pccard_kind mrc_pccard_modem = {
+const mh_pccard_kind mh_pccard_modem = {
     .name = "modem", .read = read_card, .write = write_card
 };

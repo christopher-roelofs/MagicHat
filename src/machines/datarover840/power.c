@@ -36,7 +36,7 @@
 
 
 #include "machines/datarover840/power.h"
-unsigned mrc_host_power_to_adc(int percent)
+unsigned mh_host_power_to_adc(int percent)
 {
     if (percent < 0)
         return ADC_GAUGE_FULL;          /* unknown: show a good battery */

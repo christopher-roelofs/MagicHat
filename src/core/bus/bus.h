@@ -5,45 +5,45 @@
  * keyed on PC or on ROM symbol addresses: if an access is not claimed by a
  * region it is a bus error, and we say so.
  */
-#ifndef MRC_BUS_H
-#define MRC_BUS_H
+#ifndef MH_BUS_H
+#define MH_BUS_H
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
-typedef struct mrc_bus mrc_bus;
+typedef struct mh_bus mh_bus;
 
 /* A memory-mapped device. off is relative to the region base. */
-typedef uint32_t (*mrc_mmio_read_fn)(void *ctx, uint32_t off, unsigned size);
-typedef void     (*mrc_mmio_write_fn)(void *ctx, uint32_t off, unsigned size,
+typedef uint32_t (*mh_mmio_read_fn)(void *ctx, uint32_t off, unsigned size);
+typedef void     (*mh_mmio_write_fn)(void *ctx, uint32_t off, unsigned size,
                                       uint32_t val);
 
 typedef enum {
-    MRC_REGION_RAM,     /* backed by host memory, read/write */
-    MRC_REGION_ROM,     /* backed by host memory, read-only  */
-    MRC_REGION_FLASH,   /* backed by host memory, writable   */
-    MRC_REGION_MMIO,    /* dispatched to a device            */
-    MRC_REGION_FLOAT,   /* board decodes it, nothing drives it */
-} mrc_region_kind;
+    MH_REGION_RAM,     /* backed by host memory, read/write */
+    MH_REGION_ROM,     /* backed by host memory, read-only  */
+    MH_REGION_FLASH,   /* backed by host memory, writable   */
+    MH_REGION_MMIO,    /* dispatched to a device            */
+    MH_REGION_FLOAT,   /* board decodes it, nothing drives it */
+} mh_region_kind;
 
 typedef struct {
     const char       *name;
-    mrc_region_kind   kind;
+    mh_region_kind   kind;
     uint32_t          base;     /* physical base address */
     uint32_t          size;     /* bytes */
     uint8_t          *host;     /* RAM/ROM backing store */
     uint32_t          host_len; /* backing store length; accesses wrap modulo
                                    this when smaller than size (mirroring) */
     void             *ctx;      /* MMIO device context */
-    mrc_mmio_read_fn  read;
-    mrc_mmio_write_fn write;
-} mrc_region;
+    mh_mmio_read_fn  read;
+    mh_mmio_write_fn write;
+} mh_region;
 
-#define MRC_MAX_REGIONS 16
+#define MH_MAX_REGIONS 16
 
-struct mrc_bus {
-    mrc_region region[MRC_MAX_REGIONS];
+struct mh_bus {
+    mh_region region[MH_MAX_REGIONS];
     unsigned   nregion;
     /* Diagnostic last match; not safe as an overlapping-map shortcut. */
     unsigned   last_hit;
@@ -67,13 +67,13 @@ struct mrc_bus {
     uint64_t flash_writes;
 };
 
-void mrc_bus_init(mrc_bus *b);
+void mh_bus_init(mh_bus *b);
 /* Opt in only when map owners invalidate after editing region geometry or
  * replacing backing stores (CPU fetch spans can hold backing pointers).
  * Entries contain region indices, never host pointers or guest bytes.
  * Writes to existing backing stores need no invalidation. */
-void mrc_bus_invalidate_lookup(mrc_bus *b);
-void mrc_bus_enable_lookup(mrc_bus *b, bool enabled);
+void mh_bus_invalidate_lookup(mh_bus *b);
+void mh_bus_enable_lookup(mh_bus *b, bool enabled);
 
 /* Returns the new region, or NULL if the table is full. */
 /*
@@ -83,9 +83,9 @@ void mrc_bus_enable_lookup(mrc_bus *b, bool enabled);
  * discover the size; it does not discover the size at all. See
  * docs/HARDWARE.md.)
  */
-mrc_region *mrc_bus_add_ram(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_ram(mh_bus *b, const char *name, uint32_t base,
                             uint8_t *host, uint32_t len, uint32_t window);
-mrc_region *mrc_bus_add_rom(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_rom(mh_bus *b, const char *name, uint32_t base,
                             uint32_t size, uint8_t *host, uint32_t host_len);
 
 /*
@@ -95,7 +95,7 @@ mrc_region *mrc_bus_add_rom(mrc_bus *b, const char *name, uint32_t base,
  * machine.c). We do not model NOR program/erase command sequences: a store
  * simply takes effect.
  */
-mrc_region *mrc_bus_add_flash(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_flash(mh_bus *b, const char *name, uint32_t base,
                               uint32_t size, uint8_t *host, uint32_t host_len);
 /*
  * A region the board decodes but that has nothing installed behind it — an
@@ -104,24 +104,24 @@ mrc_region *mrc_bus_add_flash(mrc_bus *b, const char *name, uint32_t base,
  * device, which has behaviour: it records that we know the address is legal
  * and know nothing answers there.
  */
-mrc_region *mrc_bus_add_float(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_float(mh_bus *b, const char *name, uint32_t base,
                               uint32_t size);
 
-mrc_region *mrc_bus_add_mmio(mrc_bus *b, const char *name, uint32_t base,
+mh_region *mh_bus_add_mmio(mh_bus *b, const char *name, uint32_t base,
                              uint32_t size, void *ctx,
-                             mrc_mmio_read_fn rd, mrc_mmio_write_fn wr);
+                             mh_mmio_read_fn rd, mh_mmio_write_fn wr);
 
 /* size is 1, 2 or 4. *ok is set false on an unmapped access. */
-uint32_t mrc_bus_read(mrc_bus *b, uint32_t pa, unsigned size, bool *ok);
-void     mrc_bus_write(mrc_bus *b, uint32_t pa, unsigned size, uint32_t val,
+uint32_t mh_bus_read(mh_bus *b, uint32_t pa, unsigned size, bool *ok);
+void     mh_bus_write(mh_bus *b, uint32_t pa, unsigned size, uint32_t val,
                        bool *ok);
 
 /* Direct backing-store access for loaders and dumpers. Never used by the CPU. */
-uint8_t *mrc_bus_host_ptr(mrc_bus *b, uint32_t pa, uint32_t len);
+uint8_t *mh_bus_host_ptr(mh_bus *b, uint32_t pa, uint32_t len);
 /* Contiguous readable memory from pa, respecting priority and mirrors.
  * Does not perform/count a read. Invalid after lookup invalidation; intended
  * for short-lived CPU fetch spans, never MMIO or floating regions. */
-uint8_t *mrc_bus_read_span(mrc_bus *b, uint32_t pa, uint32_t *len);
+uint8_t *mh_bus_read_span(mh_bus *b, uint32_t pa, uint32_t *len);
 
 /*
  * Host pointer for the whole 4 KiB page containing pa when every byte of it
@@ -130,8 +130,8 @@ uint8_t *mrc_bus_read_span(mrc_bus *b, uint32_t pa, uint32_t *len);
  * (flash writes are counted, ROM writes are faults). NULL otherwise. Does
  * not count as an access. Invalid after lookup invalidation.
  */
-uint8_t *mrc_bus_page_host(mrc_bus *b, uint32_t pa, bool write);
+uint8_t *mh_bus_page_host(mh_bus *b, uint32_t pa, bool write);
 
-void mrc_bus_print_map(const mrc_bus *b, FILE *f);
+void mh_bus_print_map(const mh_bus *b, FILE *f);
 
-#endif /* MRC_BUS_H */
+#endif /* MH_BUS_H */

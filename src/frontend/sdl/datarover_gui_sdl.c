@@ -8,10 +8,10 @@
  */
 #include "frontend/sdl/datarover_gui.h"
 
-bool mrc_gui_touch_debug = false;
-bool mrc_gui_audio = true;
+bool mh_gui_touch_debug = false;
+bool mh_gui_audio = true;
 
-#ifdef MRC_HAVE_SDL
+#ifdef MH_HAVE_SDL
 
 #include <SDL2/SDL.h>
 #include "frontend/sdl/presentation.h"
@@ -36,7 +36,7 @@ static SDL_Renderer *g_ren;
 /* The control rail, file-scope beside the renderer it belongs with,
  * because the panel geometry is worked out before the display structure
  * is in scope. */
-static mrc_ui *g_ui;   /* for mapping window points to the panel */
+static mh_ui *g_ui;   /* for mapping window points to the panel */
 static SDL_Window   *g_win;
 
 static int g_last_px = -1, g_last_py = -1;   /* last pen point, for --touch-debug */
@@ -88,7 +88,7 @@ static unsigned keyboard_usage(const SDL_KeyboardEvent *key)
 
 typedef struct {
     SDL_AudioDeviceID dev;
-    mrc_runtime *machine;
+    mh_runtime *machine;
     unsigned rate;
     Uint32 max_queued;
     bool failed;
@@ -109,7 +109,7 @@ static void audio_open(audio_out *a, unsigned rate)
     a->n = 0;
     a->rate = rate;
     memset(&want, 0, sizeof(want));
-    want.freq = (int)(rate ? rate : MRC_AUDIO_RATE_FALLBACK);
+    want.freq = (int)(rate ? rate : MH_AUDIO_RATE_FALLBACK);
     want.format = AUDIO_S16SYS;
     want.channels = 1;
     want.samples = 512;
@@ -170,7 +170,7 @@ static void audio_sample(void *ctx, int16_t sample)
     a->n = 0;
 }
 
-static void feed_key(mrc_runtime *m, const SDL_Event *e)
+static void feed_key(mh_runtime *m, const SDL_Event *e)
 {
     /* UART A is the monitor console. Only send what a terminal would. */
     int sym = e->key.keysym.sym;
@@ -206,7 +206,7 @@ static void feed_key(mrc_runtime *m, const SDL_Event *e)
  * shots/ and states/ with a sequence number, because naming them by hand
  * mid-exploration is what stops people from taking them.
  */
-static void snapshot_key(mrc_runtime *m, int sym)
+static void snapshot_key(mh_runtime *m, int sym)
 {
     static unsigned shot_seq, state_seq;
     char path[256];
@@ -257,72 +257,72 @@ static void snapshot_key(mrc_runtime *m, int sym)
  * neither of them.
  */
 /* Defined below, beside the pen handling it belongs with. */
-static void option_set(mrc_runtime *m, bool down);
+static void option_set(mh_runtime *m, bool down);
 
-static void rail_action(mrc_runtime *m, int action)
+static void rail_action(mh_runtime *m, int action)
 {
-    if (mrc_card_panel_showing() && (action == MRC_UI_ICON_INSTALL ||
-        action == MRC_UI_ICON_SETTINGS || action == MRC_UI_ICON_ROMS ||
-        action == MRC_UI_ICON_DISPLAY)) mrc_card_panel_close(g_ui);
+    if (mh_card_panel_showing() && (action == MH_UI_ICON_INSTALL ||
+        action == MH_UI_ICON_SETTINGS || action == MH_UI_ICON_ROMS ||
+        action == MH_UI_ICON_DISPLAY)) mh_card_panel_close(g_ui);
     switch (action) {
-    case MRC_UI_ICON_INSTALL:
-        if (mrc_install_panel_showing()) { mrc_install_panel_close(g_ui); break; }
-        if (mrc_devices_panel_showing()) mrc_devices_panel_close(g_ui);
-        if (mrc_settings_panel_showing()) mrc_settings_panel_close(g_ui);
-        if (mrc_install_panel_showing()) mrc_install_panel_close(g_ui);
-        if (mrc_ui_panel_open(g_ui)) mrc_ui_close_panel(g_ui);
-        mrc_install_panel_open(g_ui, m);
+    case MH_UI_ICON_INSTALL:
+        if (mh_install_panel_showing()) { mh_install_panel_close(g_ui); break; }
+        if (mh_devices_panel_showing()) mh_devices_panel_close(g_ui);
+        if (mh_settings_panel_showing()) mh_settings_panel_close(g_ui);
+        if (mh_install_panel_showing()) mh_install_panel_close(g_ui);
+        if (mh_ui_panel_open(g_ui)) mh_ui_close_panel(g_ui);
+        mh_install_panel_open(g_ui, m);
         break;
-    case MRC_UI_ICON_SETTINGS:
+    case MH_UI_ICON_SETTINGS:
         /*
          * Switching the device off lives in here rather than on the rail.
          * Closing the window saves the machine and reopening carries on
          * mid-screen, so powering down is something you do when you mean it
          * -- and a button on the rail invites a press that costs a boot.
          */
-        if (mrc_settings_panel_showing()) { mrc_settings_panel_close(g_ui); break; }
-        if (mrc_devices_panel_showing()) mrc_devices_panel_close(g_ui);
-        if (mrc_install_panel_showing()) mrc_install_panel_close(g_ui);
-        if (mrc_ui_panel_open(g_ui)) mrc_ui_close_panel(g_ui);
-        mrc_settings_panel_open(g_ui, m);
+        if (mh_settings_panel_showing()) { mh_settings_panel_close(g_ui); break; }
+        if (mh_devices_panel_showing()) mh_devices_panel_close(g_ui);
+        if (mh_install_panel_showing()) mh_install_panel_close(g_ui);
+        if (mh_ui_panel_open(g_ui)) mh_ui_close_panel(g_ui);
+        mh_settings_panel_open(g_ui, m);
         break;
-    case MRC_UI_ICON_ROTATE: {
+    case MH_UI_ICON_ROTATE: {
         /* Rotation is read from the environment on every use, so setting
          * it here turns the panel immediately and needs no other state. */
         static const char *const turns[] = { "0", "90", "180", "270" };
-        unsigned now = mrc_sdl_rotation() / 90;
-        SDL_setenv("MRC_DISPLAY_ROTATION", turns[(now + 1) % 4], 1);
+        unsigned now = mh_sdl_rotation() / 90;
+        SDL_setenv("MH_DISPLAY_ROTATION", turns[(now + 1) % 4], 1);
         break;
     }
-    case MRC_UI_ICON_STORAGE:
-        mrc_sdl_save_state(m);
+    case MH_UI_ICON_STORAGE:
+        mh_sdl_save_state(m);
         break;
-    case MRC_UI_ICON_OPTION:
+    case MH_UI_ICON_OPTION:
         /* Held rather than pressed, and through the same one place the
          * line moves, so the rail and the right mouse button cannot end up
          * disagreeing about whether it is down. */
         if (m->ops->option)
             option_set(m, !m->ops->option_held(m->board));
         break;
-    case MRC_UI_ICON_ROMS:
+    case MH_UI_ICON_ROMS:
         /* Pressing it again puts the list away, the same as every other
          * button that opens a panel. */
-        if (mrc_devices_panel_showing()) { mrc_devices_panel_close(g_ui); break; }
-        if (mrc_settings_panel_showing()) mrc_settings_panel_close(g_ui);
-        if (mrc_install_panel_showing()) mrc_install_panel_close(g_ui);
-        if (mrc_ui_panel_open(g_ui)) mrc_ui_close_panel(g_ui);
-        mrc_devices_panel_open(g_ui, mrc_state_device_id());
+        if (mh_devices_panel_showing()) { mh_devices_panel_close(g_ui); break; }
+        if (mh_settings_panel_showing()) mh_settings_panel_close(g_ui);
+        if (mh_install_panel_showing()) mh_install_panel_close(g_ui);
+        if (mh_ui_panel_open(g_ui)) mh_ui_close_panel(g_ui);
+        mh_devices_panel_open(g_ui, mh_state_device_id());
         break;
-    case MRC_UI_ICON_DISPLAY:
+    case MH_UI_ICON_DISPLAY:
         /* Pressing it again puts the panel away, so the button is the
          * whole control rather than the way in to one. */
-        if (mrc_devices_panel_showing()) mrc_devices_panel_close(g_ui);
-        if (mrc_settings_panel_showing()) mrc_settings_panel_close(g_ui);
-        if (mrc_install_panel_showing()) mrc_install_panel_close(g_ui);
-        if (mrc_ui_panel_open(g_ui)) { mrc_ui_close_panel(g_ui); break; }
-        mrc_display_rows_refresh();
-        mrc_ui_open_panel(g_ui, "Display", mrc_display_rows(),
-                          mrc_display_row_count());
+        if (mh_devices_panel_showing()) mh_devices_panel_close(g_ui);
+        if (mh_settings_panel_showing()) mh_settings_panel_close(g_ui);
+        if (mh_install_panel_showing()) mh_install_panel_close(g_ui);
+        if (mh_ui_panel_open(g_ui)) { mh_ui_close_panel(g_ui); break; }
+        mh_display_rows_refresh();
+        mh_ui_open_panel(g_ui, "Display", mh_display_rows(),
+                          mh_display_row_count());
         break;
     default:
         break;
@@ -331,8 +331,8 @@ static void rail_action(mrc_runtime *m, int action)
 
 static void panel_rect(SDL_Rect *dst)
 {
-    mrc_sdl_panel_rect(g_ren, PANEL_SCREEN_W, PANEL_SCREEN_H, mrc_gui_integer,
-                       mrc_ui_inset_left(g_ui), mrc_ui_inset_right(g_ui), dst);
+    mh_sdl_panel_rect(g_ren, PANEL_SCREEN_W, PANEL_SCREEN_H, mh_gui_integer,
+                       mh_ui_inset_left(g_ui), mh_ui_inset_right(g_ui), dst);
 }
 
 static float g_ptr_scale = 1.0f;   /* event units -> window pixels */
@@ -400,7 +400,7 @@ static void note_pointer_scale(int ex, int ey)
         return;
     if (s < g_ptr_scale * 0.98f || s > g_ptr_scale * 1.02f) {
         g_ptr_scale = s;
-        if (getenv("MRC_TOUCH_TRACE"))
+        if (getenv("MH_TOUCH_TRACE"))
             fprintf(stderr, "GUI: pointer events are %.3gx window pixels\n", s);
     }
 }
@@ -420,7 +420,7 @@ static bool panel_from_window(int ex, int ey, unsigned *px, unsigned *py)
     SDL_Rect dst;
     window_point(ex, ey, &wx, &wy);
     panel_rect(&dst);
-    return mrc_sdl_panel_point(&dst, wx, wy, PANEL_SCREEN_W,
+    return mh_sdl_panel_point(&dst, wx, wy, PANEL_SCREEN_W,
                                PANEL_SCREEN_H, px, py);
 }
 
@@ -444,27 +444,27 @@ static bool in_panel(int wx, int wy)
  * exactly the symptom: a device put down with the key held came back with
  * the button dark and the guest none the wiser.
  */
-static void option_set(mrc_runtime *m, bool down)
+static void option_set(mh_runtime *m, bool down)
 {
     if (!m->ops->option || !m->ops->option_held) return;
     if (m->ops->option_held(m->board) == down) return;
     m->ops->option(m->board, down);
-    mrc_ui_set_lit(g_ui, MRC_UI_ICON_OPTION, down);
+    mh_ui_set_lit(g_ui, MH_UI_ICON_OPTION, down);
     fprintf(stderr, "[option] %s\n", down ? "held" : "released");
 }
 
-static void set_pen_from_mouse(mrc_runtime *m, int wx, int wy, bool down)
+static void set_pen_from_mouse(mh_runtime *m, int wx, int wy, bool down)
 {
     if (!down) {
         m->ops->pen(m->board, false, 0, 0);
-        if (getenv("MRC_TOUCH_TRACE"))
+        if (getenv("MH_TOUCH_TRACE"))
             fprintf(stderr, "[gui-touch] release\n");
         return;
     }
 
     unsigned px, py;
     if (!panel_from_window(wx, wy, &px, &py)) {
-        if (getenv("MRC_TOUCH_TRACE"))
+        if (getenv("MH_TOUCH_TRACE"))
             fprintf(stderr, "[gui-touch] win(%d,%d) -> outside panel, ignored\n",
                     wx, wy);
         return;
@@ -473,13 +473,13 @@ static void set_pen_from_mouse(mrc_runtime *m, int wx, int wy, bool down)
     g_last_py = (int)py;
 
     m->ops->pen(m->board, true, px, py);
-    if (getenv("MRC_TOUCH_TRACE"))
+    if (getenv("MH_TOUCH_TRACE"))
         fprintf(stderr, "[gui-touch] win(%d,%d) -> px(%u,%u)\n",
                 wx, wy, px, py);
 }
 
-static int datarover_present(mrc_runtime *m, uint64_t insns_total,
-                             struct mrc_shell *sh)
+static int datarover_present(mh_runtime *m, uint64_t insns_total,
+                             struct mh_shell *sh)
 {
     /*
      * The window opens at twice the panel and is resizable from there. A
@@ -492,16 +492,16 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
      * stays open after it stops, which is what lets a device switch reshape
      * what is on screen rather than replace it.
      */
-    if (!mrc_shell_attach(sh, "mcap — DataRover 840",
+    if (!mh_shell_attach(sh, "MagicHat — DataRover 840",
                           PANEL_SCREEN_W, PANEL_SCREEN_H))
         return 1;
-    if (mrc_gui_audio && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
+    if (mh_gui_audio && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
         fprintf(stderr, "GUI: no audio: %s\n", SDL_GetError());
-    mrc_sdl_display *display = mrc_shell_display(sh);
+    mh_sdl_display *display = mh_shell_display(sh);
     SDL_Window *win = display->window;
     SDL_Renderer *ren = display->renderer;
-    mrc_lcd *lcd = mrc_shell_lcd(sh);
-    g_ui = mrc_shell_ui(sh);
+    mh_lcd *lcd = mh_shell_lcd(sh);
+    g_ui = mh_shell_ui(sh);
     g_win = win;
     g_ren = ren;
     /*
@@ -509,22 +509,22 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
      * are offered, and they are set on every attach because the next machine
      * in this window may answer differently.
      */
-    mrc_ui_set_buttons(g_ui,
-                       (m->ops->install ? 1u << MRC_UI_ICON_INSTALL : 0) |
-                       1u << MRC_UI_ICON_SETTINGS |
-                       1u << MRC_UI_ICON_ROMS |
-                       1u << MRC_UI_ICON_ROTATE |
-                       1u << MRC_UI_ICON_DISPLAY |
-                       (mrc_sdl_can_save_state(m)
-                        ? 1u << MRC_UI_ICON_STORAGE : 0) |
-                       (m->ops->option ? 1u << MRC_UI_ICON_OPTION : 0));
+    mh_ui_set_buttons(g_ui,
+                       (m->ops->install ? 1u << MH_UI_ICON_INSTALL : 0) |
+                       1u << MH_UI_ICON_SETTINGS |
+                       1u << MH_UI_ICON_ROMS |
+                       1u << MH_UI_ICON_ROTATE |
+                       1u << MH_UI_ICON_DISPLAY |
+                       (mh_sdl_can_save_state(m)
+                        ? 1u << MH_UI_ICON_STORAGE : 0) |
+                       (m->ops->option ? 1u << MH_UI_ICON_OPTION : 0));
     /*
      * And show what the machine came back as. A device put down with the
      * option key held restores with the line still asserted, so the button
      * has to start lit or it would be telling the opposite of the truth.
      */
     if (m->ops->option_held)
-        mrc_ui_set_lit(g_ui, MRC_UI_ICON_OPTION,
+        mh_ui_set_lit(g_ui, MH_UI_ICON_OPTION,
                        m->ops->option_held(m->board));
     /*
      * With the LCD filter on we render each panel pixel as a cell, so the
@@ -549,7 +549,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
      */
     SDL_PumpEvents();
     note_pointer_scale(0, 0);
-    const char *ov = getenv("MRC_POINTER_SCALE");
+    const char *ov = getenv("MH_POINTER_SCALE");
     if (ov) {
         float v = (float)atof(ov);
         if (v > 0.1f && v < 8.0f) {
@@ -568,7 +568,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
     static audio_out audio;
     memset(&audio, 0, sizeof(audio));
     audio.machine = m;
-    if (mrc_gui_audio)
+    if (mh_gui_audio)
         m->ops->audio_sink(m->board, audio_sample, &audio);
 
     static uint8_t gray[PANEL_SCREEN_W * PANEL_SCREEN_H];
@@ -609,14 +609,14 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
      * Experiment for finger input: a touchscreen reports its first motion
      * almost together with the press and in coarse steps, where a stylus
      * on the real digitizer is still for the OS's pen-down debounce. With
-     * MRC_PEN_SETTLE_MS set, motion within that many milliseconds of
+     * MH_PEN_SETTLE_MS set, motion within that many milliseconds of
      * machine time after a press is held back and applied afterwards.
      */
     uint64_t pen_settle_slots = 0;
     bool pen_pending = false;
     int pen_pending_x = 0, pen_pending_y = 0;
-    if (getenv("MRC_PEN_SETTLE_MS")) {
-        pen_settle_slots = (uint64_t)strtoul(getenv("MRC_PEN_SETTLE_MS"), NULL, 0) *
+    if (getenv("MH_PEN_SETTLE_MS")) {
+        pen_settle_slots = (uint64_t)strtoul(getenv("MH_PEN_SETTLE_MS"), NULL, 0) *
                            (DR840_CPU_HZ / 1000u);
         fprintf(stderr, "GUI: pen settle %llu slots after each press\n",
                 (unsigned long long)pen_settle_slots);
@@ -671,47 +671,47 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
     /* A device chosen from the list ends this machine's turn: the window
      * closes the way it would on a quit, the state is saved on the way out,
      * and the launcher starts the other one. */
-    while (running && !mrc_state_device_requested() &&
+    while (running && !mh_state_device_requested() &&
            (insns_total == 0 || ran < insns_total)) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (mrc_card_panel_event(g_ui, m, &e)) continue;
+            if (mh_card_panel_event(g_ui, m, &e)) continue;
             /* The rail sees everything first. A press that lands on it is
              * not a press on the guest's screen. */
-            if (mrc_ui_event(g_ui, &e)) {
-                rail_action(m, mrc_ui_take_action(g_ui));
-                int row = mrc_ui_take_row(g_ui);
-                if (row == MRC_UI_ROW_DISMISS) {
-                    if (mrc_card_panel_showing()) mrc_card_panel_close(g_ui);
-                    if (mrc_install_panel_showing()) mrc_install_panel_close(g_ui);
-                    if (mrc_settings_panel_showing()) mrc_settings_panel_close(g_ui);
-                    if (mrc_devices_panel_showing()) mrc_devices_panel_close(g_ui);
-                    mrc_ui_close_panel(g_ui);
+            if (mh_ui_event(g_ui, &e)) {
+                rail_action(m, mh_ui_take_action(g_ui));
+                int row = mh_ui_take_row(g_ui);
+                if (row == MH_UI_ROW_DISMISS) {
+                    if (mh_card_panel_showing()) mh_card_panel_close(g_ui);
+                    if (mh_install_panel_showing()) mh_install_panel_close(g_ui);
+                    if (mh_settings_panel_showing()) mh_settings_panel_close(g_ui);
+                    if (mh_devices_panel_showing()) mh_devices_panel_close(g_ui);
+                    mh_ui_close_panel(g_ui);
                     continue;
                 }
-                if (row == MRC_UI_ROW_BACK) {
-                    if (mrc_card_panel_showing()) {
-                        if (!mrc_card_panel_back(g_ui, m)) {
-                            mrc_card_panel_close(g_ui);
-                            mrc_settings_panel_open(g_ui, m);
+                if (row == MH_UI_ROW_BACK) {
+                    if (mh_card_panel_showing()) {
+                        if (!mh_card_panel_back(g_ui, m)) {
+                            mh_card_panel_close(g_ui);
+                            mh_settings_panel_open(g_ui, m);
                         }
-                    } else if (mrc_install_panel_showing()) {
-                        if (!mrc_install_panel_back(g_ui, m)) mrc_install_panel_close(g_ui);
-                    } else if (mrc_settings_panel_showing()) mrc_settings_panel_close(g_ui);
-                    else if (mrc_devices_panel_showing()) {
-                        if (!mrc_devices_panel_back(g_ui)) mrc_devices_panel_close(g_ui);
+                    } else if (mh_install_panel_showing()) {
+                        if (!mh_install_panel_back(g_ui, m)) mh_install_panel_close(g_ui);
+                    } else if (mh_settings_panel_showing()) mh_settings_panel_close(g_ui);
+                    else if (mh_devices_panel_showing()) {
+                        if (!mh_devices_panel_back(g_ui)) mh_devices_panel_close(g_ui);
                     }
-                    else if (mrc_ui_panel_open(g_ui)) mrc_ui_close_panel(g_ui);
+                    else if (mh_ui_panel_open(g_ui)) mh_ui_close_panel(g_ui);
                     continue;
                 }
-                if (!mrc_card_panel_row(g_ui, m, row) &&
-                    !mrc_devices_panel_row(g_ui, row) &&
-                    !mrc_settings_panel_row(g_ui, m, row) &&
-                    !mrc_install_panel_row(g_ui, m, row))
-                    mrc_display_row(row);
+                if (!mh_card_panel_row(g_ui, m, row) &&
+                    !mh_devices_panel_row(g_ui, row) &&
+                    !mh_settings_panel_row(g_ui, m, row) &&
+                    !mh_install_panel_row(g_ui, m, row))
+                    mh_display_row(row);
                 continue;
             }
-            if (mrc_sdl_display_event(display, &e, m, &wall_ref)) {
+            if (mh_sdl_display_event(display, &e, m, &wall_ref)) {
                 if (display->backgrounded) {
                     if (audio.dev) SDL_ClearQueuedAudio(audio.dev);
                     audio.n = 0;
@@ -833,7 +833,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
         {
             static long frame = -1, tx = -1, ty = -1, hold = 60, at = 30;
             if (frame < 0) {
-                const char *e = getenv("MRC_GUI_AUTOTAP");
+                const char *e = getenv("MH_GUI_AUTOTAP");
                 frame = 0;
                 if (e) { hold = 60; at = 30; sscanf(e, "%ld,%ld,%ld,%ld", &tx, &ty, &hold, &at); }
             }
@@ -851,7 +851,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
                         SDL_Rect dst;
                         panel_rect(&dst);
                         int wx, wy;
-                        mrc_sdl_panel_to_output(&dst, tx, ty, PANEL_SCREEN_W,
+                        mh_sdl_panel_to_output(&dst, tx, ty, PANEL_SCREEN_W,
                                                 PANEL_SCREEN_H, &wx, &wy);
                         int ww=0, wh=0, rw=0, rh=0;
                         SDL_GetWindowSize(g_win, &ww, &wh);
@@ -876,7 +876,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
 
         {
             Uint64 now = SDL_GetPerformanceCounter();
-            uint64_t owed = mrc_sdl_owed_slots(now, wall_ref, perf_hz, m->nominal_slots_hz);
+            uint64_t owed = mh_sdl_owed_slots(now, wall_ref, perf_hz, m->nominal_slots_hz);
             uint64_t chunk = owed > emulated ? owed - emulated : 0;
 
             if (chunk > max_catchup) {
@@ -919,14 +919,14 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
          * the PIC-2000 is the one with the green backlight.
          */
         unsigned w = 0, h = 0;
-        mrc_lcd_frame view;
+        mh_lcd_frame view;
         {
             SDL_Rect dst;
             panel_rect(&dst);
             bool have = m->ops->frame(m->board, gray, &w, &h) &&
                         w == PANEL_SCREEN_W && h == PANEL_SCREEN_H;
-            unsigned drawn = (unsigned)(mrc_sdl_sideways() ? dst.h : dst.w);
-            if (!mrc_lcd_render(lcd, display, have ? gray : NULL,
+            unsigned drawn = (unsigned)(mh_sdl_sideways() ? dst.h : dst.w);
+            if (!mh_lcd_render(lcd, display, have ? gray : NULL,
                                 PANEL_SCREEN_W, PANEL_SCREEN_H,
                                 m->frame_format, drawn, &view)) {
                 fprintf(stderr, "GUI: cannot allocate the panel texture\n");
@@ -945,7 +945,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
          * calibration. If the cross sits under the cursor but the OS reacts
          * somewhere else, the fault is in the second stage, not this one.
          */
-        if (mrc_gui_touch_debug && g_last_px >= 0) {
+        if (mh_gui_touch_debug && g_last_px >= 0) {
             for (int d = -6; d <= 6; d++) {
                 int cx = g_last_px + d, cy = g_last_py;
                 for (unsigned sy = 0; sy < cell; sy++)
@@ -963,10 +963,10 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
          * emulation can be looked at without a screen recorder. */
         {
             static int shot_done = 0;
-            const char *shot = getenv("MRC_LCD_SHOT");
+            const char *shot = getenv("MH_LCD_SHOT");
             static unsigned shot_wait = 0;
             if (shot && !shot_done && ++shot_wait > 30 &&
-                (!mrc_gui_touch_debug || g_last_px >= 0)) {
+                (!mh_gui_touch_debug || g_last_px >= 0)) {
                 FILE *pf = fopen(shot, "wb");
                 if (pf) {
                     fprintf(pf, "P6\n%u %u\n255\n", tw, PANEL_SCREEN_H * cell);
@@ -983,11 +983,11 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
             }
         }
 
-        mrc_install_panel_tick(g_ui, m);
-        mrc_card_panel_tick(g_ui, m);
-        mrc_devices_panel_tick(g_ui);
-        if (!mrc_sdl_display_present(display, PANEL_SCREEN_W,
-                                     PANEL_SCREEN_H, mrc_gui_integer)) {
+        mh_install_panel_tick(g_ui, m);
+        mh_card_panel_tick(g_ui, m);
+        mh_devices_panel_tick(g_ui);
+        if (!mh_sdl_display_present(display, PANEL_SCREEN_W,
+                                     PANEL_SCREEN_H, mh_gui_integer)) {
             fprintf(stderr, "SDL present: %s\n", SDL_GetError());
             running = false;
         }
@@ -1002,7 +1002,7 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
     }
 
     if (m->ops->keyboard_release) m->ops->keyboard_release(m->board);
-    if (mrc_gui_audio)
+    if (mh_gui_audio)
         m->ops->audio_sink(m->board, NULL, NULL);
     if (audio.dev) {
         fprintf(stderr,
@@ -1015,14 +1015,14 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
                 (unsigned long long)audio.starved_polls,
                 (unsigned long long)audio.polls);
     SDL_CloseAudioDevice(audio.dev);
-    if (mrc_card_panel_showing()) mrc_card_panel_close(g_ui);
+    if (mh_card_panel_showing()) mh_card_panel_close(g_ui);
     }
 
     /*
      * The audio device was this machine's and goes with it; the window was
      * not, and the next machine attaches to the one already on screen.
      */
-    if (mrc_gui_audio) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if (mh_gui_audio) SDL_QuitSubSystem(SDL_INIT_AUDIO);
     g_ren = NULL; g_win = NULL; g_ui = NULL;
     return 0;
 }
@@ -1034,9 +1034,9 @@ static int datarover_present(mrc_runtime *m, uint64_t insns_total,
  * whether the program opens one or runs headless. Ask SDL rather than reading
  * DISPLAY, which is right on X11 and wrong everywhere else.
  */
-bool mrc_gui_available(void)
+bool mh_gui_available(void)
 {
-    mrc_sdl_prepare_video();
+    mh_sdl_prepare_video();
     if (SDL_WasInit(SDL_INIT_VIDEO))
         return true;
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
@@ -1045,16 +1045,16 @@ bool mrc_gui_available(void)
     return true;
 }
 
-#else  /* !MRC_HAVE_SDL */
+#else  /* !MH_HAVE_SDL */
 
-static int datarover_present(mrc_runtime *m, uint64_t insns_total)
+static int datarover_present(mh_runtime *m, uint64_t insns_total)
 {
     fprintf(stderr, "this build has no GUI: SDL2 was not found at configure "
             "time\n");
     return 1;
 }
 
-bool mrc_gui_available(void) { return false; }
+bool mh_gui_available(void) { return false; }
 
 #endif
 
@@ -1072,8 +1072,8 @@ bool mrc_gui_available(void) { return false; }
  * is why a device picked up again showed a black screen and had to be
  * switched on. Putting it down and picking it up should be one motion.
  */
-int mrc_gui_run(machine *board, uint64_t slots, struct mrc_shell *shell)
+int mh_gui_run(machine *board, uint64_t slots, struct mh_shell *shell)
 {
-    mrc_runtime view = mrc_datarover_runtime(board);
+    mh_runtime view = mh_datarover_runtime(board);
     return datarover_present(&view, slots, shell);
 }

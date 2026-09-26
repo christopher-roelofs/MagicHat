@@ -29,14 +29,14 @@
  * window being written is made writable and put back before it is run. That
  * is slower per compiled block and identical in every other respect.
  */
-#define SETS MRC_JIT_SETS
-#define WAYS MRC_JIT_WAYS
+#define SETS MH_JIT_SETS
+#define WAYS MH_JIT_WAYS
 #define ARENA_SIZE (32u << 20)
 #define PAGES (1u << 20)             /* 4 GiB of guest virtual space */
 
 struct r3900_jit {
-    mrc_jit_tables tables;           /* first: native code loads from here */
-    mrc_jit_slot slot[SETS * WAYS];
+    mh_jit_tables tables;           /* first: native code loads from here */
+    mh_jit_slot slot[SETS * WAYS];
     uint8_t *arena, *writable;   /* the same bytes; equal when not dual-mapped */
     bool dual;
     size_t used, page_size;
@@ -46,10 +46,10 @@ struct r3900_jit {
     bool failed;
 };
 
-r3900_jit *mrc_cpu_jit_create(void)
+r3900_jit *mh_cpu_jit_create(void)
 {
 #if HAVE_MMAP
-    if (!mrc_jit_host_supported()) return NULL;
+    if (!mh_jit_host_supported()) return NULL;
     long page = sysconf(_SC_PAGESIZE);
     if (page < 4096) return NULL;
     /*
@@ -61,9 +61,9 @@ r3900_jit *mrc_cpu_jit_create(void)
     void *arena = MAP_FAILED, *writable = MAP_FAILED;
     bool dual = false;
 #ifdef __NR_memfd_create
-    /* MRC_JIT_SINGLE_MAP=1 exercises the fallback on a host that does not
+    /* MH_JIT_SINGLE_MAP=1 exercises the fallback on a host that does not
      * need it; the two paths must behave identically. */
-    int fd = getenv("MRC_JIT_SINGLE_MAP") ? -1 :
+    int fd = getenv("MH_JIT_SINGLE_MAP") ? -1 :
              (int)syscall(__NR_memfd_create, "mips-jit", 1u /* MFD_CLOEXEC */);
     if (fd >= 0) {
         if (!ftruncate(fd, ARENA_SIZE)) {
@@ -108,7 +108,7 @@ r3900_jit *mrc_cpu_jit_create(void)
 #endif
 }
 
-void mrc_cpu_jit_free(r3900_jit *j)
+void mh_cpu_jit_free(r3900_jit *j)
 {
     if (!j) return;
 #if HAVE_MMAP
@@ -120,7 +120,7 @@ void mrc_cpu_jit_free(r3900_jit *j)
     free(j);
 }
 
-void mrc_cpu_jit_report(const r3900_jit *j, FILE *f)
+void mh_cpu_jit_report(const r3900_jit *j, FILE *f)
 {
     if (j) fprintf(f, "mips-jit: compiled=%" PRIu64 " native=%" PRIu64
                    " fallback=%" PRIu64 " replaced=%" PRIu64 " disabled=%d"
@@ -130,8 +130,8 @@ void mrc_cpu_jit_report(const r3900_jit *j, FILE *f)
                    j->failed, j->flushes, j->blocks, j->links,
                    j->dual ? "dual" : "single");
 }
-uint64_t mrc_cpu_jit_native_count(const r3900_jit *j) { return j ? j->native : 0; }
-void mrc_jit_account(r3900_jit *j, unsigned native, unsigned fallback)
+uint64_t mh_cpu_jit_native_count(const r3900_jit *j) { return j ? j->native : 0; }
+void mh_jit_account(r3900_jit *j, unsigned native, unsigned fallback)
 {
     j->native += native; j->fallback += fallback; j->blocks += native != 0;
 }
@@ -155,8 +155,8 @@ static void build_tables(r3900_jit *j, r3900 *c)
         bool unmapped = va >= 0x80000000u && va < 0xC0000000u;
         if (unmapped || !c->has_mmu) {
             pa = unmapped ? va & 0x1FFFFFFFu : va;
-            rd = mrc_bus_page_host(c->bus, pa, false);
-            wr = mrc_bus_page_host(c->bus, pa, true);
+            rd = mh_bus_page_host(c->bus, pa, false);
+            wr = mh_bus_page_host(c->bus, pa, true);
         }
         j->tables.read[page] = rd;
         j->tables.write[page] = wr;
@@ -165,7 +165,7 @@ static void build_tables(r3900_jit *j, r3900 *c)
     j->has_mmu = c->has_mmu;
 }
 
-void mrc_jit_prepare(r3900_jit *j, r3900 *c)
+void mh_jit_prepare(r3900_jit *j, r3900 *c)
 {
     if (j->generation == c->bus->lookup_generation && j->tables_built &&
         j->has_mmu == c->has_mmu)
@@ -180,7 +180,7 @@ static uint32_t fetch_span(r3900 *c, uint32_t va, const uint8_t **bytes)
 {
     uint32_t pa = va >= 0x80000000u && va < 0xC0000000u ? va & 0x1FFFFFFFu : va;
     uint32_t length;
-    *bytes = mrc_bus_read_span(c->bus, pa, &length);
+    *bytes = mh_bus_read_span(c->bus, pa, &length);
     if (!*bytes) return 0;
     /* A physical span can cross the virtual segment edge where the
      * translation changes; never compile across it. */
@@ -190,26 +190,26 @@ static uint32_t fetch_span(r3900 *c, uint32_t va, const uint8_t **bytes)
     return length;
 }
 
-static bool compile(r3900_jit *j, r3900 *c, uint32_t va, mrc_jit_slot *out)
+static bool compile(r3900_jit *j, r3900 *c, uint32_t va, mh_jit_slot *out)
 {
-    mrc_jit_block b = {.va = va};
+    mh_jit_block b = {.va = va};
     uint32_t length = fetch_span(c, va, &b.guest);
     if (length < 4) return false;
-    while (b.n < MRC_JIT_MAX_INSNS && b.n < length / 4) {
+    while (b.n < MH_JIT_MAX_INSNS && b.n < length / 4) {
         const uint8_t *p = b.guest + b.n * 4;
         uint32_t word = (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 |
                         (uint32_t)p[2] << 8 | p[3];
-        mrc_jit_ir *i = &b.ir[b.n];
-        if (!mrc_jit_decode_mips(word, i)) break;
+        mh_jit_ir *i = &b.ir[b.n];
+        if (!mh_jit_decode_mips(word, i)) break;
         b.words[b.n] = word;
         if (b.branch) {
             /* Only a non-branch may fill the slot. A branch in a delay slot
              * is architecturally undefined; leave it to the reference path. */
-            if (mrc_jit_is_branch(i)) break;
+            if (mh_jit_is_branch(i)) break;
             b.delay = true; b.n++; break;
         }
         b.n++;
-        if (mrc_jit_is_branch(i)) b.branch = b.n;
+        if (mh_jit_is_branch(i)) b.branch = b.n;
         else if (i->op == J_EXEC && i->ends_block) break;
     }
     if (!b.n) return false;
@@ -229,7 +229,7 @@ static bool compile(r3900_jit *j, r3900 *c, uint32_t va, mrc_jit_slot *out)
                 return false;
         }
         unsigned chain = 0;
-        size_t size = cap ? mrc_jit_emit(j->writable + start, j->arena + start,
+        size_t size = cap ? mh_jit_emit(j->writable + start, j->arena + start,
                                          cap, &b, &chain) : 0;
         if (!j->dual && cap &&
             mprotect(j->arena + first, last - first, PROT_READ | PROT_EXEC))
@@ -244,7 +244,7 @@ static bool compile(r3900_jit *j, r3900 *c, uint32_t va, mrc_jit_slot *out)
                                     (char *)j->arena + start + size);
             j->used = start + size;
             j->compiled++;
-            out->code = (mrc_jit_code)(j->arena + start);
+            out->code = (mh_jit_code)(j->arena + start);
             out->chain = j->arena + start + chain;
             out->n = b.n;
             return true;
@@ -255,7 +255,7 @@ static bool compile(r3900_jit *j, r3900 *c, uint32_t va, mrc_jit_slot *out)
     return false;
 }
 
-const mrc_jit_entry *mrc_jit_find(r3900_jit *j, r3900 *c, uint32_t va,
+const mh_jit_entry *mh_jit_find(r3900_jit *j, r3900 *c, uint32_t va,
                                   bool recompile)
 {
     if (j->failed) return NULL;
@@ -288,7 +288,7 @@ const mrc_jit_entry *mrc_jit_find(r3900_jit *j, r3900 *c, uint32_t va,
     return &j->slot[victim];
 }
 
-void mrc_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
+void mh_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
 {
     uint8_t *site = j->tables.link;
     j->tables.link = NULL;
@@ -300,7 +300,7 @@ void mrc_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
                          !(c->cp0[CP0_STATUS] & SR_KUc))))
         return;
     uint64_t flushes = j->flushes;
-    const mrc_jit_entry *target = mrc_jit_find(j, c, c->pc, stale);
+    const mh_jit_entry *target = mh_jit_find(j, c, c->pc, stale);
     if (!target || j->flushes != flushes) return;
     size_t offset = (size_t)(site - j->writable);
     /* Without a separate writable view the branch being redirected sits in
@@ -312,7 +312,7 @@ void mrc_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
     if (!j->dual && mprotect(j->arena + first, span, PROT_READ | PROT_WRITE))
         return;
 #endif
-    mrc_jit_patch_link(site, j->arena + offset, target->chain);
+    mh_jit_patch_link(site, j->arena + offset, target->chain);
 #if HAVE_MMAP
     if (!j->dual && mprotect(j->arena + first, span, PROT_READ | PROT_EXEC))
         return;
@@ -322,16 +322,16 @@ void mrc_jit_resolve_link(r3900_jit *j, r3900 *c, bool stale)
 }
 
 #if !defined(__x86_64__) && !(defined(__aarch64__) && !defined(__AARCH64EB__))
-size_t mrc_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
-                    const mrc_jit_block *b, unsigned *chain)
+size_t mh_jit_emit(uint8_t *out, const uint8_t *exec, size_t cap,
+                    const mh_jit_block *b, unsigned *chain)
 {
     (void)out; (void)exec; (void)cap; (void)b; (void)chain;
     return 0;
 }
-void mrc_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
+void mh_jit_patch_link(uint8_t *site, const uint8_t *site_exec,
                         const uint8_t *target)
 {
     (void)site; (void)site_exec; (void)target;
 }
-bool mrc_jit_host_supported(void) { return false; }
+bool mh_jit_host_supported(void) { return false; }
 #endif
