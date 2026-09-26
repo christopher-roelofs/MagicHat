@@ -5,15 +5,14 @@ keyboard transport. GUI startup attaches it automatically. `--keyboard`
 also attaches it headlessly; `--no-keyboard` disconnects it. It does not use
 a card slot, UART, guest OS injection, or keyboard-related ROM patches.
 
-| Local ROM | Keyboard status |
+| ROM | Keyboard status |
 | --- | --- |
-| Sony PIC 2000/PIC-2000.rom | Supported; existing implementation retained. |
-| Motorola Envoy/envoy-1.0.rom | Supported. |
-| Motorola Envoy/envoy-1.0-pt4.rom | Supported. |
-| Sony HIX 300/hix300-mc19-c2.rom | Supported with the board's existing checksum recovery. |
-| Sony HIX 300/hix300-mc19-c2-patched.rom | Supported. |
-| Motorola Envoy/envoy-1.0-mc31-b10.rom | Experimental core probe passes with AC attached; production attachment remains gated pending battery/power validation. |
-| Sony PIC 1000 images and recovery variants | Gated; boot/recovery problems still prevent keyboard validation. |
+| PIC-2000.rom | Supported. |
+| envoy-1.0.rom | Supported. |
+| envoy-1.0-pt4.rom | Supported. |
+| hix300-mc19-c2.rom | Supported with the board's existing checksum recovery. |
+| envoy-1.0-mc31-b10.rom | Experimental core probe passes with AC attached; production attachment remains gated pending battery/power validation. |
+| PIC-1000.rom | Gated; the damaged ROM does not boot, so the keyboard cannot be validated. |
 
 ## Board wiring
 
@@ -58,13 +57,13 @@ modifier release, and Caps Lock LED writes. Both the interpreter and JIT are
 tested. SDL probes exercise real keydown/up and focus-loss events. These are
 guest-decoder checks, not assertions about text in every application.
 
-The five supported images in the table passed ten fresh-boot core probes
-(JIT and interpreter for each) and five SDL probes. Each core probe decoded
-`61,42,63`, serviced four keyboard requests, and completed a Caps Lock LED
-write with no controller errors. Each SDL probe decoded three characters and
-released Shift on focus loss. In this repository, `ctest -R
-'pic_magicbus|rom_detection'` runs the keyboard device and ROM detection
-tests.
+Five images, the four supported above and a patched HIX-300 variant, passed
+ten fresh-boot core probes (JIT and interpreter for each) and five SDL
+probes. Each core probe decoded `61,42,63`, serviced four keyboard requests,
+and completed a Caps Lock LED write with no controller errors. Each SDL
+probe decoded three characters and released Shift on focus loss. In this
+repository, `ctest -R 'pic_magicbus|rom_detection'` runs the keyboard device
+and ROM detection tests.
 
 The synthetic device test covers each supported board's pin and IRQ routing,
 ID/descriptor, DMA, legacy header isolation, queue pressure, held-key release,

@@ -1,0 +1,36 @@
+#!/bin/sh
+# Unit test for uicrawl's tolerant screen matching.
+#
+# The fixtures are real screens from a crawl: screen_a and screen_a_caret are
+# the same Magic Cap screen differing only by a caret -- four pixels, at
+# (348,61) and (35,108) -- and screen_b is a different screen entirely.
+# Exact hashing made the first two separate nodes, which inflated the graph
+# and spent the exploration budget re-walking screens already visited.
+set -e
+cd "$(dirname "$0")/.."
+python3 - <<'PY'
+src = open("scripts/uicrawl").read().split("def main()")[0]
+ns = {"__file__": "scripts/uicrawl", "__name__": "uc"}
+exec(src, ns)
+pixels, close_enough = ns["pixels"], ns["close_enough"]
+
+a = pixels("tests/fixtures/screen_a.pgm.gz")
+caret = pixels("tests/fixtures/screen_a_caret.pgm.gz")
+b = pixels("tests/fixtures/screen_b.pgm.gz")
+fails = 0
+def check(name, got, want):
+    global fails
+    if got == want:
+        print(f"  ok      {name}")
+    else:
+        print(f"  FAIL    {name}: expected {want}, got {got}")
+        fails += 1
+
+check("reads a gzipped framebuffer", a is not None and len(a) == 480 * 320, True)
+check("caret pair differs at tolerance 0", close_enough(a, caret, 0), False)
+check("caret pair matches at tolerance 64", close_enough(a, caret, 64), True)
+check("different screens stay different", close_enough(a, b, 64), False)
+check("a screen matches itself exactly", close_enough(a, a, 0), True)
+check("mismatched sizes do not match", close_enough(a, b[:100], 64), False)
+raise SystemExit(1 if fails else 0)
+PY

@@ -1,0 +1,18 @@
+#!/bin/sh
+# Run a command at the IDT monitor prompt from the saved snapshot.
+#   scripts/mon "core" [instruction budget]
+# MHAT, ROM and STATES override the binary, the ROM, and the directory
+# holding monitor.state (made by scripts/mkstates).
+set -e
+cd "$(dirname "$0")/.."
+if [ -z "$1" ]; then
+    echo 'usage: scripts/mon "COMMAND" [instruction budget]' >&2
+    exit 2
+fi
+CMD="$1"
+N="${2:-200000000}"
+ROM=${ROM:-roms/MagicCap-USA.image}
+STATES=${STATES:-states}
+"${MHAT:-./build/mhat}" --temporary --rom "$ROM" --headless \
+    --load-state "$STATES/monitor.state" \
+    --input "$CMD\n" -n "$N" 2>/dev/null | tr -d '\r'

@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Compare guest artifacts and timing across MIPS engines or interpreter builds.
+
+By default this times one binary's interpreter against its JIT. With
+--baseline-exe it instead compares two binaries, both on the interpreter
+(for example before and after a change, or a profile-guided build). Runs
+alternate order between repeats, and every run must produce the same RAM,
+framebuffer, WAV and normalised log, or the harness stops. It does not
+measure SDL latency. Keep the binaries unchanged while it runs.
+
+    scripts/benchmark-mips
+    scripts/benchmark-mips --state states/desk.state --drag --out bench/drag
+    scripts/benchmark-mips --exe build-pgo/mhat --baseline-exe mhat-before \\
+        --slots 500000000 --out bench/pgo
+
+Each run uses --fresh --temporary, so the device's own saved state is
+neither read nor written. results.json in --out records the commands, the
+binary, ROM and state hashes, and the timings.
+"""
+import argparse
+import os
+import sys
+import wave
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import time
+
+p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ROOT = Path(__file__).resolve().parent.parent
+p.add_argument('--exe', type=Path, default=Path(os.environ.get('MHAT', ROOT / 'build' / 'mhat')),
+               help='binary to time (default build/mhat, or $MHAT)')
+p.add_argument('--baseline-exe', type=Path,
+               help='compare two interpreter binaries instead of interpreter versus JIT')
+p.add_argument('--rom', type=Path, default=ROOT / 'roms' / 'MagicCap-USA.image',
+               help='MIPS ROM (default roms/MagicCap-USA.image)')
+p.add_argument('--out', type=Path, default=ROOT / 'bench' / 'mips',
+               help='directory for artifacts and results.json (default bench/mips)')
+p.add_argument('--slots', type=int, default=50000000,
+               help='instructions per run (default 50000000)')
+p.add_argument('--repeats', type=int, default=3,
+               help='rounds of every variant (default 3)')
+p.add_argument('--state', type=Path, help='start from this saved machine')
+p.add_argument('--drag', action='store_true',
+               help='drag across the screen (400,255 to 100,255); use with a Desk state')
+p.add_argument('--tap', nargs=3, metavar=('X','Y','SLOT'), help='tap a screen pixel at instruction SLOT')
+a = p.parse_args()
+if a.drag and a.tap: p.error('choose drag or tap')
+if a.slots <= 0 or a.repeats <= 0: p.error('positive slots/repeats required')
+if not a.rom.exists(): sys.exit(f'SKIP: {a.rom} not present')
+a.out.mkdir(parents=True, exist_ok=True)
+rows = []
+affinity = sorted(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else None
+metadata = dict(cpu_affinity=affinity, binary_sha256=hashlib.sha256(a.exe.read_bytes()).hexdigest(),
+                rom_sha256=hashlib.sha256(a.rom.read_bytes()).hexdigest())
+if a.state: metadata['state_sha256'] = hashlib.sha256(a.state.read_bytes()).hexdigest()
+variants = [('interpreter', 'interpreter', a.exe), ('jit', 'jit', a.exe)]
+if a.baseline_exe:
+    metadata['baseline_binary_sha256'] = hashlib.sha256(a.baseline_exe.read_bytes()).hexdigest()
+    variants = [('baseline', 'interpreter', a.baseline_exe), ('candidate', 'interpreter', a.exe)]
+for iteration in range(a.repeats):
+    expected = None
+    for label, engine, executable in (variants if iteration % 2 == 0 else variants[::-1]):
+        base = a.out / f'{label}-{iteration}'
+        command = [str(executable.resolve()), '--rom', str(a.rom.resolve()), '--headless',
+                   '--fresh', '--temporary', '--no-host-battery', '-n', str(a.slots),
+                   '--cpu-engine', engine, '--dump-fb', str(base)+'.pgm',
+                   '--dump-ram', str(base)+'.ram', '--audio-wav', str(base)+'.wav']
+        if a.state: command += ['--load-state', str(a.state.resolve())]
+        if a.tap: command += ['--tap-px', *a.tap]
+        if a.drag: command += ['--drag-px', '400,255,100,255,5000000', '--tap-hold', '50000000']
+        with Path(str(base)+'.log').open('w') as log:
+            start = time.monotonic()
+            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
+            elapsed = time.monotonic()-start
+        hashes = {ext: hashlib.sha256(Path(str(base)+ext).read_bytes()).hexdigest()
+                  for ext in ('.ram','.pgm','.wav')}
+        log = Path(str(base)+'.log').read_text()
+        normalized = '\n'.join(line for line in log.replace(str(base),'ARTIFACT').splitlines()
+                               if not line.startswith('mips-jit:')
+                               and line != 'cpu: native engine')
+        signature = (hashes, normalized)
+        if expected is None: expected = signature
+        elif expected != signature: raise RuntimeError(f'{base}: guest artifacts/diagnostics differ')
+        stats = re.search(r'mips-jit: compiled=(\d+) native=(\d+) fallback=(\d+) replaced=(\d+) disabled=(\d+)',log)
+        if engine == 'jit' and (not stats or int(stats[2]) == 0 or int(stats[5])):
+            raise RuntimeError('JIT did not execute native code or disabled itself')
+        with wave.open(str(base)+'.wav', 'rb') as audio:
+            audio_frames = audio.getnframes()
+            audio_nonzero = any(audio.readframes(audio_frames))
+        row = dict(label=label, command=command, audio_frames=audio_frames, audio_nonzero=audio_nonzero, engine=engine, iteration=iteration, seconds=elapsed, hashes=hashes,
+                   jit_stats=[int(x) for x in stats.groups()] if stats else None)
+        rows.append(row)
+        print(json.dumps(row),flush=True)
+    (a.out/'results.json').write_text(json.dumps(dict(**metadata,slots=a.slots,
+        rows=rows, artifacts_match=True),indent=2)+'\n')

@@ -1,0 +1,72 @@
+#!/bin/sh
+#
+# Run several whole-boot probes at once and print each one's Desk hash.
+#
+#   scripts/sweep "--aux-adc 0,0,200,200" "--aux-adc 0,0,800,800" ...
+#
+# Each argument is a complete option string, passed to every stage of one
+# walk from the monitor prompt to the Desk. Probes are independent, so they
+# run concurrently; a serial sweep would use one core and leave the rest idle.
+#
+# MHAT selects the binary and ROM the image (default roms/MagicCap-USA.image);
+# STATES is the directory holding monitor.state from scripts/mkstates; OUT
+# receives the framebuffers (default sweep-out/). JOBS caps concurrency (default: cores minus one,
+# so the machine stays usable).
+#
+set -e
+cd "$(dirname "$0")/.."
+
+ROM=${ROM:-roms/MagicCap-USA.image}
+STATES=${STATES:-states}
+MHAT=${MHAT:-./build/mhat}
+JOBS=${JOBS:-$(( $(nproc 2>/dev/null || echo 2) - 1 ))}
+[ "$JOBS" -lt 1 ] && JOBS=1
+# A mid-range battery makes the boot slower; a budget ample for one path is
+# not ample for all of them, so this is deliberately generous.
+BOOT_N=${BOOT_N:-3000000000}
+OUT=${OUT:-sweep-out}
+
+if [ $# -eq 0 ]; then
+    echo "usage: scripts/sweep \"OPTIONS\" [\"OPTIONS\" ...]" >&2
+    exit 2
+fi
+if [ ! -f "$ROM" ] || [ ! -f "$STATES/monitor.state" ]; then
+    echo "SKIP: need $ROM and $STATES/monitor.state (run scripts/mkstates)" >&2
+    exit 0
+fi
+mkdir -p "$OUT"
+
+probe() {
+    opts=$1
+    tag=$(printf '%s' "$opts" | tr -c 'A-Za-z0-9' '_')
+    W=$(mktemp -d)
+
+    $MHAT --temporary --rom "$ROM" --headless --load-state "$STATES/monitor.state" --input 'go -c\n' \
+        $opts -n $BOOT_N --save-state "$W/b.state" \
+        --dump-fb "$OUT/$tag.boot.pgm" >/dev/null 2>&1
+    $MHAT --temporary --rom "$ROM" --headless --load-state "$W/b.state" $opts \
+        --tap 500 500 5000000 --tap-hold 20000000 -n 400000000 \
+        --save-state "$W/c.state" >/dev/null 2>&1
+    $MHAT --temporary --rom "$ROM" --headless --load-state "$W/c.state" $opts \
+        --taps-px "22,22,20000000;456,296,140000000;239,159,260000000" \
+        --tap-hold 45000000 -n 450000000 \
+        --dump-fb "$OUT/$tag.desk.pgm" >/dev/null 2>&1
+    rm -rf "$W"
+
+    boot=$(python3 -c "
+d=open('$OUT/$tag.boot.pgm','rb').read(); i=d.index(b'255\n')+4
+print(sum(1 for b in d[i:] if b!=255))" 2>/dev/null || echo '?')
+    printf '%-34s boot_px=%-7s desk=%s\n' "$opts" "$boot" \
+        "$(sha256sum "$OUT/$tag.desk.pgm" | cut -c1-16)"
+}
+
+running=0
+for opts in "$@"; do
+    probe "$opts" &
+    running=$((running + 1))
+    if [ "$running" -ge "$JOBS" ]; then
+        wait -n 2>/dev/null || wait
+        running=$((running - 1))
+    fi
+done
+wait
