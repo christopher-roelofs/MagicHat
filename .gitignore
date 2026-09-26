@@ -31,3 +31,8 @@
 compile_commands.json
 __pycache__/
 *.py[cod]
+
+# Script outputs: scripts/uicrawl, scripts/sweep, scripts/benchmark-mips
+/tests/uimap/
+/sweep-out/
+/bench/

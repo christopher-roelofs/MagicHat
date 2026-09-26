@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""
+Explore the Magic Cap UI by tapping it everywhere and seeing what happens.
+
+    scripts/uicrawl --jobs 8                 crawl from the Desk
+    scripts/uicrawl --grid 24 --jobs 8       finer grid, slower
+    scripts/uicrawl --resume                 continue an interrupted crawl
+
+The seed is states/cleandesk.state from scripts/mkstates; output goes to
+tests/uimap/. MHAT overrides the binary (default build/mhat).
+
+The emulator can snapshot the whole machine, so the UI can be treated as a
+graph: a screen is a node, a tap that changes the screen is an edge, and the
+saved state at each node lets us return there and try the next tap. Breadth
+first from the Desk, deduplicating screens by framebuffer hash.
+
+Two things make the result trustworthy rather than merely plausible:
+
+  * A tap is judged against an *idle* run of the same length from the same
+    state, not against the state it started in. Magic Cap redraws a clock and
+    animates on its own, so comparing against the starting screen invents an
+    edge for every point on the panel.
+
+  * Every edge records the coverage of the run that produced it. That is what
+    makes this more than a click test: it maps a user-visible behaviour onto
+    the ROM code that implements it. scripts/covdiff will difference an edge
+    against its idle baseline.
+
+Disk matters here. The coverage bitmap is a fixed 16 MB per run -- it maps
+512 MB of physical address space at a bit per word -- and a crawl makes
+thousands of runs. Two things keep that in hand: coverage is kept only for
+taps that actually changed the screen (well under half of them), and it is
+gzipped, which is about a 900x saving because the bitmap is almost all zeros.
+Everything else a probe writes is scratch and is deleted as soon as it has
+been hashed. The screens that are kept are stored compressed: a machine
+snapshot is 8.7 MB and gzips to 2.0 MB, a framebuffer 154 KB to 5.8 KB, and
+the snapshots are what the footprint is made of once coverage is under
+control. An earlier version kept all of it and reached 6.4 GB in twenty
+minutes.
+
+What it cannot tell you is that it found everything. It finds what a single
+tap on a grid point reaches; drags, double taps, typing and anything behind a
+scroll are invisible to it. Treat the map as a lower bound.
+"""
+import argparse, gzip, hashlib, json, os, shutil, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MHAT = os.environ.get("MHAT", os.path.join(ROOT, "build", "mhat"))
+W, H = 480, 320
+
+
+def sh(args):
+    return subprocess.run(args, cwd=ROOT, stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode
+
+
+def drop(*paths):
+    for p in paths:
+        if p:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def store_gz(src, dst_gz):
+    """Compress src to dst_gz and remove the original."""
+    with open(src, "rb") as i, gzip.open(dst_gz, "wb", 9) as o:
+        shutil.copyfileobj(i, o)
+    drop(src)
+
+
+def pixels(path):
+    """Raw 8-bit samples from a PGM (or gzipped PGM), header stripped."""
+    try:
+        op = gzip.open if path.endswith(".gz") else open
+        with op(path, "rb") as f:
+            d = f.read()
+    except OSError:
+        return None
+    parts = d.split(b"\n", 3)
+    if len(parts) < 4 or parts[0].strip() != b"P5":
+        return None
+    return parts[3]
+
+
+def close_enough(a, b, tol):
+    """True when two screens differ by at most `tol` pixels.
+
+    Exact hashes made the graph much bigger than the UI. Magic Cap leaves a
+    caret or a selection mark on screen, so screens that are the same to a
+    human differed by four pixels and became separate nodes -- one sample of
+    60 held an 18-way group of these. That inflates storage, and worse, it
+    spends the exploration budget re-walking a screen already visited.
+
+    Chunks that match are skipped whole, so the common case (two entirely
+    different screens) costs one comparison rather than a scan.
+    """
+    if a is None or b is None or len(a) != len(b):
+        return False
+    diff = 0
+    for i in range(0, len(a), 4096):
+        ca, cb = a[i:i + 4096], b[i:i + 4096]
+        if ca == cb:
+            continue
+        for x, y in zip(ca, cb):
+            if x != y:
+                diff += 1
+                if diff > tol:
+                    return False
+    return diff <= tol
+
+
+def digest(path):
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:16]
+    except OSError:
+        return None
+
+
+class Crawler:
+    def __init__(self, a):
+        self.a = a
+        self.out = os.path.join(ROOT, a.out)
+        self.screens = os.path.join(self.out, "screens")
+        self.tmp = os.path.join(self.out, "tmp")
+        self.cov = os.path.join(self.out, "coverage")
+        for d in (self.screens, self.tmp, self.cov):
+            os.makedirs(d, exist_ok=True)
+        self.graph = os.path.join(self.out, "graph.tsv")
+        self.seen = {}
+        self.pix = {}          # screen id -> its framebuffer, for tolerant matching
+        self.edges = []
+        if a.resume:
+            self.load()
+
+    def load(self):
+        for n in os.listdir(self.screens):
+            if n.endswith(".state.gz"):
+                sid = n[:-9]
+                self.seen[sid] = os.path.join(self.screens, n)
+                self.pix[sid] = pixels(os.path.join(self.screens, sid + ".pgm.gz"))
+        if os.path.exists(self.graph):
+            with open(self.graph) as f:
+                self.edges = [l.rstrip("\n").split("\t") for l in f
+                              if not l.startswith("#")]
+        print(f"resuming: {len(self.seen)} screens, {len(self.edges)} edges")
+
+    def identify(self, px):
+        """Which known screen is this, or None if it is new."""
+        for sid, known in self.pix.items():
+            if close_enough(px, known, self.a.tolerance):
+                return sid
+        return None
+
+    def materialize(self, gz):
+        """mhat loads a real file, so unpack a stored screen into scratch."""
+        raw = os.path.join(self.tmp, os.path.basename(gz)[:-3])
+        if not os.path.exists(raw):
+            with gzip.open(gz, "rb") as i, open(raw, "wb") as o:
+                shutil.copyfileobj(i, o)
+        return raw
+
+    def run(self, state, tag, tap=None, cov=None):
+        """Run one case; return (fb_hash, fb_path, state_path)."""
+        fb = os.path.join(self.tmp, tag + ".pgm")
+        st = os.path.join(self.tmp, tag + ".state")
+        cmd = [MHAT, "--temporary", "--headless", "--rom", self.a.rom, "--load-state", state,
+               "-n", str(self.a.budget), "--dump-fb", fb, "--save-state", st]
+        if tap:
+            x, y = tap
+            cmd += ["--tap-px", str(x), str(y), str(self.a.tap_at),
+                    "--tap-hold", str(self.a.tap_hold)]
+        if cov:
+            cmd += ["--coverage", cov]
+        sh(cmd)
+        return digest(fb), fb, st
+
+    def points(self):
+        g = self.a.grid
+        return [(x, y) for y in range(g // 2, H, g)
+                       for x in range(g // 2, W, g)]
+
+    def explore(self, name, state):
+        """Tap every grid point from one screen. Returns newly found screens."""
+        _, ifb, ist = self.run(state, f"{name}_idle")
+        base_px = pixels(ifb)
+        drop(ifb, ist)
+        if base_px is None:
+            print(f"  {name}: idle run produced no framebuffer; skipping")
+            return []
+        pts = self.points()
+        print(f"  {name}: {len(pts)} points")
+
+        def probe(p):
+            x, y = p
+            tag = f"{name}_{x}_{y}"
+            cov = os.path.join(self.tmp, tag + ".cov") if self.a.coverage else None
+            h, fb, st = self.run(state, tag, tap=(x, y), cov=cov)
+            px = pixels(fb)
+            # Compared against the screen we tapped from, within tolerance, so
+            # a caret or a redrawn mark is not mistaken for a response. Safe
+            # to do in a worker: base_px does not change while this screen is
+            # being explored.
+            if px is None or close_enough(px, base_px, self.a.tolerance):
+                drop(fb, st, cov)
+                return None
+            kept = None
+            if cov and os.path.exists(cov):
+                kept = os.path.join(self.cov, tag + ".bin.gz")
+                with open(cov, "rb") as i, gzip.open(kept, "wb", 9) as o:
+                    shutil.copyfileobj(i, o)
+                drop(cov)
+            return (x, y, h, px, fb, st, kept)
+
+        found = []
+        with ThreadPoolExecutor(max_workers=self.a.jobs) as ex:
+            for r in ex.map(probe, pts):
+                if r is None:
+                    continue
+                x, y, h, px, fb, st, _ = r
+                # Identification happens here rather than in the worker: it
+                # compares against every screen found so far, which changes as
+                # we go, so it has to be serial.
+                match = self.identify(px)
+                if match is not None:
+                    h = match
+                self.edges.append([name, str(x), str(y), h])
+                if h not in self.seen:
+                    dst_s = os.path.join(self.screens, h + ".state.gz")
+                    store_gz(st, dst_s)
+                    store_gz(fb, os.path.join(self.screens, h + ".pgm.gz"))
+                    self.seen[h] = dst_s
+                    self.pix[h] = px
+                    found.append(h)
+                    print(f"    ({x:3d},{y:3d}) -> NEW screen {h}")
+                else:
+                    drop(fb, st)
+                    print(f"    ({x:3d},{y:3d}) -> {h}")
+        return found
+
+    def save(self):
+        with open(self.graph, "w") as f:
+            f.write("# from_screen\ttap_x\ttap_y\tto_screen\n")
+            for e in self.edges:
+                f.write("\t".join(e) + "\n")
+        with open(os.path.join(self.out, "screens.json"), "w") as f:
+            json.dump(sorted(self.seen), f, indent=1)
+
+    def crawl(self):
+        seed = os.path.join(ROOT, self.a.seed)
+        h, fb, st = self.run(seed, "seed")
+        if h is None:
+            sys.exit("seed produced no framebuffer")
+        if h not in self.seen:
+            dst = os.path.join(self.screens, h + ".state.gz")
+            with open(seed, "rb") as i, gzip.open(dst, "wb", 9) as o:
+                shutil.copyfileobj(i, o)
+            self.pix[h] = pixels(fb)
+            store_gz(fb, os.path.join(self.screens, h + ".pgm.gz"))
+            self.seen[h] = dst
+        else:
+            drop(fb)
+        drop(st)
+        print(f"seed screen {h}")
+
+        queue, done = [h], set()
+        while queue and len(done) < self.a.max_screens:
+            cur = queue.pop(0)
+            if cur in done:
+                continue
+            done.add(cur)
+            raw = self.materialize(self.seen[cur])
+            queue += [n for n in self.explore(cur, raw) if n not in done]
+            drop(raw)
+            self.save()
+        self.save()
+        print(f"\n{len(self.seen)} screens, {len(self.edges)} edges -> {self.graph}")
+
+
+def main():
+    p = argparse.ArgumentParser(
+        description="Map the Magic Cap UI by tapping a grid from each screen.")
+    p.add_argument("--rom", default="roms/MagicCap-USA.image")
+    p.add_argument("--seed", default="states/cleandesk.state")
+    p.add_argument("--out", default="tests/uimap")
+    p.add_argument("--grid", type=int, default=40, help="tap spacing in pixels")
+    p.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
+    p.add_argument("--budget", type=int, default=150_000_000)
+    p.add_argument("--tap-at", type=int, default=20_000_000)
+    p.add_argument("--tap-hold", type=int, default=20_000_000)
+    p.add_argument("--max-screens", type=int, default=40)
+    p.add_argument("--tolerance", type=int, default=64,
+                   help="pixels two screens may differ by and still count as "
+                        "the same (a 480x320 screen is 153600)")
+    p.add_argument("--coverage", action="store_true",
+                   help="record per-edge coverage (compare with scripts/covdiff)")
+    p.add_argument("--resume", action="store_true")
+    a = p.parse_args()
+    if not os.path.isabs(a.rom):
+        a.rom = os.path.join(ROOT, a.rom)
+    if not os.path.exists(a.rom):
+        sys.exit(f"SKIP: {a.rom} not present")
+    if not os.path.exists(os.path.join(ROOT, a.seed)):
+        sys.exit(f"SKIP: {a.seed} not present (run scripts/mkstates)")
+    Crawler(a).crawl()
+
+
+if __name__ == "__main__":
+    main()

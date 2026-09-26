@@ -79,6 +79,40 @@ different identifier, so Android installs this one as a new app rather than
 as an update, and does not carry over the old app's data. See
 [Android setup](docs/ANDROID.md).
 
+## Documentation
+
+Using the emulator:
+
+- [Running MagicHat](docs/RUNNING.md): the control rail, devices, saving,
+  installing packages, and helper scripts.
+- [ROM support](docs/ROM_DETECTION.md), [storage cards](docs/STORAGE.md),
+  [networking](docs/NETWORKING.md), [Android](docs/ANDROID.md).
+
+DataRover 840 (MIPS):
+
+- [Hardware](docs/HARDWARE.md), [startup](docs/STARTUP.md),
+  [accuracy](docs/ACCURACY.md), [audio](docs/AUDIO.md),
+  [keyboard](docs/KEYBOARD.md), [power and persistence](docs/POWER_PERSISTENCE.md).
+- [MIPS JIT](docs/MIPS_JIT.md), [MIPS performance](docs/MIPS_PERFORMANCE.md),
+  [SDL display](docs/SDL_DISPLAY.md).
+- Machine modifications: [overview](docs/MODIFICATIONS.md),
+  [RAM size](docs/RAM_EXPERIMENT.md), [deeper screen](docs/DEEP_SCREEN.md).
+
+68k machines:
+
+- [PIC-2000](docs/PIC2000.md), [Envoy](docs/ENVOY.md), [HIX-300](docs/HIX300.md),
+  [PIC-1000](docs/PIC1000.md), [parity between boards](docs/68K_PARITY.md).
+- [Magic Bus controller](docs/PIC2000_MAGICBUS.md),
+  [keyboards](docs/68K_KEYBOARD.md), [audio](docs/PIC2000_AUDIO.md),
+  [networking](docs/68K_NETWORKING.md).
+- [68k core](docs/M68K_CORE.md), [68k performance](docs/M68K_PERFORMANCE.md).
+
+Project:
+
+- [Methodology](docs/METHODOLOGY.md): how the machines are modelled without
+  patching the guest.
+- [Open questions](docs/OPEN_QUESTIONS.md): what is still unknown.
+
 ## Repository layout
 
 - `src/`: emulator CPU/JIT, buses, devices, machines, host services, and UI.
